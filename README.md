@@ -1,6 +1,11 @@
-# UNC 64
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/unc-logo-dark.svg">
+    <img alt="UNC 64, United Northern Computers" src="assets/unc-logo-light.svg" width="560">
+  </picture>
+</p>
 
-**A computer that fits in your head.**
+<p align="center"><b>A computer that fits in your head.</b></p>
 
 The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid-1980s that never existed. This is the machine, emulated for real: a cycle-counted 6502-family processor, a system ROM with UNC BASIC, a character set, a beeper, tape, and a video board with sprites and smooth scrolling. 64K of memory. One manual. You can know all of it.
 
