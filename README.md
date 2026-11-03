@@ -93,6 +93,6 @@ UNC 64 is also a game: you, a modern-day software engineer, inherit your uncle's
 
 ## Licence
 
-MIT OR Apache-2.0, at your option, as Rust projects do: the code, the ROM, UNC BASIC and the manual. Fonts keep their own licences, beside them. The names "UNC 64", "UNC 16" and "United Northern Computers" aren't licensed with the code: see [`TRADEMARKS.md`](TRADEMARKS.md).
+MIT OR Apache-2.0, at your option, as Rust projects do: the code, the ROM, UNC BASIC and the manual. Fonts keep their own licences, beside them.
 
 Built by [Viljami Kuosmanen](https://viljami.io), with AI assistance. The design decisions are his.
