@@ -1,0 +1,45 @@
+{
+  "name": "unc-asm",
+  "displayName": "UNC assembly",
+  "description": "UNC 64 assembly: highlighting, and the unc-lsp language server (diagnostics, completion, hover, cycle counts).",
+  "version": "0.1.0",
+  "publisher": "unc-64",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "unc",
+        "aliases": ["UNC assembly", "unc"],
+        "extensions": [".uncs", ".unc.s"],
+        "firstLine": "^;.*\\bUNC\\b",
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      { "language": "unc", "scopeName": "source.unc", "path": "./syntaxes/unc.tmLanguage.json" }
+    ],
+    "configuration": {
+      "title": "UNC assembly",
+      "properties": {
+        "unc.serverPath": {
+          "type": "string",
+          "default": "unc-lsp",
+          "description": "The unc-lsp binary: a path, or a name on PATH (cargo install --path crates/unc-lsp)."
+        },
+        "unc.cumulativeCycles": {
+          "type": "boolean",
+          "default": false,
+          "description": "Inlay hints also show the cycles since the last label."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

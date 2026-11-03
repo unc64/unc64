@@ -1,0 +1,202 @@
+# The instruction set: opcode, operation, mode, cycles
+$00 BRK Imp 6
+$01 NOP Imp 2
+$02 HLT Imp 2
+$03 RTS Imp 6
+$04 RTI Imp 6
+$05 JSR Abs 6
+$06 JMP Abs 3
+$07 JMP Ind 5
+$08 BEQ Rel 2
+$09 BNE Rel 2
+$0A BCC Rel 2
+$0B BCS Rel 2
+$0C BMI Rel 2
+$0D BPL Rel 2
+$0E BVC Rel 2
+$0F BVS Rel 2
+$10 TAX Imp 2
+$11 TAY Imp 2
+$12 TXA Imp 2
+$13 TYA Imp 2
+$14 TXS Imp 2
+$15 TSX Imp 2
+$16 INX Imp 2
+$17 INY Imp 2
+$18 DEX Imp 2
+$19 DEY Imp 2
+$1A PHA Imp 3
+$1B PLA Imp 4
+$1C PHP Imp 3
+$1D PLP Imp 4
+$1E CLC Imp 2
+$1F SEC Imp 2
+$20 CLI Imp 2
+$21 SEI Imp 2
+$22 CLV Imp 2
+$28 LDA Imm 2
+$29 LDA Fp 3
+$2A LDA Fpx 4
+$2B LDA Abs 4
+$2C LDA Absx 5
+$2D LDA Absy 5
+$2E LDA Indy 6
+$31 STA Fp 3
+$32 STA Fpx 4
+$33 STA Abs 4
+$34 STA Absx 5
+$35 STA Absy 5
+$36 STA Indy 6
+$38 ADC Imm 2
+$39 ADC Fp 3
+$3A ADC Fpx 4
+$3B ADC Abs 4
+$3C ADC Absx 5
+$3D ADC Absy 5
+$3E ADC Indy 6
+$40 SBC Imm 2
+$41 SBC Fp 3
+$42 SBC Fpx 4
+$43 SBC Abs 4
+$44 SBC Absx 5
+$45 SBC Absy 5
+$46 SBC Indy 6
+$48 AND Imm 2
+$49 AND Fp 3
+$4A AND Fpx 4
+$4B AND Abs 4
+$4C AND Absx 5
+$4D AND Absy 5
+$4E AND Indy 6
+$50 ORA Imm 2
+$51 ORA Fp 3
+$52 ORA Fpx 4
+$53 ORA Abs 4
+$54 ORA Absx 5
+$55 ORA Absy 5
+$56 ORA Indy 6
+$58 EOR Imm 2
+$59 EOR Fp 3
+$5A EOR Fpx 4
+$5B EOR Abs 4
+$5C EOR Absx 5
+$5D EOR Absy 5
+$5E EOR Indy 6
+$60 CMP Imm 2
+$61 CMP Fp 3
+$62 CMP Fpx 4
+$63 CMP Abs 4
+$64 CMP Absx 5
+$65 CMP Absy 5
+$66 CMP Indy 6
+$68 LDX Imm 2
+$69 LDX Fp 3
+$6B LDX Abs 4
+$6D LDX Absy 5
+$6F LDX Fpy 4
+$70 LDY Imm 2
+$71 LDY Fp 3
+$72 LDY Fpx 4
+$73 LDY Abs 4
+$74 LDY Absx 5
+$79 STX Fp 3
+$7B STX Abs 4
+$7F STX Fpy 4
+$81 STY Fp 3
+$82 STY Fpx 4
+$83 STY Abs 4
+$88 CPX Imm 2
+$89 CPX Fp 3
+$8B CPX Abs 4
+$90 CPY Imm 2
+$91 CPY Fp 3
+$93 CPY Abs 4
+$99 INC Fp 5
+$9A INC Fpx 6
+$9B INC Abs 6
+$A1 DEC Fp 5
+$A2 DEC Fpx 6
+$A3 DEC Abs 6
+$A9 ASL Fp 5
+$AA ASL Fpx 6
+$AB ASL Abs 6
+$AF ASL Acc 2
+$B1 LSR Fp 5
+$B2 LSR Fpx 6
+$B3 LSR Abs 6
+$B7 LSR Acc 2
+$B9 ROL Fp 5
+$BA ROL Fpx 6
+$BB ROL Abs 6
+$BF ROL Acc 2
+$C1 ROR Fp 5
+$C2 ROR Fpx 6
+$C3 ROR Abs 6
+$C7 ROR Acc 2
+$C9 BIT Fp 3
+$CB BIT Abs 4
+$D0 Lax Abs 4 (undocumented)
+$D1 Lax Fp 3 (undocumented)
+$D2 Sax Fp 3 (undocumented)
+$D3 Dcp Fp 5 (undocumented)
+$D4 Isb Fp 5 (undocumented)
+$D5 Slo Fp 5 (undocumented)
+$D6 Anc Imm 2 (undocumented)
+$D7 Txy Imp 2 (undocumented)
+# Timing
+64 cycles a line, 312 lines, 19968 cycles a frame, picture from line 51, VBLANK at line 251
+# The ROM's jump table: each entry a JMP
+$FF00 JMP
+$FF03 JMP
+$FF06 JMP
+$FF09 JMP
+$FF0C JMP
+$FF0F JMP
+$FF12 JMP
+$FF15 JMP
+$FF18 JMP
+$FF1B JMP
+$FF1E JMP
+$FF21 JMP
+# UNC BASIC's keywords, in token order from $80
+$80 PRINT
+$81 LET
+$82 INPUT
+$83 IF
+$84 GOTO
+$85 GOSUB
+$86 RETURN
+$87 FOR
+$88 NEXT
+$89 POKE
+$8A REM
+$8B END
+$8C CLS
+$8D SYS
+$8E RUN
+$8F LIST
+$90 NEW
+$91 HELP
+$92 GR
+$93 TEXT
+$94 PLOT
+$95 LINE
+$96 CIRCLE
+$97 INK
+$98 THEN
+$99 TO
+$9A STEP
+$9B PEEK
+$9C RND
+$9D ABS
+$9E AND
+$9F OR
+$A0 POINT
+$A1 LOAD
+$A2 SAVE
+$A3 DATA
+$A4 READ
+$A5 RESTORE
+$A6 GET
+# The tape format
+UNCT version 1

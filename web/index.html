@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UNC 64 Machine Room</title>
+<meta name="description" content="Write, run and debug programs for the UNC 64, and keep them on cassettes. Runs entirely in your browser.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="mark" aria-label="UNC 64 Machine Room">UNC <span>64</span><i>·</i>Machine Room</div>
+  <div class="proj">
+    <button class="ptitle" id="ptitle" type="button" title="Rename the project">UNTITLED</button>
+    <input class="ptitle-in" id="ptitle-in" maxlength="40" aria-label="Project title" hidden>
+    <span class="dirty" id="dirty" title="Changed since you last saved it" hidden>●</span>
+  </div>
+  <nav class="acts" aria-label="Project">
+    <button class="btn" id="b-new" type="button">New</button>
+    <button class="btn" id="b-open" type="button" title="Open a .unc.png, .tap, .s or .bas from your computer">Open</button>
+    <button class="btn" id="b-browse" type="button" title="Your cassettes and the bundled ones">Browse</button>
+    <button class="btn" id="b-save" type="button" title="Save it as a cassette in your library">Save</button>
+    <button class="btn" id="b-export" type="button" title="Download it as a .unc.png cassette or a .tap">Export</button>
+  </nav>
+  <button class="btn go run" id="b-run" type="button" title="Assemble (or type in) and run">Run <kbd>Ctrl+Enter</kbd></button>
+  <div class="settings" aria-label="The machine">
+    <label title="Changing it switches the machine off and on">RAM <select id="ram"><option value="16">16K</option><option value="64">64K</option></select></label>
+    <label title="Applies at power on: the machine is switched off and on"><input type="checkbox" id="board"> Video board</label>
+    <label><input type="checkbox" id="colour"> Colour</label>
+    <select id="phosphor" aria-label="Monochrome screen colour" title="The monochrome screen's colour"></select>
+    <label><input type="checkbox" id="mute"> Mute</label>
+  </div>
+  <button class="btn" id="b-help" type="button">Help</button>
+</header>
+
+<main class="ide" id="ide">
+  <aside class="files" aria-labelledby="h-files">
+    <div class="side-head"><h2 id="h-files">Files</h2><button class="btn sm" id="f-add" type="button" title="Add a file to the project">+ File</button></div>
+    <ul id="files" class="flist"></ul>
+    <p class="side-note" id="f-note"></p>
+  </aside>
+
+  <section class="edit" aria-label="Editor">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="srcbox"><textarea id="src" spellcheck="false" autocapitalize="off" aria-label="Source"></textarea></div>
+    <div class="edbar" id="edbar" hidden>
+      <span id="lang-note"></span>
+      <label>Keys <select id="keys"><option value="standard">Standard</option><option value="vim">Vim</option></select></label>
+      <label><input type="checkbox" id="cycles" checked> Cycle counts</label>
+      <span id="selcycles" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <aside class="machine" aria-label="The machine">
+    <div class="crt">
+      <canvas id="screen" width="768" height="592" tabindex="0" aria-label="UNC 64 screen. Click and type to send keys to the machine."></canvas>
+      <span class="led" aria-hidden="true"></span>
+    </div>
+    <div class="mbar">
+      <span id="status" aria-live="polite">LOADING</span>
+      <span class="hint" id="kbd-hint">Click the screen to type.</span>
+    </div>
+    <div class="row ctl">
+      <button class="btn" id="run" type="button">Pause <kbd>F8</kbd></button>
+      <button class="btn" id="step" type="button">Step <kbd>F7</kbd></button>
+      <button class="btn" id="over" type="button">Step over <kbd>F6</kbd></button>
+      <button class="btn" id="reset" type="button">Power cycle</button>
+    </div>
+    <section class="deck" aria-labelledby="h-deck">
+      <h2 id="h-deck">Tape deck</h2>
+      <div class="deck-body">
+        <div class="slot" id="slot"><img id="slot-face" alt="" hidden><span id="slot-empty">No tape</span></div>
+        <div class="deck-side">
+          <div class="deck-name" id="deck-name">Put a cassette in: Run one from Browse, or press <b>Tape it</b>.</div>
+          <div class="counter" aria-label="Tape counter"><span id="counter">000</span><i id="motor" title="Motor">MOTOR</i><i id="playing" title="PLAY is down">PLAY</i><i id="recording" title="RECORD is down" hidden>REC</i></div>
+          <div class="row keys">
+            <button class="key" id="d-play" type="button">▶ Play</button>
+            <button class="key" id="d-rec" type="button" hidden>● Rec</button>
+            <button class="key" id="d-stop" type="button">■ Stop</button>
+            <button class="key" id="d-rew" type="button" title="Rewind">◀◀</button>
+            <button class="key" id="d-eject" type="button">⏏ Eject</button>
+          </div>
+          <div class="row">
+            <label title="LOAD runs exactly as usual, only as fast as the ROM can read"><input type="checkbox" id="turbo"> Fast load</label>
+            <button class="btn sm" id="d-tapeit" type="button" title="Build this project and put it on a tape in the deck">Tape it</button>
+            <button class="btn sm" id="d-blank" type="button" hidden title="A blank tape, for SAVE">Blank tape</button>
+          </div>
+          <p class="deck-hint" id="deck-hint"></p>
+        </div>
+      </div>
+    </section>
+  </aside>
+
+  <section class="dock" aria-label="Problems, debugger and output">
+    <div class="dock-tabs" role="tablist">
+      <button type="button" role="tab" data-pane="problems" aria-selected="true">Problems <span id="nprob"></span></button>
+      <button type="button" role="tab" data-pane="debugger" aria-selected="false">Debugger</button>
+      <button type="button" role="tab" data-pane="output" aria-selected="false">Output</button>
+    </div>
+    <div class="pane" id="pane-problems"><ul id="errors" aria-live="polite"></ul><p class="none" id="noerr">No problems.</p></div>
+    <div class="pane dbg" id="pane-debugger" hidden>
+      <div class="dbg-cpu">
+        <div class="regs" id="regs"></div>
+        <div class="flags" id="flags" aria-label="Status flags"></div>
+        <div class="meta" id="meta"></div>
+      </div>
+      <div class="dbg-dis">
+        <h3>Disassembly <span>click a line for a breakpoint</span></h3>
+        <div class="scroll"><table class="dis"><tbody id="dis"></tbody></table></div>
+      </div>
+      <div class="dbg-mem">
+        <h3>Memory</h3>
+        <div class="memctl">
+          <input id="memaddr" value="0800" aria-label="Memory address (hex)" maxlength="4">
+          <button class="btn sm" data-mem="0000" type="button">Fast page</button>
+          <button class="btn sm" data-mem="0400" type="button">Screen</button>
+          <button class="btn sm" data-mem="0800" type="button">Program</button>
+          <button class="btn sm" data-mem="C000" type="button">I/O</button>
+          <button class="btn sm" data-mem="FF00" type="button">ROM</button>
+        </div>
+        <div class="scroll"><div class="mem" id="mem"></div></div>
+      </div>
+      <div class="dbg-stack"><h3>Stack</h3><div class="stack" id="stack"></div></div>
+    </div>
+    <div class="pane" id="pane-output" hidden><pre id="output">Nothing assembled yet.</pre></div>
+  </section>
+</main>
+
+<section class="browse" id="browse" aria-label="Browse cassettes" hidden></section>
+
+<dialog id="dlg-save" aria-labelledby="h-save">
+  <form method="dialog" class="dlg" id="save-form">
+    <h2 id="h-save">Cassette</h2>
+    <div class="save-grid">
+      <canvas id="save-face" width="1004" height="638" aria-label="The cassette's face"></canvas>
+      <div class="fields">
+        <label>Title <input id="s-title" maxlength="40" required></label>
+        <label>Author <input id="s-author" maxlength="60" placeholder="You"></label>
+        <label>About <textarea id="s-about" rows="2" maxlength="200" placeholder="A line or two about it"></textarea></label>
+        <fieldset><legend>It needs</legend>
+          <label><input type="radio" name="s-ram" value="16" checked> 16K</label>
+          <label><input type="radio" name="s-ram" value="64"> 64K</label>
+          <label><input type="checkbox" id="s-board"> The video board</label>
+        </fieldset>
+        <label><input type="checkbox" id="s-src" checked> Include the source</label>
+        <p class="note">The label shows the screen as it is now. The tape's name, for <code>LOAD "NAME"</code>: <b id="s-tapename"></b>.</p>
+        <p class="err" id="s-err" role="alert"></p>
+      </div>
+    </div>
+    <div class="dlg-acts">
+      <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
+      <button class="btn" id="s-tap" type="button">Download .tap</button>
+      <button class="btn" id="s-png" type="button">Download .unc.png</button>
+      <button class="btn go" id="s-lib" type="button">Save to library</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-help" aria-labelledby="h-help">
+  <div class="dlg help">
+    <h2 id="h-help">The Machine Room</h2>
+    <p>The UNC 64 in your browser: the real emulator, an assembler, a debugger and a tape deck. Nothing leaves your computer.</p>
+    <h3>Write and run</h3>
+    <p>Write assembly (<code>.s</code>) or UNC BASIC (<code>.bas</code>), then <b>Run</b> (Ctrl+Enter). Assembly is assembled and started. BASIC is typed into the machine for you, then <code>RUN</code>. A project can have several files: <code>.include "other.s"</code> reads another one. The file marked MAIN is the one that runs.</p>
+    <h3>Keys</h3>
+    <p>Click the screen and your keys go to the machine: the cursor keys, RETURN, DELETE, and Ctrl+C for STOP. F8 runs or pauses, F7 steps, F6 steps over a subroutine. In the editor, Ctrl+Enter runs, Ctrl+F finds, Ctrl+/ comments lines out. Vim keys are under the editor.</p>
+    <h3>Cassettes</h3>
+    <p>A cassette is a <code>.unc.png</code>: a picture of the tape with the program inside it, and the source if you include it. <b>Save</b> keeps it in your library in this browser. <b>Export</b> downloads it. <b>Browse</b> shows yours and the bundled ones. Drop <code>.unc.png</code>, <code>.tap</code>, <code>.s</code> or <code>.bas</code> files anywhere on the page to bring them in.</p>
+    <h3>The tape deck</h3>
+    <p>Put a cassette in the deck (Run in Browse, or <b>Tape it</b> for your project), type <code>LOAD</code> at <code>READY.</code> and press <b>Play</b>. <b>Fast load</b> loads as fast as the ROM can read. Without it, about 600 bytes a second, as on the real deck. To <code>SAVE</code> a BASIC program: <b>Blank tape</b>, type <code>SAVE "NAME"</code>, press <b>Rec</b>. Eject it to keep it as a cassette.</p>
+    <h3>In the game</h3>
+    <p>To play it in the game: turn on My tapes in the game's pause menu (Settings, Assembler), then put the cassette in <code>Documents/UNC 64/Cassettes</code> (on Windows, <code>C:\Users\&lt;you&gt;\Documents\UNC 64\Cassettes</code>), or drop it on the game's window. It turns up in the shoebox on the desk: put it in the deck, <code>LOAD</code>, PLAY.</p>
+    <p class="fine">GUIDE.md, beside this file, has the details.</p>
+    <form method="dialog" class="dlg-acts"><button class="btn go" type="submit">Close</button></form>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="drop" id="drop" hidden><div>Drop to bring it in<span>.unc.png and .tap go to your library. .s and .bas join the project.</span></div></div>
+<input type="file" id="file-open" accept=".png,.tap,.s,.bas,.asm,.inc,.txt" multiple hidden>
+
+<script src="phosphor.js"></script>
+<script src="unc-lang.js"></script>
+<script src="cassette.js"></script>
+<script src="library.js"></script>
+<script src="bundled.js"></script>
+<script src="app.js"></script>
+<script type="module" src="editor.js"></script>
+</body>
+</html>

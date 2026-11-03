@@ -1,0 +1,44 @@
+# The Machine Room as one file: published to GitHub Pages on every push to main
+# (unc64.github.io/unc64), and attached to each release as machine-room.html.
+# Repo settings: Pages, Source: GitHub Actions.
+name: machine-room
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: machine-room
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/build-machine-room.mjs build/machine-room
+      - run: cp build/machine-room/index.html machine-room.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/machine-room
+      - if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" machine-room.html --clobber
+  deploy:
+    if: github.event_name != 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,15 @@
+[package]
+name = "unc-asm"
+description = "Assembler and disassembler for the UNC 64."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+version.workspace = true
+
+[dependencies]
+unc-core = { path = "../unc-core" }
+
+[[bin]]
+name = "unc-asm"
+path = "src/main.rs"

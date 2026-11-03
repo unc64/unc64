@@ -1,0 +1,15 @@
+[package]
+name = "unc-wasm"
+description = "WebAssembly build of the UNC 64 for the browser debugger. Plain C ABI, no bindgen."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+unc-core = { path = "../unc-core" }
+unc-asm = { path = "../unc-asm" }

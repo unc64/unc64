@@ -1,0 +1,142 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "UNC assembly",
+  "scopeName": "source.unc",
+  "comment": "Generated from unc_asm::lang by `cargo run -p unc-asm -- --textmate`. Don't edit by hand.",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "name": "constant.character.unc",
+      "match": "'(?:\\\\.|[^\\\\'])'"
+    },
+    {
+      "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)\\s*(:)",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.label.unc"
+        },
+        "2": {
+          "name": "punctuation.separator.label.unc"
+        }
+      }
+    },
+    {
+      "match": "^\\s*(@[A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.label.local.unc"
+        },
+        "2": {
+          "name": "punctuation.separator.label.unc"
+        }
+      }
+    },
+    {
+      "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(=)(?!=)",
+      "captures": {
+        "1": {
+          "name": "entity.name.constant.unc"
+        },
+        "2": {
+          "name": "keyword.operator.assignment.unc"
+        }
+      }
+    },
+    {
+      "name": "variable.other.local.unc",
+      "match": "@[A-Za-z_][A-Za-z0-9_]*"
+    },
+    {
+      "match": "(?i)\\b(asl|lsr|rol|ror)\\s+(a)\\b(?=\\s*(?:;|$))",
+      "captures": {
+        "1": {
+          "name": "keyword.other.mnemonic.unc"
+        },
+        "2": {
+          "name": "variable.language.register.unc"
+        }
+      }
+    },
+    {
+      "name": "keyword.control.directive.unc",
+      "match": "(?i)\\.(?:align|ascii|asciiz|assert|byte|db|dsb|dw|endr|fill|include|irp|org|rept|res|text|word)\\b"
+    },
+    {
+      "name": "invalid.illegal.directive.unc",
+      "match": "(?:^|(?<=[\\s:]))\\.[A-Za-z_]\\w*"
+    },
+    {
+      "name": "keyword.control.branch.unc",
+      "match": "(?i)\\b(?:BEQ|BNE|BCC|BCS|BMI|BPL|BVC|BVS)\\b"
+    },
+    {
+      "name": "keyword.other.mnemonic.unc",
+      "match": "(?i)\\b(?:BRK|NOP|HLT|RTS|RTI|JSR|JMP|TAX|TAY|TXA|TYA|TXS|TSX|INX|INY|DEX|DEY|PHA|PLA|PHP|PLP|CLC|SEC|CLI|SEI|CLV|LDA|STA|ADC|SBC|AND|ORA|EOR|CMP|LDX|LDY|STX|STY|CPX|CPY|INC|DEC|ASL|LSR|ROL|ROR|BIT)\\b"
+    },
+    {
+      "name": "support.function.unc",
+      "match": "(?i)\\b(?:sin|cos|sqrt|abs|min|max)(?=\\s*\\()"
+    },
+    {
+      "match": "(?i)(,)\\s*([xy])\\b(?=\\s*(?:;|$))",
+      "captures": {
+        "1": {
+          "name": "punctuation.unc"
+        },
+        "2": {
+          "name": "variable.language.register.unc"
+        }
+      }
+    },
+    {
+      "name": "support.constant.unc",
+      "match": "\\b(?:BACKGROUND|BEEPER|BITMAP|BOARD|BORDER|CHARSET|CHROUT|CLS|COLOUR1|COLOUR2|COLOUR3|COLOURMODE|CURLIN|CURSAV|CURX|CURY|DATAL|DATAP|DST|FORSP|FORSTK|FRAME|GETKEY|GFXS|GOSP|GOSTK|HELD|IBUF|INBUF|INKM|IRQVEC|IRQ_ENABLE|IRQ_STATUS|KBD|KBD_STROBE|KEYS|LAYER|LAYERPAGE|LAYERSX|LAYERSY|LOAD|NOISE|NUMBUF|NUMSTR|PRDEC|PRGEND|PRHEX|PRNUM|PRSTR|PTR|RAMTOP|RASTER|RASTER_CMP|RASTER_HI|READY|RND|RNDSEED|RUNFLG|SCROLLX|SCROLLY|SEED|SHIFT_AMOUNT|SHIFT_FLIP|SHIFT_IN|SHIFT_OUT|SPEAKER|SPRBANK|SPRHIT|SPRHITBG|SPRLINE|SPRTAB|SRC|STRP|TAPE|TAPEDATA|TBORD|TCHK|THDR|TIMER_HI|TIMER_LO|TMPA|TNAME|TNAMED|TOVR|VARS|VMODE)\\b"
+    },
+    {
+      "name": "constant.numeric.hex.unc",
+      "match": "\\$[0-9A-Fa-f]+\\b"
+    },
+    {
+      "name": "constant.numeric.binary.unc",
+      "match": "(?<![\\w)\\]])%[01]+\\b"
+    },
+    {
+      "name": "constant.numeric.decimal.unc",
+      "match": "\\b[0-9]+\\b"
+    },
+    {
+      "name": "keyword.operator.unc",
+      "match": "<<|>>|<=|>=|==|!=|&&|\\|\\||[-+*/%&|^~<>=!#\\\\]"
+    },
+    {
+      "name": "punctuation.unc",
+      "match": "[\\[\\](),]"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.semicolon.unc",
+      "match": ";.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.unc",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.unc",
+          "match": "\\\\[\"'\\\\]"
+        },
+        {
+          "name": "invalid.illegal.escape.unc",
+          "match": "\\\\."
+        }
+      ]
+    }
+  }
+}

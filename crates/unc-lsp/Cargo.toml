@@ -1,0 +1,17 @@
+[package]
+name = "unc-lsp"
+description = "A language server for UNC assembly: diagnostics, completion, hover, cycle-count inlay hints and navigation, from the real assembler."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+version.workspace = true
+
+[dependencies]
+unc-core = { path = "../unc-core" }
+unc-asm = { path = "../unc-asm" }
+serde_json = "1"
+
+[[bin]]
+name = "unc-lsp"
+path = "src/main.rs"

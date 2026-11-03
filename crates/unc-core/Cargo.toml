@@ -1,0 +1,10 @@
+[package]
+name = "unc-core"
+description = "The UNC 64: CPU, memory, I/O. Zero dependencies, deterministic, cycle-counted."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+version.workspace = true
+
+[dependencies]

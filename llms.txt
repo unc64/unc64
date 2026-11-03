@@ -1,0 +1,12 @@
+# UNC 64
+
+> The UNC 64 is a fantasy 8-bit computer by United Northern Computers (a company that never existed), fully emulated: a cycle-counted Rust emulator (`crates/unc-core`), an assembler (`crates/unc-asm`), the system ROM with UNC BASIC (`rom/system.s`), a language server (`crates/unc-lsp`) and the Machine Room, a browser IDE (`web/`). It's also the machine in the game UNC 64 (https://unc64.com). This file points AI agents at what to read before writing code for it.
+
+The UNC-1 is in the 6502 family but is not a 6502, and the UNC 64 is not a Commodore 64. The manual is the spec: the emulator implements it, and every listing in it is assembled and run by `cargo test`.
+
+- [llms-full.txt](llms-full.txt): the whole Programmer's Reference Guide and the cassette format, in one file. Read this first.
+- [The manual](docs/prg/programmers-reference-guide.md): the same, as the source.
+- [Cassettes](docs/cassettes.md): the `.unc.png` and `.tap` formats.
+- [REVISIONS.md](REVISIONS.md): what System Rev A fixes.
+- [Examples](games/): games with their tests; `web/samples/` for small programs.
+- [AGENTS.md](AGENTS.md): the rules for changing this repository.
