@@ -30,6 +30,7 @@
     <select id="phosphor" aria-label="Monochrome screen colour" title="The monochrome screen's colour"></select>
     <label><input type="checkbox" id="mute"> Mute</label>
   </div>
+  <a class="btn manual" href="https://unc64.com/manual/unc64-programmers-reference-guide.pdf" target="_blank" rel="noopener" title="The UNC 64 Programmer's Reference Guide: every register, instruction and ROM routine">Manual</a>
   <button class="btn" id="b-help" type="button">Help</button>
 </header>
 
@@ -160,6 +161,7 @@
   <div class="dlg help">
     <h2 id="h-help">The Machine Room</h2>
     <p>The UNC 64 in your browser: the real emulator, an assembler, a debugger and a tape deck. Nothing leaves your computer.</p>
+    <p class="manual-cta">Everything the machine does is in the <a href="https://unc64.com/manual/unc64-programmers-reference-guide.pdf" target="_blank" rel="noopener"><b>Programmer's Reference Guide (PDF)</b></a>: UNC BASIC, every register, every instruction and every ROM routine.</p>
     <h3>Write and run</h3>
     <p>Write assembly (<code>.s</code>) or UNC BASIC (<code>.bas</code>), then <b>Run</b> (Ctrl+Enter). Assembly is assembled and started. BASIC is typed into the machine for you, then <code>RUN</code>. A project can have several files: <code>.include "other.s"</code> reads another one. The file marked MAIN is the one that runs.</p>
     <h3>Keys</h3>
