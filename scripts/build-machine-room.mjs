@@ -136,7 +136,8 @@ WHAT YOU CAN DO
 
 CASSETTES
   A cassette is a .unc.png file: a picture of the tape, with the program (and its
-  source, if you like) inside it. Post the picture anywhere and it still loads.
+  source, if you like) inside it. Pass the file on as it is and it still loads;
+  a site that re-encodes pictures keeps the face and drops the tape.
   A .tap file is a bare tape, without the picture; it works too.
 
   Your library is kept in this browser. To keep a cassette for good, or to give it

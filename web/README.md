@@ -1,6 +1,6 @@
 # web: the Machine Room
 
-The UNC 64 as a small browser IDE: the real emulator core (`unc.wasm`), an editor, an assembler, a debugger, a tape deck, and a library of cassettes (`docs/cassettes.md`). It's the developer's tool, and it ships with the game as one file, `machine-room/index.html`, that runs by double-clicking it: no server, no install, no internet. `docs/machine-room.md` is the user's guide (the build puts it beside the page as GUIDE.md).
+The UNC 64 as a small browser IDE: the real emulator core (`unc.wasm`), an editor, an assembler, a debugger, a tape deck, and a library of cassettes (`docs/cassettes.md`). It's the developer's tool, free at unc64.github.io/unc64, and it also ships with the game as one file, `machine-room/index.html`, that runs by double-clicking it: no server, no install, no internet. `docs/machine-room.md` is the user's guide (the build puts it beside the page as GUIDE.md).
 
 ```sh
 scripts/build-machine-room.sh        # build/machine-room/index.html + README.txt: the one file

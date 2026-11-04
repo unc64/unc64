@@ -14,7 +14,7 @@ The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid
 The Machine Room is the UNC 64 in a web page: an editor, the real emulator, a debugger and a tape deck, with example programs and games to open, run and change. Nothing to install.
 
 - **In your browser:** **[unc64.github.io/unc64](https://unc64.github.io/unc64/)**
-- **Offline, one file:** download `machine-room.html` from the [latest release](https://github.com/unc64/unc64/releases/latest) and double-click it. It runs from your disk, without the internet.
+- **Offline, one file:** `scripts/build-machine-room.sh` (Node, nothing to install) writes `build/machine-room/index.html`. Double-click it: it runs from your disk, without the internet. Releases will carry it as `machine-room.html`.
 - **From a clone**, with nothing but Python:
 
   ```sh
@@ -86,7 +86,7 @@ scripts/build-machine-room.sh          # the Machine Room as one file: build/mac
 node scripts/check-machine-room.mjs    # and a check of it in a real browser
 ```
 
-[`AGENTS.md`](AGENTS.md) has the rules of the road; [`CONTRIBUTING.md`](https://github.com/unc64/.github/blob/main/CONTRIBUTING.md) the rest.
+[`AGENTS.md`](AGENTS.md) has the rules of the road. Issues and pull requests are welcome, and so are corrections from anyone who wrote 6502 code for real.
 
 ## Rev A
 
@@ -94,10 +94,14 @@ The machine is frozen at **System Rev A**: a program that runs on a Rev A machin
 
 ## The game
 
-UNC 64 is also a game: you, a modern-day software engineer, inherit your uncle's old computer, switch it on, and wake up in 1984 at the same desk. It's at [unc64.com](https://unc64.com). This repository is the machine; the game is sold separately.
+UNC 64 is also a game: you, a modern-day software engineer, inherit your uncle's old computer, switch it on, and wake up in 1984 at the same desk. It's at [unc64.com](https://unc64.com). This repository is the machine, free to use and change; the game, the story around it, is sold separately.
 
 ## Licence
 
 MIT OR Apache-2.0, at your option, as Rust projects do: the code, the ROM, UNC BASIC and the manual. Fonts keep their own licences, beside them.
 
-Built by [Viljami Kuosmanen](https://viljami.io), with AI assistance. The design decisions are his.
+## Why
+
+An engineer's exploration of the 6502 era, out of admiration for the people who programmed these machines for real. As a kid I typed BASIC listings out of library books on my uncle's old Amiga; he'd had a C64 before it. I didn't meet 6502 assembly until university, much later. The UNC 64 is the machine I'd have wanted on that desk.
+
+Much of the code is written with AI assistance; the machine's design and the manual are where the evenings go. If you wrote this kind of code in the eighties, you know more about it than I do: corrections are welcome. — [Viljami Kuosmanen](https://viljami.io)
