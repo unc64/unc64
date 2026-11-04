@@ -27,12 +27,14 @@
 ; $0000-$0087  object table, 17 objects x 8 fields: 0 ship, 1-4 bullets, 5-16 rocks
 ; $0088-$00CE  game variables (VAREND checks they stay below BASIC's $D0, which the ROM's
 ;              NUMSTR, PRNUM and RND use)
-; $0400-$07E7  text screen; rows 21-24 ($0748-$07E7) are the HUD
+; $0400-$07E7  text screen; rows 21-24 ($0748-$07E7) are the HUD; the rows above are
+;              under the arena, never shown in mixed mode: FASTY lives there
 ; $0800-$1FFF  code and tables (6K)
-; $2000-$3A3F  the bitmap's visible 168 lines
-; $3A40-$3E1C  the bitmap's hidden lines (under the text in mixed mode, so free RAM): the
-;              object fields the fast page has no room for, the sound's state, then the
-;              plotting tables, built at start
+; $2000-$3A3F  the bitmap's visible 168 lines; the gravity table is loaded at its start,
+;              past the code, and copied up to GTAB before the bitmap is cleared
+; $3A40-$3FFF  the bitmap's hidden lines and the RAM past them (under the text in mixed
+;              mode, so free): the object fields the fast page has no room for, the
+;              sound's state, the plotting tables, built at start, and the gravity table
 ;
 ; The tests find STATE, SHIPDIR, LIVES, WAVE, SCORE (six digits, 0-9 each, the highest
 ; first), INVUL, THRUST, MAXLINE (worst raster line at the end of a frame's work), OVERRUN
@@ -63,6 +65,18 @@ RNDSEED = $FF1E         ; X/Y -> RND's seed
 CURX    = $0200
 CURY    = $0201
 BMP     = $2000
+; The text rows under the arena ($0400-$0747), never shown in mixed mode: free RAM.
+FASTY   = $0400         ; the ship's lines step by +-40 (line)
+EXR     = $0401         ; the explosion
+EXX     = $0402
+EXY     = $0403
+EXDR    = $0404
+MERGE   = $0405         ; the ship's lines XOR twice: at PTR, and at PTR2 offset by DX (line)
+DLO     = $0406         ; PTR2 - PTR at a line's start: 40 x the rows between the places
+DHI     = $0407
+DX      = $0408         ; the old place's x - the new's, -8 to 8
+MOVRUN  = $0409         ; tables loaded past the code (MOVLD) and copied here at start
+MOVED   = MOVRUN - MOVLD ; so a table's address here is its label there + MOVED
 ROW21   = $0400+21*40
 ROW22   = $0400+22*40
 ROW23   = $0400+23*40
@@ -85,11 +99,10 @@ INVULT  = 120           ; frames of safety after (re)spawning
 WAVEDLY = 50            ; frames between clearing a wave and the next
 ARENA0  = 51            ; the raster line the arena's first line is drawn on (chapter 9)
 VBLANK  = 251           ; the beam leaves the picture: FRAME goes up, a frame's work starts
-RPASS   = 30            ; lines a rock's picture takes to draw or rub out (about 1,800 cycles)
-FIRSTEND = 0            ; the first rocks start none after this line (none in the top
-                        ; border): a rock (2 RPASS) and the heaviest work (about 9,000
-                        ; cycles) still end before 219
-LATEEND = ARENA0+AREA_H-2*RPASS-8 ; the late rocks start none after this line: done before 219
+RBIG    = 32            ; lines a big rock's picture takes to draw or rub out (1,800 cycles,
+RSMALL  = 18            ; and the looking), and a small one's (950): measured, and a line
+RMARGIN = 12            ; lines to spare before the next frame's work at 219
+LOGL0   = 80            ; LOGL before it's measured: the work takes the whole arena
 NSTARS  = 28
 
 ; ---------------------------------------------------------------- the fast page
@@ -158,10 +171,8 @@ SDFL:   .res 1
 FLAME:  .res 1
 SFLAG:  .res 1
 SDIRT:  .res 1
-EXR:    .res 1          ; the explosion
-EXX:    .res 1
-EXY:    .res 1
-EXDR:   .res 1
+PTR2:   .res 2          ; a second bitmap pointer, for the ship's old place (drawship)
+        .res 2          ; (free)
 OBJ:    .res 1
 HITX:   .res 1
 PIDX:   .res 1
@@ -181,7 +192,6 @@ SNDP:   .res 1          ; its next step, as an offset into SFX
 SNDN:   .res 1          ; frames left of the step playing
 SNDHI:  .res 1          ; the step's divisor, high byte (bit 7: noise)
 SNDLO:  .res 1          ;   and low byte (for noise: how far the high byte jitters)
-VEC:    .res 2          ; the state's routine, for JMP (VEC)
 FIELDEND:
         .res 8          ; arena x -> byte column and bit. Both run 8 entries past each
 XCOL:   .res 256 + 8    ; end, wrapped round, so a sprite centred at X can use XCOL+dx,X
@@ -189,6 +199,8 @@ XCOL:   .res 256 + 8    ; end, wrapped round, so a sprite centred at X can use X
 XMASK:  .res 256 + 8
 YLO:    .res AREA_H     ; y -> line address
 YHI:    .res AREA_H
+LOGL:   .res 1          ; how long the last frame's work took, in 2-line steps (wline)
+GTAB:   .res 22*22      ; gravity (GTABLD, copied here at start)
 HIDEND:
         .assert HIDEND <= $4000, "the hidden tables run past the end of RAM"
 
@@ -203,7 +215,27 @@ start:  LDX #VAREND
 @hid:   DEX
         STA KIND,X
         BNE @hid
+        STA FASTY       ; (A is 0) the text rows under the arena hold whatever the screen
+        STA MERGE       ; did: these two are read before they're written
+        LDX #22*11      ; the gravity table, up from the bitmap before it's cleared
+@gt:    LDA GTABLD-1,X
+        STA GTAB-1,X
+        LDA GTABLD+22*11-1,X
+        STA GTAB+22*11-1,X
+        DEX
+        BNE @gt
+        LDX #MOVN       ; and the moved tables, into the text rows under the arena
+@mv:    LDA MOVLD-1,X
+        STA MOVRUN-1,X
+        LDA MOVLD+MOVN-1,X
+        STA MOVRUN+MOVN-1,X
+        LDA MOVLD+2*MOVN-1,X
+        STA MOVRUN+2*MOVN-1,X
+        DEX
+        BNE @mv
         JSR gentab
+        LDA #LOGL0
+        STA LOGL
         LDA #0
         STA BORDER
         STA BACKGND
@@ -239,11 +271,11 @@ work:   STA LASTFR      ; a new frame: its work runs from here to endwork
         LDA STATE
         ASL A
         TAX
+        LDA STJMP+1,X   ; to the state's routine: its address on the stack, high byte
+        PHA             ; first, and RTS goes there (this RTS adds nothing to it)
         LDA STJMP,X
-        STA VEC
-        LDA STJMP+1,X
-        STA VEC+1
-        JMP (VEC)
+        PHA
+        RTS
 
 ; endwork: every state ends here. Count overruns, keep the worst raster line.
 endwork: LDA NOCHK
@@ -302,12 +334,30 @@ st_play:
         JSR drawbul     ; the shots before the ship: they're quick, and drawn while the
         JSR drawship    ; beam is still in the border (chapter 9); XOR, so the order
         JSR rocks       ; doesn't change the picture
+        JSR wline       ; timed, for the first rocks' deadline next frame (LOGL)
+        PHA
         JSR pinput
         JSR timers
         JSR physall
         JSR clampv
         JSR collide
         JSR wavecheck
+        JSR wline
+        STA T0
+        PLA
+        EOR #$FF        ; the end - the start
+        SEC
+        ADC T0
+        CMP LOGL        ; LOGL holds the longest, and lets go a step every fourth frame
+        BCS @long
+        LDA TICK
+        AND #0
+        BNE @kept
+        LDA LOGL
+        SEC
+        SBC #1
+@long:  STA LOGL
+@kept:
         JSR rockslate
         JMP endwork
 
@@ -806,12 +856,18 @@ phys1:  LDA OXH,X
         BCC @cy
         LDA #21
 @cy:    STA GIY
-        JSR growp       ; TP = row GIY: the y pull is G[GIY][GIX]
+        TAY             ; TP = row GIY: the y pull is G[GIY][GIX] (growp, in line)
+        LDA GROWL,Y
+        STA TP
+        LDA GROWH,Y
+        STA TP+1
         LDY GIX
         LDA (TP),Y
         STA GY
-        LDA GIX
-        JSR growp
+        LDA GROWL,Y     ; and row GIX: the x pull is G[GIX][GIY]
+        STA TP
+        LDA GROWH,Y
+        STA TP+1
         LDY GIY
         LDA (TP),Y
         STA GX
@@ -945,6 +1001,12 @@ collide: LDA KIND       ; the ship
         LDY #ROCK0
 @rock:  LDA KIND,Y
         BEQ @next
+        LDA OXH         ; 24 or more apart across (most are)? Then no need to look
+        SEC             ; closer (with the borrow: |dx| < 24 is dx + 24 < 48, mod 256)
+        SBC OXH,Y
+        ADC #23
+        CMP #48
+        BCS @next
         LDX #0
         JSR odist
         LDX KIND,Y
@@ -967,6 +1029,12 @@ cbul:   LDX #BUL0       ; bullets: the planet swallows them, rocks break
 @rocks: LDY #ROCK0
 @rock:  LDA KIND,Y
         BEQ @nextr
+        LDA OXH,X       ; 24 or more apart across? (as for the ship)
+        SEC
+        SBC OXH,Y
+        ADC #23
+        CMP #48
+        BCS @nextr
         JSR odist
         STX OBJ
         LDX KIND,Y
@@ -1342,13 +1410,10 @@ print:  STX TP
         BNE @chr
 @done:  RTS
 
-clrtext: LDA #$20
-        LDX #0
-@page:  STA $0400,X
-        STA $0500,X
-        STA $0600,X
-        STA $06E8,X
-        INX
+clrtext: LDA #$20        ; only rows 21-24: in mixed mode the rows above are under the
+        LDX #4*40       ; arena, never shown, and free RAM (FASTY)
+@page:  STA ROW21-1,X
+        DEX
         BNE @page
         LDA #$10        ; a rule under the arena
         LDX #39
@@ -1401,16 +1466,19 @@ drawship: LDA #0
         BEQ @erase
         LDA SDX
         CMP OXH
-        BNE @erase
+        BNE @move
         LDA SDY
         CMP OYH
-        BNE @erase
+        BNE @move
         LDA SDDIR
         CMP SHIPDIR
-        BNE @erase
+        BNE @erase      ; (turned: shipmove would say no)
         LDA SDFL
         CMP FLAME
-        BNE @erase
+        BNE @move
+        RTS
+@move:  JSR shipmove    ; moved, or the flame changed: both in one walk, if it can
+        BCC @erase
         RTS
 @erase: LDA SDX
         STA CX
@@ -1441,6 +1509,26 @@ drawship: LDA #0
 ; shipxor: the ship at CX, CY, direction Y; flame if A isn't 0.
 shipxor: STA SFLAG
         STY SDIRT
+        LDA CY          ; clear of the arena's top and bottom edges (8 rows each way)?
+        CMP #8          ; Then its lines step down and up by adding 40 (FASTY)
+        BCC @slow
+        CMP #AREA_H-8
+        BCS @slow
+        LDA #1
+        BNE @fast
+@slow:  LDA #0
+@fast:  STA FASTY
+        JSR shiphull
+        LDA SFLAG
+        BEQ @done
+        JSR shipflame
+@done:  LDA #0          ; every other line steps the careful way
+        STA FASTY
+        RTS
+
+; shiphull: the ship's outline, nose to rear left to notch to rear right and back, at CX,
+; CY, direction SDIRT. After the first line, each goes on from where the last ended.
+shiphull: LDY SDIRT
         LDA SVX0,Y
         STA T0
         LDA SVY0,Y
@@ -1455,22 +1543,22 @@ shipxor: STA SFLAG
         STA T2
         LDA SVY2,Y
         STA T3
-        JSR seg
+        JSR segc
         LDY SDIRT
         LDA SVX3,Y
         STA T2
         LDA SVY3,Y
         STA T3
-        JSR seg
+        JSR segc
         LDY SDIRT
         LDA SVX0,Y
         STA T2
         LDA SVY0,Y
         STA T3
-        JSR seg
-        LDA SFLAG
-        BEQ @done
-        LDY SDIRT
+        JMP segc
+
+; shipflame: the flame, at CX, CY, direction SDIRT.
+shipflame: LDY SDIRT
         LDA SVX4,Y
         STA T0
         LDA SVY4,Y
@@ -1480,7 +1568,136 @@ shipxor: STA SFLAG
         LDA SVY2,Y
         STA T3
         JMP seg
-@done:  RTS
+
+; shipmove: the ship, drawn at SDX, SDY, now at OXH, OYH: if it's facing the same way, both
+; places are clear of the arena's edges and they're within 8 pixels each way, rub it out
+; there and draw it here in one walk round the outline (MERGE): each line's work done
+; once, and two XORs a pixel, the old place's PTR2 and column (DX) a fixed way off. The
+; flame goes in the same walk if it's the same in both, else on its own. Carry set if it
+; did; carry clear and nothing drawn if not.
+shipmove: LDA SDDIR
+        CMP SHIPDIR
+        BNE @no
+        LDA SDY
+        CMP #8
+        BCC @no
+        CMP #AREA_H-8
+        BCS @no
+        LDA OYH
+        CMP #8
+        BCC @no
+        CMP #AREA_H-8
+        BCS @no
+        LDA SDX         ; DX = the old x - the new, -8 to 8
+        SEC
+        SBC OXH
+        STA DX
+        CLC
+        ADC #8
+        CMP #17
+        BCS @no
+        LDA SDY         ; the rows between, -8 to 8: DLO/DHI = 40 x that
+        SEC
+        SBC OYH
+        CLC
+        ADC #8
+        CMP #17
+        BCC @go
+@no:    CLC
+        RTS
+@go:    SBC #7          ; (carry clear: - 8) the rows between, again
+        LDY #0
+        STY DLO
+        STY DHI
+        TAY
+        BEQ @patch
+        BMI @neg
+@pos:   LDA DLO
+        CLC
+        ADC #40
+        STA DLO
+        BCC @p1
+        INC DHI
+@p1:    DEY
+        BNE @pos
+        BEQ @patch
+@neg:   LDA DLO
+        SEC
+        SBC #40
+        STA DLO
+        BCS @n1
+        DEC DHI
+@n1:    INY
+        BNE @neg
+@patch: LDY #0          ; DX into the loops' second XOR: XCOL + DX and XMASK + DX
+        LDA DX
+        BPL @dxp
+        DEY             ; (Y: its high byte)
+@dxp:   CLC
+        ADC #<XCOL
+        STA xm2_c+1
+        STA ymd2_c+1
+        STA ymu2_c+1
+        TYA
+        ADC #>XCOL
+        STA xm2_c+2
+        STA ymd2_c+2
+        STA ymu2_c+2
+        LDA DX
+        CLC
+        ADC #<XMASK
+        STA xm2_m+1
+        STA ymd2_m+1
+        STA ymu2_m+1
+        TYA
+        ADC #>XMASK
+        STA xm2_m+2
+        STA ymd2_m+2
+        STA ymu2_m+2
+        LDA OXH         ; the walk, at the new place
+        STA CX
+        LDA OYH
+        STA CY
+        LDA SHIPDIR
+        STA SDIRT
+        LDA #1
+        STA FASTY
+        STA MERGE
+        JSR shiphull
+        LDA SDFL
+        CMP FLAME
+        BNE @flames
+        TAX
+        BEQ @done
+        JSR shipflame   ; the same flame in both places
+@done:  LDA #0
+        STA MERGE
+        STA FASTY
+        LDA OXH
+        STA SDX
+        LDA OYH
+        STA SDY
+        LDA FLAME
+        STA SDFL
+        SEC
+        RTS
+@flames: LDA #0         ; the flame in one place only: on its own
+        STA MERGE
+        LDA SDFL
+        BEQ @new
+        LDA SDX
+        STA CX
+        LDA SDY
+        STA CY
+        JSR shipflame   ; the old one, rubbed out
+@new:   LDA FLAME
+        BEQ @done
+        LDA OXH
+        STA CX
+        LDA OYH
+        STA CY
+        JSR shipflame   ; the new one
+        JMP @done
 
 ; drawbul: bullets are 2 x 2 dots.
 drawbul: LDX #BUL0
@@ -1519,20 +1736,37 @@ drawbul: LDX #BUL0
         BNE @bul
         RTS
 
-; bdot: XOR a 2 x 2 dot with its top-left corner at (T0, A), through the shifter (chapter
-; 7). The dot's line, %11000000, goes in and comes out moved right by x AND 7, for byte
-; column XCOL[x]; a 0 pushed after it brings out what spilled into the next column, which
-; is something only when x AND 7 is 7. 191 cycles (219 when it spills), where four plots
-; took 237. The push of 0 also leaves the window empty, ready for the next line.
+; bdot: XOR a 2 x 2 dot with its top-left corner at (T0, A). Its two pixels are in one
+; byte unless x AND 7 is 7: then through the shifter (chapter 7). The dot's line,
+; %11000000, goes in and comes out moved right by x AND 7, for byte column XCOL[x]; a 0
+; pushed after it brings out what spilled into the next column. 219 cycles; the push of 0
+; also leaves the window empty, ready for the next line.
 ; Uses A, X, Y, T2 and T3.
 bdot:   TAY             ; the top line
         LDX T0
-        STX SHIFT_AMT   ; only bits 0-2 count: x AND 7
+        JSR setline     ; LY and PTR: the top line (keeps X)
+        TXA
+        AND #7
+        CMP #7
+        BEQ @spill      ; its two pixels in two bytes: through the shifter
+        LDA XMASK,X     ; else both in one byte: its two bits, XORed in (140 cycles)
+        ORA XMASK+1,X
+        STA T2
+        LDY XCOL,X
+        STY T3
+        EOR (PTR),Y
+        STA (PTR),Y
+        JSR ydown       ; the line below, wrapping at the bottom (keeps X)
+        LDY T3
+        LDA T2
+        EOR (PTR),Y
+        STA (PTR),Y
+        RTS
+@spill: STX SHIFT_AMT   ; only bits 0-2 count: x AND 7
         LDA XCOL,X
         STA T2          ; the dot's byte column
         LDA XCOL+8,X
         STA T3          ; and the next, wrapped round the arena
-        JSR setline     ; LY and PTR: the top line
         JSR @line
         JSR ydown       ; the line below, wrapping at the bottom
 @line:  LDA #%11000000
@@ -1550,24 +1784,48 @@ bdot:   TAY             ; the top line
         STA (PTR),Y
 @done:  RTS
 
-; rockslate: rocks again, once the frame's work is done and the beam is drawing the arena:
-; a rock the beam has passed, or won't reach before it's drawn, is drawn now rather than
-; next frame. A rock in the beam's way is passed over, not waited for.
+; rocks: bring the rocks on the screen up to date, round robin, as far as the beam and the
+; time allow: twice a frame, before the frame's work (rocks) and after it, while the beam
+; draws the arena (rockslate). A rock is drawn only where the beam won't catch it half
+; done (beamok), and only if it's done by the pass's deadline, DEADL: for the first pass,
+; in time for the frame's work after it (as long as the last frame's took, LOGL, and a
+; margin); for the late pass, before the next frame's work at 219. A rock the beam is in
+; the way of is passed over, and the next pass starts with it. When the frame is busy,
+; some rocks wait: the picture lags, the physics never does.
 rockslate:
-        LDA #1
+        LDA RASTER      ; too near the next frame's work for even a small rock? Then
+        LDY RASTHI      ; don't even look (RASTER first: it latches RASTHI)
+        BNE @go
+        CMP #ARENA0+AREA_H-RMARGIN-RSMALL
+        BCC @go
+        CMP #VBLANK
+        BCS @go
+        RTS
+@go:    LDA #ARENA0+AREA_H-RMARGIN
         BNE rocksgo
-
-; rocks: bring the rocks on the screen up to date, round robin from where the last
-; frame stopped, starting none where the beam would catch it (beamok). When the frame is
-; busy, some rocks wait a frame: the picture lags, the physics never does.
-rocks:  LDA #0
-rocksgo: STA RLATE
+rocks:  LDA LOGL        ; 2-line steps
+        ASL A
+        EOR #$FF        ; DEADL = 219 - 2 LOGL - 24: lines to spare
+        SEC
+        ADC #ARENA0+AREA_H-2*RMARGIN
+        BCS rocksgo
+        LDA #0          ; the work takes the whole arena: no time in it
+rocksgo: STA DEADL
+        LDA #$FF
+        STA RFIRST
         LDA #NOBJ-ROCK0
         STA PIDX
         LDX RRDR
 @rock:  STX OBJ
-        JSR rock1
-        BCC @stop
+        LDA RASTER      ; no time left for even a small rock? Then stop looking
+        LDY RASTHI      ; (RASTER first: it latches RASTHI)
+        BNE @look       ; (the bottom border, or this frame's HUD: early)
+        CMP #ARENA0+AREA_H
+        BCS @look
+        ADC #RSMALL     ; (carry clear)
+        CMP DEADL
+        BCS @end
+@look:  JSR rock1
         LDX OBJ
         INX
         CPX #NOBJ
@@ -1575,29 +1833,35 @@ rocksgo: STA RLATE
         LDX #ROCK0
 @count: DEC PIDX
         BNE @rock
-@stop:  STX RRDR
+@end:   LDA RFIRST      ; next time, from the first that waited (or from here)
+        BMI @all
+        TAX
+@all:   STX RRDR
         RTS
 
-; rock1: bring rock X (= OBJ) up to date if the beam and the time allow. Carry clear: stop
-; here, with X = OBJ, and start from this rock next time.
-; Rubbing out the old picture and drawing the new one go together, when the beam is clear
-; of both for the whole job (RLEAD 2 RPASS), so the rock is never missing from a frame.
+RFIRST  = T1            ; rocks: the first rock that waited this pass, or $FF
+RLEAD   = T4            ; rocks: lines the job in hand takes (beamok)
+DEADL   = T5            ; rocks: the line of the next frame this pass must be done by
+
+; rock1: bring rock X (= OBJ) up to date, if the beam and the time allow; if not, it
+; waits (RFIRST). Rubbing out the old picture and drawing the new one go together, when
+; the beam is clear of both for the whole job, so the rock is never missing from a frame.
 ; A rock that jumped across the arena's edge, top to bottom, would wait a long time for
-; that: its two jobs are done each on its own (RLEAD RPASS), when the beam is clear of it.
+; that: its two jobs are done each on its own. RLD: lines a job takes, by kind.
 rock1:  LDA KIND,X
         CMP DK,X
         BNE @redraw
         TAY             ; nothing there, nothing drawn?
-        BEQ @go
-        LDA OXH,X
+        BNE @there
+        RTS
+@there: LDA OXH,X
         CMP DXP,X
         BNE @redraw
         LDA OYH,X
         CMP DYP,X
-        BEQ @go
-@redraw: JSR rtime      ; the time checked once: LATEEND leaves room for both jobs
-        BCC @stop
-        LDA DK,X
+        BNE @redraw
+        RTS             ; drawn where it is
+@redraw: LDY DK,X
         BEQ @new        ; nothing drawn yet: only the new one
         LDA KIND,X
         BEQ @old        ; gone: only rub out the old one
@@ -1607,7 +1871,10 @@ rock1:  LDA KIND,X
         ADC #15
         CMP #33
         BCS @old        ; no, clear of each other: one job at a time
-        LDA #2*RPASS
+        LDA RLD,Y       ; both jobs (Y = DK)
+        LDY KIND,X
+        CLC
+        ADC RLD,Y
         STA RLEAD
         LDA DYP,X
         JSR beamok
@@ -1617,22 +1884,18 @@ rock1:  LDA KIND,X
         BCC @wait
         JSR rkerase     ; (Z set)
         BEQ @draw
-@old:   LDA DYP,X
-        JSR beam1
+@old:   LDA RLD,Y       ; (Y = DK)
+        STA RLEAD
+        LDA DYP,X
+        JSR beamok
         BCC @wait
         JSR rkerase
-        BEQ @new
-@go:    SEC
-        RTS
-@wait:  LDA RLATE       ; the beam's in the way: in the late pass, only this rock waits
-        BNE @go
-@stop:  LDX OBJ
-        CLC
-        RTS
-@new:   LDA KIND,X      ; the new one (DK is 0 here)
-        BEQ @go
+@new:   LDY KIND,X      ; the new one (DK is 0 here)
+        BEQ @done
+        LDA RLD,Y
+        STA RLEAD
         LDA OYH,X
-        JSR beam1
+        JSR beamok
         BCC @wait
 @draw:  LDA KIND,X
         STA DK,X
@@ -1644,12 +1907,13 @@ rock1:  LDA KIND,X
         STA CY
         STA DYP,X
         PLA
-        JSR rockxor
-        SEC
-        RTS
+        JMP rockxor
+@wait:  LDA RFIRST      ; the beam's in the way, or the time's up: this rock waits
+        BPL @done
+        STX RFIRST
+@done:  RTS
 
-RLATE   = T5            ; rocks: 1 in the late pass (rockslate), 0 in the first
-RLEAD   = T4            ; rocks: lines the job in hand takes (beamok)
+RLD:    .byte 0, RSMALL, RBIG
 
 ; rkerase: rub out rock X's picture (OBJ = X), and say nothing's drawn there. Returns
 ; with Z set.
@@ -1664,81 +1928,131 @@ rkerase: LDY DXP,X
         STA DK,X
         RTS
 
-; rtime: may the rocks start another rock now? Carry clear if not. The first pass (before
-; the frame's work) starts none after line FIRSTEND, so the heaviest work still ends before
-; 219; the late pass starts none after LATEEND, so it's done before the next frame's work.
-; Uses A, Y.
-rtime:  LDA RASTER      ; RASTER first: it latches bit 8 for RASTHI
-        LDY RASTHI
-        BNE @yes        ; the bottom border
-        LDY RLATE
-        BNE @late
-        CMP #FIRSTEND
-        BCC @yes
-        CMP #ARENA0+AREA_H
-        BCC @no
-@yes:   SEC
-        RTS
-@late:  CMP #LATEEND
-        BCC @yes
-        CMP #VBLANK
-        BCS @yes
-@no:    CLC
-        RTS
-
-; beamok: can a rock's picture centred on row A be drawn or rubbed out now, without the
-; beam catching it half done (chapter 9)? Carry set if so. The picture's rows, 8 above to
-; 8 below, are T2 to T3; one at the arena's edge wraps, and counts as the whole arena. The
-; beam mustn't be in them, nor reach them within RLEAD lines. Uses A, Y, T2, T3.
-beam1:  LDY #RPASS      ; one job: rubbing out or drawing
-        STY RLEAD
+; beamok: can a rock's picture centred on row A be drawn or rubbed out now, in RLEAD
+; lines, without the beam catching it half done (chapter 9), and done by line DEADL of the
+; next frame? Carry set if so. The picture's rows, 8 above to 8 below, are T2 to T3. One
+; at the arena's edge wraps: its rows are T2 to the bottom and the top to T3, with T3 < T2.
+; The beam mustn't be in them, nor reach them within RLEAD lines. Uses A, Y, T2, T3.
 beamok: SEC
         SBC #8
-        BCC @wrap
+        BCC @wtop       ; over the top edge
         STA T2
         ADC #15         ; carry set: + 16
         CMP #AREA_H
         BCC @b
-@wrap:  LDA #0
+        SBC #AREA_H     ; over the bottom edge (carry set): the top part ends on y + 8 - 168
+        BCS @b          ; (always)
+@wtop:  ADC #AREA_H     ; the bottom part starts on y - 8 + 168 (and carry is set)
         STA T2
-        LDA #AREA_H-1
+        SBC #AREA_H-16  ; and the top part ends on y + 8
 @b:     STA T3
+        LDA FRAME       ; how far the work is: 0 before VBLANK, 1 after; 2 is too late
+        SEC
+        SBC LASTFR
+        CMP #2
+        BCS @no
+        LSR A           ; C: past VBLANK
         LDA RASTER      ; RASTER first: reading it latches bit 8 for RASTHI
         LDY RASTHI
         BNE @lead       ; lines 256-311 (A 0-55): the bottom border, before the arena
+        BCC @yes        ; before VBLANK: lines 219-250, the HUD; the arena's drawn
         CMP #VBLANK
-        BCS @yes        ; 251-255: the beam has just left the picture
+        BCS @lead0      ; 251-255: the beam has just left the picture
         CMP #ARENA0+AREA_H
-        BCS @yes        ; 219-250, the HUD: the beam has passed the whole arena
+        BCS @no         ; 219-250 again: the next frame's, too late
+        TAY             ; lines 0-218, the next frame: in time?
+        CLC
+        ADC RLEAD
+        BCS @no
+        CMP DEADL
+        BCS @no
+        TYA
         CMP #ARENA0
         BCC @lead       ; 0-50, the top border
         SBC #ARENA0     ; in the arena (carry set), on arena line A
         CMP T3
         BEQ @no
-        BCS @yes        ; below the picture: the beam has passed it
-        ADC RLEAD       ; carry clear: done before the beam gets to the picture?
+        BCC @up         ; above T3
+        LDY T3          ; below it: the beam has passed the picture, or, wrapped, its top
+        CPY T2          ; part
+        BCS @yes
+        BCC @ahead
+@up:    LDY T3          ; wrapped, and the beam in its top part?
+        CPY T2
+        BCC @no
+@ahead: CLC             ; done before the beam gets to the picture (or its bottom part)?
+        ADC RLEAD
         CMP T2
         BCC @yes
 @no:    CLC
         RTS
+@lead0: LDA #0          ; (as if from line 256)
 @lead:  CLC             ; before the arena, A lines from line 0 (or 256): when the job's
         ADC RLEAD       ; done, is the beam still above the picture?
         CMP #ARENA0
         BCC @yes        ; still in the border
+        LDY T3          ; (wrapped: its top part is the arena's first rows)
+        CPY T2
+        BCC @no
         SBC #ARENA0     ; carry set: on arena line A
         CMP T2
         BCS @no
 @yes:   SEC
         RTS
 
+; wline: lines since line 219, where a frame's work starts, in 2-line steps (0-155).
+wline:  LDA RASTER      ; RASTER first: it latches bit 8 for RASTHI
+        LDY RASTHI
+        BNE @hi
+        CMP #ARENA0+AREA_H
+        BCC @next
+        SBC #ARENA0+AREA_H ; 219-255: 0-36 (carry set)
+        LSR A
+        RTS
+@hi:    LSR A           ; 256-311 (A 0-55): 37-92
+        ADC #18
+        RTS
+@next:  LSR A           ; 0-218, the next frame: 93-311
+        ADC #46
+        RTS
+
 ; rockxor: XOR rock A (2 big, 1 small) centred at (CX, CY).
 ; The rocks are thin outlines, about three pixels a line, so they're compiled to code a
 ; pixel at a time (RKBIG, RKSMALL) rather than pushed through the shifter a byte at a time:
 ; through the shifter a big rock took 2,334 cycles, against 1,777 for the compiled code.
-rockxor: CMP #2
+; A rock clear of the arena's top and bottom edges steps down its lines by adding 40 to
+; PTR (ydn40); one that wraps goes by ydown. rstep is patched to jump to the one it needs.
+rockxor: TAY
+        LDA CY
+        CMP RHALF,Y
+        BCC @wrap       ; its top line above the arena's
+        CMP REDGE,Y
+        BCS @wrap       ; its bottom line below it
+        LDA #<ydn40
+        LDX #>ydn40
+        BNE @set
+@wrap:  LDA #<ydown
+        LDX #>ydown
+@set:   STA rstep+1
+        STX rstep+2
+        CPY #2
         BEQ @big
         JMP RKSMALL
 @big:   JMP RKBIG
+
+RHALF:  .byte 0, 4, 8           ; rows above and below the centre, by kind
+REDGE:  .byte 0, AREA_H-4, AREA_H-8
+
+rstep:  JMP ydown       ; (patched by rockxor)
+
+; ydn40: PTR one line down, no wrapping (rows are 40 bytes). Keeps X.
+ydn40:  LDA PTR
+        CLC
+        ADC #40
+        STA PTR
+        BCC @r
+        INC PTR+1
+@r:     RTS
 
 ; neg: A = -A.
 neg:    EOR #$FF
@@ -1849,8 +2163,20 @@ seg:    LDA CX
         STA LX
         LDA T1
         JSR addy
-        STA LY
-        LDA T2
+        TAY
+        JSR setline     ; LY and PTR (keeps X)
+        LDA MERGE
+        BEQ @one
+        LDA PTR         ; and PTR2, the old place's: DLO/DHI off
+        CLC
+        ADC DLO
+        STA PTR2
+        LDA PTR+1
+        ADC DHI
+        STA PTR2+1
+@one:   LDX LX
+; segc: the same, from where the last line ended: X and PTR are its end point.
+segc:   LDA T2
         SEC
         SBC T0
         STA DLX
@@ -1858,7 +2184,7 @@ seg:    LDA CX
         SEC
         SBC T1
         STA DLY
-        JSR line
+        JSR linec
         LDA T2          ; ready for the next segment
         STA T0
         LDA T3
@@ -1874,7 +2200,8 @@ line:   LDY LY
         STA PTR
         LDA YHI,Y
         STA PTR+1
-        LDA DLX
+        LDX LX
+linec:  LDA DLX         ; (from X and PTR: where the last line ended)
         BPL @right
         JSR neg
         STA ADX
@@ -1882,30 +2209,86 @@ line:   LDY LY
         BNE @xstep
 @right: STA ADX
         LDA #$16        ; INX
-@xstep: STA xm_inc
-        STA ymd_inc
-        STA ymu_inc
-        LDX LX
-        LDA DLY
+@xstep: STA CNT         ; the x step, patched into the one loop that runs (CNT is its
+        LDA DLY         ; count soon)
         BMI @up
         STA ADY
+        LDY FASTY
+        BNE @fdown
         LDA #<ydown
         STA xm_ys+1
         LDA #>ydown
         STA xm_ys+2
         LDA ADX
         CMP ADY
-        BCC ymd
+        BCS @x
+        LDA CNT
+        STA ymd_inc
+        JMP ymd
+@x:     LDA CNT
+        STA xm_inc
         JMP xmaj
+@fdown: LDY MERGE
+        BNE @mdown
+        LDA #<ydn40     ; clear of the edges: a line down is PTR + 40
+        STA xm_ys+1
+        LDA #>ydn40
+        STA xm_ys+2
+        LDA ADX
+        CMP ADY
+        BCS @x
+        LDA CNT
+        STA ymdf_inc
+        JMP ymdf
 @up:    JSR neg
         STA ADY
+        LDY FASTY
+        BNE @fup
         LDA #<yup
         STA xm_ys+1
         LDA #>yup
         STA xm_ys+2
         LDA ADX
         CMP ADY
-        BCC ymu
+        BCS @x
+        LDA CNT
+        STA ymu_inc
+        JMP ymu
+@fup:   LDY MERGE
+        BNE @mup
+        LDA #<yup40
+        STA xm_ys+1
+        LDA #>yup40
+        STA xm_ys+2
+        LDA ADX
+        CMP ADY
+        BCS @x
+        LDA CNT
+        STA ymuf_inc
+        JMP ymuf
+@mdown: LDA #<ydn2      ; two places at once (MERGE)
+        STA xm2_ys+1
+        LDA #>ydn2
+        STA xm2_ys+2
+        LDA ADX
+        CMP ADY
+        BCS @mx
+        LDA CNT
+        STA ymd2_inc
+        JMP ymd2
+@mup:   LDA #<yup2
+        STA xm2_ys+1
+        LDA #>yup2
+        STA xm2_ys+2
+        LDA ADX
+        CMP ADY
+        BCS @mx
+        LDA CNT
+        STA ymu2_inc
+        JMP ymu2
+@mx:    LDA CNT
+        STA xm2_inc
+        JMP xm2
 xmaj:   LDA ADX
         BEQ lnret
         STA CNT
@@ -1988,6 +2371,196 @@ ymu_e:  STA ERR
         DEC CNT
         BNE ymu_lp
         RTS
+
+; ymdf / ymuf: ymd and ymu clear of the arena's edges (FASTY): PTR steps by 40, LY is
+; left behind. Always XOR: only the ship uses them.
+ymdf:   LDA ADY
+        STA CNT
+        LSR A
+        STA ERR
+ymdf_lp: LDY XCOL,X
+        LDA XMASK,X
+        EOR (PTR),Y
+        STA (PTR),Y
+        LDA PTR
+        CLC
+        ADC #40
+        STA PTR
+        BCC @e
+        INC PTR+1
+@e:     LDA ERR
+        SEC
+        SBC ADX
+        BCS ymdf_e
+        ADC ADY
+ymdf_inc: INX
+ymdf_e: STA ERR
+        DEC CNT
+        BNE ymdf_lp
+        RTS
+
+ymuf:   LDA ADY
+        STA CNT
+        LSR A
+        STA ERR
+ymuf_lp: LDY XCOL,X
+        LDA XMASK,X
+        EOR (PTR),Y
+        STA (PTR),Y
+        LDA PTR
+        SEC
+        SBC #40
+        STA PTR
+        BCS @e
+        DEC PTR+1
+@e:     LDA ERR
+        SEC
+        SBC ADX
+        BCS ymuf_e
+        ADC ADY
+ymuf_inc: INX
+ymuf_e: STA ERR
+        DEC CNT
+        BNE ymuf_lp
+        RTS
+
+; xm2 / ymd2 / ymu2: xmaj, ymdf and ymuf XORing twice a pixel: at PTR, X, and at PTR2,
+; X + DX (patched into xm2_c, xm2_m and the rest by shipmove). For the ship (MERGE).
+xm2:    LDA ADX
+        BEQ xm2_r
+        STA CNT
+        LSR A
+        STA ERR
+xm2_lp: LDY XCOL,X
+        LDA XMASK,X
+        EOR (PTR),Y
+        STA (PTR),Y
+xm2_c:  LDY XCOL,X
+xm2_m:  LDA XMASK,X
+        EOR (PTR2),Y
+        STA (PTR2),Y
+xm2_inc: INX
+        LDA ERR
+        SEC
+        SBC ADY
+        BCS xm2_ok
+        ADC ADX
+        STA ERR
+xm2_ys: JSR ydn2
+        DEC CNT
+        BNE xm2_lp
+xm2_r:  RTS
+xm2_ok: STA ERR
+        DEC CNT
+        BNE xm2_lp
+        RTS
+
+ymd2:   LDA ADY
+        STA CNT
+        LSR A
+        STA ERR
+ymd2_lp: LDY XCOL,X
+        LDA XMASK,X
+        EOR (PTR),Y
+        STA (PTR),Y
+ymd2_c: LDY XCOL,X
+ymd2_m: LDA XMASK,X
+        EOR (PTR2),Y
+        STA (PTR2),Y
+        LDA PTR         ; both a line down (ydn2, in line)
+        CLC
+        ADC #40
+        STA PTR
+        BCC @d1
+        INC PTR+1
+@d1:    LDA PTR2
+        CLC
+        ADC #40
+        STA PTR2
+        BCC @d2
+        INC PTR2+1
+@d2:    LDA ERR
+        SEC
+        SBC ADX
+        BCS ymd2_e
+        ADC ADY
+ymd2_inc: INX
+ymd2_e: STA ERR
+        DEC CNT
+        BNE ymd2_lp
+        RTS
+
+ymu2:   LDA ADY
+        STA CNT
+        LSR A
+        STA ERR
+ymu2_lp: LDY XCOL,X
+        LDA XMASK,X
+        EOR (PTR),Y
+        STA (PTR),Y
+ymu2_c: LDY XCOL,X
+ymu2_m: LDA XMASK,X
+        EOR (PTR2),Y
+        STA (PTR2),Y
+        LDA PTR         ; both a line up (yup2, in line)
+        SEC
+        SBC #40
+        STA PTR
+        BCS @u1
+        DEC PTR+1
+@u1:    LDA PTR2
+        SEC
+        SBC #40
+        STA PTR2
+        BCS @u2
+        DEC PTR2+1
+@u2:    LDA ERR
+        SEC
+        SBC ADX
+        BCS ymu2_e
+        ADC ADY
+ymu2_inc: INX
+ymu2_e: STA ERR
+        DEC CNT
+        BNE ymu2_lp
+        RTS
+
+; ydn2 / yup2: PTR and PTR2 one line down / up, no wrapping. Keep X.
+ydn2:   LDA PTR
+        CLC
+        ADC #40
+        STA PTR
+        BCC @a
+        INC PTR+1
+@a:     LDA PTR2
+        CLC
+        ADC #40
+        STA PTR2
+        BCC @b
+        INC PTR2+1
+@b:     RTS
+yup2:   LDA PTR
+        SEC
+        SBC #40
+        STA PTR
+        BCS @a
+        DEC PTR+1
+@a:     LDA PTR2
+        SEC
+        SBC #40
+        STA PTR2
+        BCS @b
+        DEC PTR2+1
+@b:     RTS
+
+; yup40: PTR one line up, no wrapping. Keeps X.
+yup40:  LDA PTR
+        SEC
+        SBC #40
+        STA PTR
+        BCS @r
+        DEC PTR+1
+@r:     RTS
 
 ; ydown / yup: LY one line down / up, wrapping, and PTR to its start. setline: LY = Y.
 ; The rocks step down their lines with ydown too. Keep X.
@@ -2242,103 +2815,7 @@ LOGO:   .byte 9,59,14,69,14,75,20,75,34,69,40,59,40,53,34,53,20,59,14,7,85,40,85
 ; ---------------------------------------------------------------- generated tables
 ; The assembler works these out from sin(), cos() and sqrt() (chapter 6). Angles are in
 ; 256ths of a turn, so direction d (0-31, 1/32 turn each) is angle 8 * d.
-; THR, BVL/BVH, RINGX: R * sin for directions 0-39, so the same table 8 entries on is
-; R * cos: THRX = THR+8 is the x part, THRY = THR the y part.
-; THR: thrust, 11/256 px/frame^2.
-THR:
-        .rept 40, d
-        .byte sin(8*d, 11)
-        .endr
-; BVL / BVH: bullet speed, 2.5 px/frame in 8.8.
-BVL:
-        .rept 40, d
-        .byte <sin(8*d, 640)
-        .endr
-BVH:
-        .rept 40, d
-        .byte >sin(8*d, 640)
-        .endr
-; RINGX / RINGY: the rocks' spawn ring, 64 across and 61 down.
-RINGX:
-        .rept 40, d
-        .byte sin(8*d, 64)
-        .endr
-RINGY:
-        .rept 32, d
-        .byte sin(8*d, 61)
-        .endr
-THRX    = THR+8
-THRY    = THR
-BVXL    = BVL+8
-BVXH    = BVH+8
-BVYL    = BVL
-BVYH    = BVH
-SPX     = RINGX+8
-SPY     = RINGY
-
-; SVXn / SVYn: the ship's vertices for all 32 directions, x then y: 0 the nose, 1 the rear
-; left, 2 the notch, 3 the rear right, 4 the flame's tip. Each is a radius (in 1/1000
-; pixel) at an angle from the nose, rounded half away from zero, so that a quarter turn
-; is exact: 7.5 at the nose, 6 at 100/256 of a turn (140.6 degrees) either side, 2.2 for
-; the notch and 6.5 for the flame, straight behind.
-SVR0    = 7500
-SVA0    = 0
-SVR1    = 6000
-SVA1    = 100
-SVR2    = 2200
-SVA2    = 128
-SVR3    = 6000
-SVA3    = -100
-SVR4    = 6500
-SVA4    = 128
-        .irp v, 0, 1, 2, 3, 4
-SVX\v:
-        .rept 32, d
-        .byte [cos(8*d + SVA\v, SVR\v) + [cos(8*d + SVA\v, SVR\v) >= 0] * 1000 - 500] / 1000
-        .endr
-SVY\v:
-        .rept 32, d
-        .byte [sin(8*d + SVA\v, SVR\v) + [sin(8*d + SVA\v, SVR\v) >= 0] * 1000 - 500] / 1000
-        .endr
-        .endr
-
-; GTAB: gravity, the pull along one axis in cell (i, j) of the quarter plane, 4 pixels a
-; side, in 1/256 px/frame^2: row i, column j, i the cell along the pull. It's
-; 8000 / r^2 * (4i + 1.5) / r, the inverse square, with r = max(9, the distance to the
-; cell's centre). In whole numbers, with u = 8i + 3 and w = 8j + 3 (twice the centre's
-; offsets) and s^2 = max(u^2 + w^2, 18^2): 32000 * u / s^3, rounded. The sqrt is of
-; s^2 * 2^20, so it's s to 10 binary places, which is exact enough for every cell.
-GTAB:
-        .rept 22, i
-        .rept 22, j
-        .byte [[32000 * [8*i + 3] << 11] / [max([8*i+3]*[8*i+3] + [8*j+3]*[8*j+3], 324) * sqrt(max([8*i+3]*[8*i+3] + [8*j+3]*[8*j+3], 324) << 20)] + 1] / 2
-        .endr
-        .endr
-
-; GROWL / GROWH: the address of each GTAB row (there's no multiply instruction).
-GROWL:
-        .rept 22, row
-        .byte <GTAB + 22*row
-        .endr
-GROWH:
-        .rept 22, row
-        .byte >GTAB + 22*row
-        .endr
-
 ; ---------------------------------------------------------------- pasted tables
-; ORB: the circular-orbit speed sqrt(g r) at each spawn point, along the tangent, where g
-; is the pull GTAB gives in that point's cell. It still comes from a script: the assembler
-; can't look a value up in GTAB (it has no arrays), so it can't find g.
-; circular-orbit velocity X at the spawn ring, 8.8
-ORBXL:  .byte 0,221,183,151,123,99,83,82,79,82,83,99,123,151,183,221
-        .byte 0,35,73,105,133,157,173,174,177,174,173,157,133,105,73,35
-ORBXH:  .byte 0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
-        .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-; circular-orbit velocity Y at the spawn ring, 8.8
-ORBYL:  .byte 181,178,176,158,133,105,71,35,0,221,185,151,123,98,80,78
-        .byte 75,78,80,98,123,151,185,221,0,35,71,105,133,158,176,178
-ORBYH:  .byte 0,0,0,0,0,0,0,0,0,255,255,255,255,255,255,255
-        .byte 255,255,255,255,255,255,255,255,0,0,0,0,0,0,0,0
 SHIPV0L = 226
 SHIPV0H = 0             ; spawn vx 0.884 px/frame: a circular orbit at r=40
 
@@ -2381,7 +2858,7 @@ RKBIG:  LDA #8
         JSR rocktop
         .rept 17, r
         .rept r > 0
-        JSR ydown
+        JSR rstep
         .endr
         .rept 17, c
         .rept RB\r >> [16 - c] & 1
@@ -2398,7 +2875,7 @@ RKSMALL: LDA #4
         JSR rocktop
         .rept 9, r
         .rept r > 0
-        JSR ydown
+        JSR rstep
         .endr
         .rept 9, c
         .rept RS\r >> [8 - c] & 1
@@ -2413,3 +2890,134 @@ RKSMALL: LDA #4
 
 codeend:
         .assert codeend <= BMP, "the program runs into the bitmap at $2000"
+
+; ---------------------------------------------------------------- loaded past the code
+; The gravity table is loaded into the bitmap, just past the code, and start copies it up
+; into the hidden lines (GTAB) before the bitmap is cleared: so the code has its room.
+        .org BMP
+; GTAB: gravity, the pull along one axis in cell (i, j) of the quarter plane, 4 pixels a
+; side, in 1/256 px/frame^2: row i, column j, i the cell along the pull. It's
+; 8000 / r^2 * (4i + 1.5) / r, the inverse square, with r = max(9, the distance to the
+; cell's centre). In whole numbers, with u = 8i + 3 and w = 8j + 3 (twice the centre's
+; offsets) and s^2 = max(u^2 + w^2, 18^2): 32000 * u / s^3, rounded. The sqrt is of
+; s^2 * 2^20, so it's s to 10 binary places, which is exact enough for every cell.
+GTABLD:                 ; (loaded here, past the code; start copies it to GTAB)
+        .rept 22, i
+        .rept 22, j
+        .byte [[32000 * [8*i + 3] << 11] / [max([8*i+3]*[8*i+3] + [8*j+3]*[8*j+3], 324) * sqrt(max([8*i+3]*[8*i+3] + [8*j+3]*[8*j+3], 324) << 20)] + 1] / 2
+        .endr
+        .endr
+
+; SVXn / SVYn: the ship's vertices for all 32 directions, x then y: 0 the nose, 1 the rear
+; left, 2 the notch, 3 the rear right, 4 the flame's tip. Each is a radius (in 1/1000
+; pixel) at an angle from the nose, rounded half away from zero, so that a quarter turn
+; is exact: 7.5 at the nose, 6 at 100/256 of a turn (140.6 degrees) either side, 2.2 for
+; the notch and 6.5 for the flame, straight behind.
+SVR0    = 7500
+SVA0    = 0
+SVR1    = 6000
+SVA1    = 100
+SVR2    = 2200
+SVA2    = 128
+SVR3    = 6000
+SVA3    = -100
+SVR4    = 6500
+SVA4    = 128
+; ---------------------------------------------------------------- moved tables
+; Loaded past the code, after the gravity table, and copied at start to MOVRUN, in the
+; text rows under the arena, where the code finds them: each table's address there is its
+; label here + MOVED. Room for the code.
+MOVLD:
+        .irp v, 0, 1, 2, 3, 4
+SVXL\v:
+        .rept 32, d
+        .byte [cos(8*d + SVA\v, SVR\v) + [cos(8*d + SVA\v, SVR\v) >= 0] * 1000 - 500] / 1000
+        .endr
+SVYL\v:
+        .rept 32, d
+        .byte [sin(8*d + SVA\v, SVR\v) + [sin(8*d + SVA\v, SVR\v) >= 0] * 1000 - 500] / 1000
+        .endr
+        .endr
+SVX0    = SVXL0 + MOVED
+SVY0    = SVYL0 + MOVED
+SVX1    = SVXL1 + MOVED
+SVY1    = SVYL1 + MOVED
+SVX2    = SVXL2 + MOVED
+SVY2    = SVYL2 + MOVED
+SVX3    = SVXL3 + MOVED
+SVY3    = SVYL3 + MOVED
+SVX4    = SVXL4 + MOVED
+SVY4    = SVYL4 + MOVED
+
+; THR, BVL/BVH, RINGX: R * sin for directions 0-39, so the same table 8 entries on is
+; R * cos: THRX = THR+8 is the x part, THRY = THR the y part.
+; THR: thrust, 11/256 px/frame^2.
+THRL:
+        .rept 40, d
+        .byte sin(8*d, 11)
+        .endr
+; BVL / BVH: bullet speed, 2.5 px/frame in 8.8.
+BVLL:
+        .rept 40, d
+        .byte <sin(8*d, 640)
+        .endr
+BVHL:
+        .rept 40, d
+        .byte >sin(8*d, 640)
+        .endr
+; RINGX / RINGY: the rocks' spawn ring, 64 across and 61 down.
+RINGXL:
+        .rept 40, d
+        .byte sin(8*d, 64)
+        .endr
+RINGYL:
+        .rept 32, d
+        .byte sin(8*d, 61)
+        .endr
+THR     = THRL + MOVED
+BVL     = BVLL + MOVED
+BVH     = BVHL + MOVED
+RINGX   = RINGXL + MOVED
+RINGY   = RINGYL + MOVED
+THRX    = THR+8
+THRY    = THR
+BVXL    = BVL+8
+BVXH    = BVH+8
+BVYL    = BVL
+BVYH    = BVH
+SPX     = RINGX+8
+SPY     = RINGY
+
+
+; GROWL / GROWH: the address of each GTAB row (there's no multiply instruction).
+GROWLL:
+        .rept 22, row
+        .byte <GTAB + 22*row
+        .endr
+GROWHL:
+        .rept 22, row
+        .byte >GTAB + 22*row
+        .endr
+
+GROWL   = GROWLL + MOVED
+GROWH   = GROWHL + MOVED
+; ORB: the circular-orbit speed sqrt(g r) at each spawn point, along the tangent, where g
+; is the pull GTAB gives in that point's cell. It still comes from a script: the assembler
+; can't look a value up in GTAB (it has no arrays), so it can't find g.
+; circular-orbit velocity X at the spawn ring, 8.8
+ORBXLL: .byte 0,221,183,151,123,99,83,82,79,82,83,99,123,151,183,221
+        .byte 0,35,73,105,133,157,173,174,177,174,173,157,133,105,73,35
+ORBXHL: .byte 0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+        .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+; circular-orbit velocity Y at the spawn ring, 8.8
+ORBYLL: .byte 181,178,176,158,133,105,71,35,0,221,185,151,123,98,80,78
+        .byte 75,78,80,98,123,151,185,221,0,35,71,105,133,158,176,178
+ORBYHL: .byte 0,0,0,0,0,0,0,0,0,255,255,255,255,255,255,255
+        .byte 255,255,255,255,255,255,255,255,0,0,0,0,0,0,0,0
+ORBXL   = ORBXLL + MOVED
+ORBXH   = ORBXHL + MOVED
+ORBYL   = ORBYLL + MOVED
+ORBYH   = ORBYHL + MOVED
+MOVEND:
+MOVN    = [MOVEND - MOVLD + 2] / 3  ; copied in three runs of MOVN
+        .assert MOVRUN + 3*MOVN <= ROW21, "the moved tables run into the HUD's rows"

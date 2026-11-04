@@ -316,12 +316,23 @@ fn assemble() -> Assembly {
     unc_asm::assemble(SRC).unwrap_or_else(|e| panic!("orbit.s doesn't assemble: {e:?}"))
 }
 
+/// The code fits below the bitmap; past it, at $2000, only tables, which start copies away
+/// before the bitmap is cleared: the gravity table to the hidden lines, the rest (MOVLD to
+/// MOVEND) to the text rows under the arena.
 #[test]
 fn fits_below_the_bitmap() {
     let asm = assemble();
-    for s in &asm.segments {
-        let end = s.start as usize + s.bytes.len();
-        assert!(s.start >= 0x0800 && end <= 0x2000, "segment ${:04X}-${end:04X} is outside $0800-$1FFF", s.start);
+    let gtab = asm.symbol("GTABLD").expect("GTABLD");
+    assert_eq!(gtab, 0x2000);
+    let (moved, end) = (asm.symbol("MOVLD").expect("MOVLD"), asm.symbol("MOVEND").expect("MOVEND"));
+    assert_eq!(moved, gtab + 22 * 22);
+    for s in asm.segments.iter().filter(|s| !s.bytes.is_empty()) {
+        let end_s = s.start as usize + s.bytes.len();
+        if s.start == gtab {
+            assert_eq!(end_s, end as usize, "only the tables are loaded past the code");
+        } else {
+            assert!(s.start >= 0x0800 && end_s <= 0x2000, "segment ${:04X}-${end_s:04X} is outside $0800-$1FFF", s.start);
+        }
     }
     assert!(asm.symbol("start").is_some());
 }
