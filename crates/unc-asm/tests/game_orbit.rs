@@ -584,13 +584,16 @@ fn space_fires_a_bullet_that_moves_and_bends() {
     assert_eq!(g.peek(SHOTS), 1);
     let b = BULLETS.clone().find(|&o| g.kind(o) != 0).expect("a bullet");
     let (x0, y0) = g.pos(b);
-    g.frames(4);
+    g.frames(3);
+    let (xd, yd) = g.pos(b);
+    g.frame();
     let (x1, y1) = g.pos(b);
     assert!(y1 + 8 <= y0, "the bullet flies up: {y0} -> {y1}");
     assert!(x1 >= x0);
     let (vx, _) = g.vel(b);
     assert!(vx > 0, "gravity bends it toward the planet (vx {vx})");
-    assert!(g.ink_near(x1, y1, 2) >= 3, "and it's drawn");
+    // The picture is a frame behind the game: it's drawn where it was a frame ago.
+    assert!(g.ink_near(xd, yd, 2) >= 3, "and it's drawn");
     // It runs out of range.
     g.frames(60);
     assert_eq!(g.kind(b), 0);

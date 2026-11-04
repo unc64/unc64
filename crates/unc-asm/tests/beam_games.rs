@@ -6,9 +6,10 @@
 //! the beam was drawing, they're the same.
 //!
 //! Every game but ORBIT waits for FRAME and does its work in the blank: 112 lines, 7,168
-//! cycles, before the beam is back in the picture. ORBIT, in mixed mode, starts at line
-//! 219, where its arena ends (144 lines), and redraws a rock only where the beam won't catch
-//! it (`beamok`). SNAKE and DEBUG always finish in time. A frame whose drawing runs on into
+//! cycles, before the beam is back in the picture. ORBIT, in mixed mode, starts drawing at
+//! line 219, where its arena ends (144 lines), works out the next frame while the beam draws
+//! the arena, and redraws a rock only where the beam won't catch it (`beamok`), twice a
+//! frame: before its work and behind the beam after it (`rockslate`). SNAKE and DEBUG always finish in time. A frame whose drawing runs on into
 //! the beam can still show a line half drawn, for that one frame, as on a real machine:
 //! STACK when a piece locks and the well is redrawn, AURORA on its heaviest frames (a coarse
 //! step in the gorge, everything flying), ORBIT when its ship, drawn as lines, is near the
@@ -17,13 +18,19 @@
 //! frames, the title being drawn, don't count.
 
 use unc_core::machine::{CYCLES_PER_FRAME, CYCLES_PER_LINE, PIXELS_H, PIXELS_W, VBLANK_LINE};
-use unc_core::{Machine, RamSize};
+use unc_core::{Machine, RamSize, Stop};
 
-fn game(src: &str, board: bool) -> Machine {
+fn game(src: &str, board: bool) -> (Machine, Option<u16>) {
     let asm = unc_asm::assemble(src).unwrap_or_else(|e| panic!("doesn't assemble: {e:?}"));
     let mut m = Machine::boot_with_board(RamSize::K16, board);
     unc_asm::load(&mut m, &asm);
-    m
+    // ORBIT redraws rocks twice a frame: before its work, and after it, behind the beam
+    // (rockslate). The beam can show a rock as the first pass left it, a picture of its own.
+    let late = asm.symbol("rockslate");
+    if let Some(a) = late {
+        m.set_breakpoint(a, true);
+    }
+    (m, late)
 }
 
 /// Plays `frames` frames, pressing a key now and then (SPACE first, to start), and returns
@@ -31,11 +38,14 @@ fn game(src: &str, board: bool) -> Machine {
 /// nor as it leaves them this frame (each looked at when the game starts its work, on line
 /// `sync`: VBLANK, 251, or ORBIT's 219): a line half drawn, or drawn while it was half
 /// changed. A line still showing the last frame's picture, because the game changed it
-/// after the beam had passed, is a frame late, not torn.
-fn torn_frames(m: &mut Machine, frames: u32, keys: &[u8], sync: u32) -> Vec<(u32, usize)> {
+/// after the beam had passed, is a frame late, not torn; so is one showing the picture as
+/// it stood at `late` (ORBIT's late pass), between the two.
+fn torn_frames(m: &mut Machine, frames: u32, keys: &[u8], sync: u32, late: Option<u16>) -> Vec<(u32, usize)> {
     let mut torn = Vec::new();
     let mut prev = vec![0u8; PIXELS_W * PIXELS_H];
     let mut now = vec![0u8; PIXELS_W * PIXELS_H];
+    let mut mid = vec![0u8; PIXELS_W * PIXELS_H];
+    let mut mid_seen = false;
     for f in 0..frames {
         match f % 40 {
             0 => m.key(if f < 40 { b' ' } else { keys[(f / 40) as usize % keys.len()] }),
@@ -49,15 +59,25 @@ fn torn_frames(m: &mut Machine, frames: u32, keys: &[u8], sync: u32) -> Vec<(u32
         // to where the game starts drawing: the beam has drawn the part it draws in
         let at = sync * CYCLES_PER_LINE;
         let to = (at + CYCLES_PER_FRAME - m.mem.frame_cycle) % CYCLES_PER_FRAME;
-        m.run_cycles(if to == 0 { CYCLES_PER_FRAME } else { to });
+        let end = m.cpu.cycles + if to == 0 { CYCLES_PER_FRAME } else { to } as u64;
+        while m.cpu.cycles < end {
+            match m.run_cycles((end - m.cpu.cycles) as u32) {
+                Stop::Breakpoint(pc) if Some(pc) == late => {
+                    m.render(m.blink_on, &mut mid);
+                    mid_seen = true;
+                }
+                _ => break,
+            }
+        }
         m.render(m.blink_on, &mut now);
         let row = |p: &[u8], y: usize| p[y * PIXELS_W..][..PIXELS_W].to_vec();
         let ys: Vec<usize> = (0..PIXELS_H)
             .filter(|&y| {
                 let drawn = row(m.frame(), y);
-                drawn != row(&now, y) && drawn != row(&prev, y)
+                drawn != row(&now, y) && drawn != row(&prev, y) && !(mid_seen && drawn == row(&mid, y))
             })
             .collect();
+        mid_seen = false;
         if std::env::var("BEAMDBG").is_ok() && !ys.is_empty() {
             eprintln!("frame {f}: lines {:?}", ys);
         }
@@ -71,9 +91,9 @@ fn torn_frames(m: &mut Machine, frames: u32, keys: &[u8], sync: u32) -> Vec<(u32
 
 /// Out of 1,500 frames of play, after the first 12, at most `limit` torn.
 fn check(name: &str, src: &str, board: bool, keys: &[u8], limit: usize) {
-    let mut m = game(src, board);
+    let (mut m, late) = game(src, board);
     let sync = if name == "ORBIT" { 219 } else { VBLANK_LINE };
-    let torn: Vec<_> = torn_frames(&mut m, 1500, keys, sync).into_iter().filter(|&(f, _)| f >= 12).collect();
+    let torn: Vec<_> = torn_frames(&mut m, 1500, keys, sync, late).into_iter().filter(|&(f, _)| f >= 12).collect();
     assert!(torn.len() <= limit, "{name}: {} torn frames (at most {limit}): {:?}", torn.len(), &torn[..torn.len().min(40)]);
 }
 
@@ -89,7 +109,7 @@ fn stack_draws_out_of_the_beams_way() {
 
 #[test]
 fn orbit_draws_out_of_the_beams_way() {
-    check("ORBIT", include_str!("../../../games/orbit.s"), false, &[28, 29, 30, b' '], 90);
+    check("ORBIT", include_str!("../../../games/orbit.s"), false, &[28, 29, 30, b' '], 10);
 }
 
 #[test]

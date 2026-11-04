@@ -85,7 +85,11 @@ INVULT  = 120           ; frames of safety after (re)spawning
 WAVEDLY = 50            ; frames between clearing a wave and the next
 ARENA0  = 51            ; the raster line the arena's first line is drawn on (chapter 9)
 VBLANK  = 251           ; the beam leaves the picture: FRAME goes up, a frame's work starts
-RDRAW   = 56            ; lines a rock's redraw can take (erase and draw: about 3,600 cycles)
+RPASS   = 30            ; lines a rock's picture takes to draw or rub out (about 1,800 cycles)
+FIRSTEND = 0            ; the first rocks start none after this line (none in the top
+                        ; border): a rock (2 RPASS) and the heaviest work (about 9,000
+                        ; cycles) still end before 219
+LATEEND = ARENA0+AREA_H-2*RPASS-8 ; the late rocks start none after this line: done before 219
 NSTARS  = 28
 
 ; ---------------------------------------------------------------- the fast page
@@ -278,37 +282,44 @@ st_title:
         BNE @demo
         JSR newgame
         JMP endwork
-@demo:  JSR physall
+@demo:  JSR rocks
+        JSR physall
         JSR rockplanet
         JSR countrocks
-        BNE @draw
+        BNE @late
         JSR rocksclear
-        BNE @draw
+        BNE @late
         LDA #3
         JSR spawnrocks
-@draw:  JSR rocks
+@late:  JSR rockslate
         JMP endwork
 
+; Every state draws first, from line 219, while the beam is out of the arena (144 lines),
+; and only then works out the next frame (input, physics, collisions), while the beam is
+; drawing the arena: the picture is a frame behind the game, and gets the whole window.
+; What's left of the frame goes on the rocks that waited, behind the beam (rockslate).
 st_play:
+        JSR drawbul     ; the shots before the ship: they're quick, and drawn while the
+        JSR drawship    ; beam is still in the border (chapter 9); XOR, so the order
+        JSR rocks       ; doesn't change the picture
         JSR pinput
         JSR timers
         JSR physall
         JSR clampv
         JSR collide
         JSR wavecheck
-        JSR drawbul     ; the shots before the ship: they're quick, and drawn while the
-        JSR drawship    ; beam is still in the border (chapter 9); XOR, so the order
-        JSR rocks       ; doesn't change the picture
+        JSR rockslate
         JMP endwork
 
 st_dying:
-        JSR btimers
-        JSR physall
-        JSR collide
         JSR drawbul
         JSR drawship
         JSR explode
         JSR rocks
+        JSR btimers
+        JSR physall
+        JSR collide
+        JSR rockslate
         DEC TIMER
         BNE @done
         LDA LIVES
@@ -319,11 +330,12 @@ st_dying:
 @done:  JMP endwork
 
 st_over:
+        JSR drawbul
+        JSR rocks
         JSR btimers
         JSR physall
         JSR collide
-        JSR drawbul
-        JSR rocks
+        JSR rockslate
         LDA TIMER
         BEQ @wait
         DEC TIMER
@@ -1538,38 +1550,92 @@ bdot:   TAY             ; the top line
         STA (PTR),Y
 @done:  RTS
 
+; rockslate: rocks again, once the frame's work is done and the beam is drawing the arena:
+; a rock the beam has passed, or won't reach before it's drawn, is drawn now rather than
+; next frame. A rock in the beam's way is passed over, not waited for.
+rockslate:
+        LDA #1
+        BNE rocksgo
+
 ; rocks: bring the rocks on the screen up to date, round robin from where the last
 ; frame stopped, starting none where the beam would catch it (beamok). When the frame is
 ; busy, some rocks wait a frame: the picture lags, the physics never does.
-rocks:  LDA #NOBJ-ROCK0
+rocks:  LDA #0
+rocksgo: STA RLATE
+        LDA #NOBJ-ROCK0
         STA PIDX
         LDX RRDR
 @rock:  STX OBJ
-        LDA KIND,X
+        JSR rock1
+        BCC @stop
+        LDX OBJ
+        INX
+        CPX #NOBJ
+        BNE @count
+        LDX #ROCK0
+@count: DEC PIDX
+        BNE @rock
+@stop:  STX RRDR
+        RTS
+
+; rock1: bring rock X (= OBJ) up to date if the beam and the time allow. Carry clear: stop
+; here, with X = OBJ, and start from this rock next time.
+; Rubbing out the old picture and drawing the new one go together, when the beam is clear
+; of both for the whole job (RLEAD 2 RPASS), so the rock is never missing from a frame.
+; A rock that jumped across the arena's edge, top to bottom, would wait a long time for
+; that: its two jobs are done each on its own (RLEAD RPASS), when the beam is clear of it.
+rock1:  LDA KIND,X
         CMP DK,X
         BNE @redraw
-        CMP #0
-        BEQ @next
+        TAY             ; nothing there, nothing drawn?
+        BEQ @go
         LDA OXH,X
         CMP DXP,X
         BNE @redraw
         LDA OYH,X
         CMP DYP,X
-        BEQ @next
-@redraw: JSR beamok     ; not where the beam is about to draw: this rock waits a frame
-        BCS @go
-        JMP @stop
-@go:    LDA DK,X        ; erase the old picture
+        BEQ @go
+@redraw: JSR rtime      ; the time checked once: LATEEND leaves room for both jobs
+        BCC @stop
+        LDA DK,X
+        BEQ @new        ; nothing drawn yet: only the new one
+        LDA KIND,X
+        BEQ @old        ; gone: only rub out the old one
+        LDA DYP,X       ; within 16 rows of each other, up or down? (with the borrow,
+        SEC             ; 16 above counts as clear)
+        SBC OYH,X
+        ADC #15
+        CMP #33
+        BCS @old        ; no, clear of each other: one job at a time
+        LDA #2*RPASS
+        STA RLEAD
+        LDA DYP,X
+        JSR beamok
+        BCC @wait
+        LDA OYH,X
+        JSR beamok
+        BCC @wait
+        JSR rkerase     ; (Z set)
+        BEQ @draw
+@old:   LDA DYP,X
+        JSR beam1
+        BCC @wait
+        JSR rkerase
         BEQ @new
-        LDY DXP,X
-        STY CX
-        LDY DYP,X
-        STY CY
-        JSR rockxor
-        LDX OBJ
-@new:   LDA KIND,X      ; draw the new one
+@go:    SEC
+        RTS
+@wait:  LDA RLATE       ; the beam's in the way: in the late pass, only this rock waits
+        BNE @go
+@stop:  LDX OBJ
+        CLC
+        RTS
+@new:   LDA KIND,X      ; the new one (DK is 0 here)
+        BEQ @go
+        LDA OYH,X
+        JSR beam1
+        BCC @wait
+@draw:  LDA KIND,X
         STA DK,X
-        BEQ @next
         PHA
         LDA OXH,X
         STA CX
@@ -1579,79 +1645,87 @@ rocks:  LDA #NOBJ-ROCK0
         STA DYP,X
         PLA
         JSR rockxor
-        LDX OBJ
-@next:  INX
-        CPX #NOBJ
-        BNE @count
-        LDX #ROCK0
-@count: DEC PIDX
-        BNE @rock
-@stop:  STX RRDR
+        SEC
         RTS
 
-; beamok: can rock X be redrawn now without the beam catching it half done (chapter 9)?
-; Carry set if so. The redraw touches the old rock's rows and the new one's, 8 above the
-; higher to 8 below the lower: RTOP to RBOT in T2 and T3. The beam mustn't be in them,
-; nor reach them within RDRAW lines. Out of the picture (from VBLANK) it has 112 lines to
-; go before the arena; past the arena, it's behind every rock. A rock that wraps past the
-; arena's bottom edge is redrawn only while the beam is between the arena and line 255,
-; far from both edges. Uses A, Y, T2, T3.
-beamok: LDA DYP,X       ; the higher of the two places (the smaller y), 8 rows above it
-        CMP OYH,X
-        BCC @hi
-        LDA OYH,X
-@hi:    SEC
+RLATE   = T5            ; rocks: 1 in the late pass (rockslate), 0 in the first
+RLEAD   = T4            ; rocks: lines the job in hand takes (beamok)
+
+; rkerase: rub out rock X's picture (OBJ = X), and say nothing's drawn there. Returns
+; with Z set.
+rkerase: LDY DXP,X
+        STY CX
+        LDY DYP,X
+        STY CY
+        LDA DK,X
+        JSR rockxor
+        LDX OBJ
+        LDA #0
+        STA DK,X
+        RTS
+
+; rtime: may the rocks start another rock now? Carry clear if not. The first pass (before
+; the frame's work) starts none after line FIRSTEND, so the heaviest work still ends before
+; 219; the late pass starts none after LATEEND, so it's done before the next frame's work.
+; Uses A, Y.
+rtime:  LDA RASTER      ; RASTER first: it latches bit 8 for RASTHI
+        LDY RASTHI
+        BNE @yes        ; the bottom border
+        LDY RLATE
+        BNE @late
+        CMP #FIRSTEND
+        BCC @yes
+        CMP #ARENA0+AREA_H
+        BCC @no
+@yes:   SEC
+        RTS
+@late:  CMP #LATEEND
+        BCC @yes
+        CMP #VBLANK
+        BCS @yes
+@no:    CLC
+        RTS
+
+; beamok: can a rock's picture centred on row A be drawn or rubbed out now, without the
+; beam catching it half done (chapter 9)? Carry set if so. The picture's rows, 8 above to
+; 8 below, are T2 to T3; one at the arena's edge wraps, and counts as the whole arena. The
+; beam mustn't be in them, nor reach them within RLEAD lines. Uses A, Y, T2, T3.
+beam1:  LDY #RPASS      ; one job: rubbing out or drawing
+        STY RLEAD
+beamok: SEC
         SBC #8
-        BCS @t
-        LDA #$FF        ; above the top: it wraps
-@t:     STA T2
-        LDA DYP,X       ; the lower of the two, 8 rows below it
-        CMP OYH,X
-        BCS @lo
-        LDA OYH,X
-@lo:    CLC
-        ADC #8
+        BCC @wrap
+        STA T2
+        ADC #15         ; carry set: + 16
         CMP #AREA_H
         BCC @b
-        LDA #$FF        ; below the bottom: it wraps
+@wrap:  LDA #0
         STA T2
+        LDA #AREA_H-1
 @b:     STA T3
         LDA RASTER      ; RASTER first: reading it latches bit 8 for RASTHI
         LDY RASTHI
-        BNE @late       ; lines 256-311: the bottom border
+        BNE @lead       ; lines 256-311 (A 0-55): the bottom border, before the arena
         CMP #VBLANK
         BCS @yes        ; 251-255: the beam has just left the picture
         CMP #ARENA0+AREA_H
         BCS @yes        ; 219-250, the HUD: the beam has passed the whole arena
         CMP #ARENA0
-        BCC @early      ; 0-50, the top border
-        LDY T2          ; in the arena, on its line A - ARENA0
-        CPY #$FF
-        BEQ @no
-        SEC
-        SBC #ARENA0
+        BCC @lead       ; 0-50, the top border
+        SBC #ARENA0     ; in the arena (carry set), on arena line A
         CMP T3
         BEQ @no
-        BCS @yes        ; below RBOT: the beam has passed it
-        ADC #RDRAW      ; carry clear: far enough above RTOP for the whole redraw?
+        BCS @yes        ; below the picture: the beam has passed it
+        ADC RLEAD       ; carry clear: done before the beam gets to the picture?
         CMP T2
         BCC @yes
 @no:    CLC
         RTS
-@early: LDY T2          ; the top border, line A: when the redraw is done the beam is on
-        CPY #$FF        ; arena line A + RDRAW - ARENA0 (carry clear, from the CMP); RTOP
-        BEQ @no         ; must still be below that
-        ADC #RDRAW-ARENA0
-        CMP T2
-        BCS @no
-        SEC
-        RTS
-@late:  LDY T2          ; lines 256-311, A = line - 256: the redraw done, the beam is on
-        CPY #$FF        ; arena line A - ARENA0 (above the arena if that's negative)
-        BEQ @no
-        SEC
-        SBC #ARENA0
-        BCC @yes
+@lead:  CLC             ; before the arena, A lines from line 0 (or 256): when the job's
+        ADC RLEAD       ; done, is the beam still above the picture?
+        CMP #ARENA0
+        BCC @yes        ; still in the border
+        SBC #ARENA0     ; carry set: on arena line A
         CMP T2
         BCS @no
 @yes:   SEC
@@ -1665,6 +1739,12 @@ rockxor: CMP #2
         BEQ @big
         JMP RKSMALL
 @big:   JMP RKBIG
+
+; neg: A = -A.
+neg:    EOR #$FF
+        CLC
+        ADC #1
+        RTS
 
 ; rocktop: the rocks' first line, A lines above CY: LY and PTR set, and X = CX.
 rocktop: EOR #$FF
@@ -1695,9 +1775,7 @@ exdraw: LDA EXY
         STA CY
         LDA EXDR
         STA T2          ; r
-        EOR #$FF
-        CLC
-        ADC #1
+        JSR neg
         STA T0          ; -r
         LDA T2
         LSR A
@@ -1707,9 +1785,7 @@ exdraw: LDA EXY
         SEC
         SBC T3
         STA T3          ; k = 3r/4: no multiply needed
-        EOR #$FF
-        CLC
-        ADC #1
+        JSR neg
         STA T1          ; -k
         LDA T2
         STA T4
@@ -1800,9 +1876,7 @@ line:   LDY LY
         STA PTR+1
         LDA DLX
         BPL @right
-        EOR #$FF
-        CLC
-        ADC #1
+        JSR neg
         STA ADX
         LDA #$18        ; DEX
         BNE @xstep
@@ -1823,9 +1897,7 @@ line:   LDY LY
         CMP ADY
         BCC ymd
         JMP xmaj
-@up:    EOR #$FF
-        CLC
-        ADC #1
+@up:    JSR neg
         STA ADY
         LDA #<yup
         STA xm_ys+1
