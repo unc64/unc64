@@ -2,8 +2,9 @@
 
 A **cassette** is the UNC 64's distribution format for programs, binaries and sources together. It's how a program travels between the Machine Room (the developer's
 browser tool), the game, and, later, the community library. Inspired by PICO-8's
-cartridge PNGs: the file is a picture of the tape, and the program rides inside it. Post the
-picture anywhere and it still loads.
+cartridge PNGs: the file is a picture of the tape, and the program rides inside it. Pass the
+file on as it is (a download, an attachment, a repository) and it still loads. A site that
+re-encodes pictures, as most social sites and chat apps do, keeps the face and drops the tape.
 
 ## The file
 

@@ -153,7 +153,7 @@ Everything the UNC 64 can do, it does through places like that one. Chapter 2, n
 
 ### The UNC 16 and the UNC 64
 
-The UNC 16 and the UNC 64 are the same computer. The UNC 16 has 16K of memory (16,384 bytes), the text screen, the bitmap, the beeper and the tape deck: everything in chapters 1 to 14. The UNC 64 is the UNC 16 fully expanded: the 64K memory expansion, with 48K of memory below the I/O and ROM areas; the video board, with sprites, smooth scrolling, a background layer and four colours (chapter 15); and the sound chip, with three voices and a speech synthesizer. They arrive one at a time. The start-up message tells you which you have: the ROM checks for the expansion and the video board every time you switch on.
+The UNC 16 and the UNC 64 are the same computer. The UNC 16 has 16K of memory (16,384 bytes), the text screen, the bitmap, the beeper and the tape deck: everything in chapters 1 to 14. The UNC 64 is the UNC 16 fully expanded: the 64K memory expansion, with 48K of memory below the I/O and ROM areas; the video board, with sprites, smooth scrolling, a background layer and four colours (chapter 15). The sound chip, with three voices and a speech synthesizer, comes later, and so does its chapter: this edition covers the beeper (chapter 12). The upgrades arrive one at a time. The start-up message tells you which you have: the ROM checks for the expansion and the video board every time you switch on.
 
 | | UNC 16 | UNC 64 |
 |---|---|---|

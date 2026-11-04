@@ -1,0 +1,2 @@
+cargo:rerun-if-changed=/home/user/unc64/crates/unc-asm/../../docs/prg/programmers-reference-guide.md
+cargo:rerun-if-changed=build.rs
