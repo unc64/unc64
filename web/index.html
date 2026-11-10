@@ -65,7 +65,8 @@
       <button class="btn" id="run" type="button">Pause <kbd>F8</kbd></button>
       <button class="btn" id="step" type="button">Step <kbd>F7</kbd></button>
       <button class="btn" id="over" type="button">Step over <kbd>F6</kbd></button>
-      <button class="btn" id="reset" type="button">Power cycle</button>
+      <button class="btn" id="resetbtn" type="button" title="The RESET button: back to READY. from anything, with your program kept">Reset</button>
+      <button class="btn" id="reset" type="button" title="Switch the machine off and on: memory is cleared">Power cycle</button>
     </div>
     <section class="deck" aria-labelledby="h-deck">
       <h2 id="h-deck">Tape deck</h2>
@@ -165,7 +166,7 @@
     <h3>Write and run</h3>
     <p>Write assembly (<code>.s</code>) or UNC BASIC (<code>.bas</code>), then <b>Run</b> (Ctrl+Enter). Assembly is assembled and started. BASIC is typed into the machine for you, then <code>RUN</code>. A project can have several files: <code>.include "other.s"</code> reads another one. The file marked MAIN is the one that runs.</p>
     <h3>Keys</h3>
-    <p>Click the screen and your keys go to the machine: the cursor keys, RETURN, DELETE (Backspace), INSERT (Shift+Backspace), Ctrl+C for STOP, and Page Up for RESTORE (Shift+Page Up is STOP and RESTORE together: back to READY. from anything, with your program kept). F8 runs or pauses, F7 steps, F6 steps over a subroutine. In the editor, Ctrl+Enter runs, Ctrl+F finds, Ctrl+/ comments lines out. Vim keys are under the editor.</p>
+    <p>Click the screen and your keys go to the machine: the cursor keys, RETURN, DELETE (Backspace), INSERT (Shift+Backspace), Ctrl+C for STOP, and Page Up for RESTORE (Shift+Page Up is STOP and RESTORE together: back to READY. from anything, with your program kept). Reset, under the monitor, is the RESET button: it does the same from a jammed processor too. F8 runs or pauses, F7 steps, F6 steps over a subroutine. In the editor, Ctrl+Enter runs, Ctrl+F finds, Ctrl+/ comments lines out. Vim keys are under the editor.</p>
     <h3>Cassettes</h3>
     <p>A cassette is a <code>.unc.png</code>: a picture of the tape with the program inside it, and the source if you include it. <b>Save</b> keeps it in your library in this browser. <b>Export</b> downloads it. <b>Browse</b> shows yours and the bundled ones. Drop <code>.unc.png</code>, <code>.tap</code>, <code>.s</code> or <code>.bas</code> files anywhere on the page to bring them in.</p>
     <h3>The tape deck</h3>

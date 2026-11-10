@@ -700,6 +700,17 @@ msg:    .text "HELLO, UNC 64!"
     if (power && changed) powerOn();
   }
   $('reset').addEventListener('click', powerOn);
+  // RESET, the button on the monitor: the processor and the I/O start over, memory is kept,
+  // and the ROM goes back to READY. with the program. Out of anything, a jammed processor
+  // too. Not a power cycle: what's in memory, the breakpoints and the tape all stay.
+  $('resetbtn').addEventListener('click', () => {
+    if (!wasm.reset_button) return;
+    typing = [];
+    pendingRun = false;
+    wasm.reset_button();
+    setRunning(true);
+    cv.focus();
+  });
   $('ram').addEventListener('change', () => { project.machine.ram = Number($('ram').value); markDirty(); powerOn(); });
   $('board').addEventListener('change', () => { project.machine.board = $('board').checked; markDirty(); powerOn(); });
   $('colour').checked = colour;
