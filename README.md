@@ -88,9 +88,9 @@ node scripts/check-machine-room.mjs    # and a check of it in a real browser
 
 [`AGENTS.md`](AGENTS.md) has the rules of the road. Issues and pull requests are welcome, and so are corrections from anyone who wrote 6502 code for real.
 
-## Rev A
+## Rev A (alpha)
 
-The machine is frozen at **System Rev A**: a program that runs on a Rev A machine runs the same, cycle for cycle, on every later one. [`REVISIONS.md`](REVISIONS.md) says what that covers.
+The machine is **System Rev A**, and Rev A is in alpha: not frozen yet. Until it is, anything in it can still change, and a program may need changing with it. Once it's frozen, a program that runs on a Rev A machine runs the same, cycle for cycle, on every later one. [`REVISIONS.md`](REVISIONS.md) says what that will cover.
 
 ## The game
 
