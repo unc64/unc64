@@ -46,7 +46,7 @@ The monitor shows the machine at 50 frames a second. Each refresh of your screen
 - **RAM**: 16K (UNC 16) or 64K (with the expansion).
 - **Video board**: the board of chapter 15 in, or out. It goes in or out as the machine is switched on, so changing it (or RAM) switches the machine off and on.
 - **Colour**: a colour monitor, or the monochrome one, in the phosphor you pick (green, amber, paper white, or the blue screen).
-- **Mute**: silence the speaker. Browsers allow sound only after you click or press a key, so it starts at your first one.
+- **Mute**: silence the speaker. Browsers allow sound only after you click, tap or press a key, so it starts at your first one. On an iPhone or an iPad it plays with the silent switch on (Safari 17 and later; before that, switch it off or use headphones).
 
 | Control | Key | Does |
 |---|---|---|

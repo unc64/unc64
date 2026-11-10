@@ -238,7 +238,7 @@
 
   // ---------- sound (manual chapter 12) ----------
   // The core renders each frame's speaker as samples (audio_frame); Web Audio plays them
-  // back to back, about 80 ms ahead. Browsers allow sound only after a click or a key.
+  // back to back, about 80 ms ahead. Browsers allow sound only after a click, a tap or a key.
   const sound = (() => {
     const AC = window.AudioContext || window.webkitAudioContext;
     let ac = null;
@@ -248,13 +248,18 @@
     const stats = { frames: 0, samples: 0, nonzero: 0 };
     const start = () => {
       if (!AC || !wasm.audio_frame) return;
+      // An iPhone plays a page's Web Audio as ambient sound, which its silent switch mutes.
+      // This is something the user started and means to hear: playback (Safari 17 and later).
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not there */ }
       if (!ac) {
         ac = new AC();
         gain = ac.createGain();
         gain.gain.value = muted ? 0 : 1;
         gain.connect(ac.destination);
       }
-      if (ac.state === 'suspended') ac.resume().catch(() => {});
+      // Not running: 'suspended' before the first tap, and on an iPhone 'interrupted' after a
+      // call or the lock screen.
+      if (ac.state !== 'running') ac.resume().catch(() => {});
     };
     const frame = () => {
       if (!ac || ac.state !== 'running') return;
@@ -283,7 +288,10 @@
       if (gain) gain.gain.value = on ? 0 : 1;
       pref.set('mute', on ? '1' : '0');
     };
-    ['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, start, true));
+    // Safari on a phone doesn't take pointerdown for the user's say-so: touchend and click are.
+    ['pointerdown', 'touchend', 'click', 'keydown'].forEach((ev) => document.addEventListener(ev, start, true));
+    // back from another tab or app: go on playing
+    document.addEventListener('visibilitychange', () => { if (ac && !document.hidden && ac.state !== 'running') ac.resume().catch(() => {}); });
     window.uncSound = { stats, get state() { return ac ? ac.state : 'not started'; } }; // for tests
     return { frame, setMuted, get muted() { return muted; } };
   })();
