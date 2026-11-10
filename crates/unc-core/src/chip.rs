@@ -148,7 +148,8 @@ impl Voice {
         }
         self.rate = 0;
         if self.stage == Stage::Attack {
-            self.env = self.env.wrapping_add(1); // a gate at full loudness goes round to 0, as the release build does
+            // the gate came on again at the top (a held note struck anew): it's there already
+            self.env = self.env.saturating_add(1);
             if self.env == 255 {
                 self.stage = Stage::Decay;
                 self.skip = 0;
