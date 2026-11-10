@@ -9,7 +9,9 @@ pub mod machine;
 pub mod shifter;
 pub mod sound;
 pub mod state;
+pub mod trace;
 
 pub use cpu::{Bus, Cpu, CpuState};
 pub use isa::{Mode, OPCODES, Op, OpInfo};
 pub use machine::{Machine, Observation, RamSize, Stop};
+pub use trace::{BasicLine, LineStep, Trace};

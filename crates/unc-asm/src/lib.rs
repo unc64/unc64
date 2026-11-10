@@ -37,6 +37,20 @@ pub fn load(m: &mut Machine, asm: &Assembly) -> u16 {
     start
 }
 
+/// Loads a program as `load` does, and calls it the way `JSR` would: the way back, `back`,
+/// is on the stack ($01FF its high byte, $01FE its low, SP = $FD), so an `RTS` at the end of
+/// the program goes to `back`. The ASSEMBLER tape's CTRL+R calls with `back` at its HLT
+/// ($3F49): a routine written for `SYS` runs there as it is.
+/// Returns the start address.
+pub fn call(m: &mut Machine, asm: &Assembly, back: u16) -> u16 {
+    let start = load(m, asm);
+    let [lo, hi] = back.to_le_bytes();
+    m.poke(0x01FF, hi);
+    m.poke(0x01FE, lo);
+    m.cpu.sp = 0xFD;
+    start
+}
+
 /// A program is loaded into a machine waiting at BASIC's `READY.`, where the line editor
 /// shows its cursor. The program didn't ask for it, so put back what was under it, as the
 /// ROM's CUROFF does when BASIC stops waiting (manual chapter 13).

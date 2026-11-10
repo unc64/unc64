@@ -400,11 +400,14 @@ pub struct Observation {
     /// Processor writes to the 8,000 bytes from BITMAP * `$100`, wherever BITMAP points
     /// at the time of the write (and whether or not the bitmap is showing).
     pub bitmap_writes: u32,
+    /// Writes to the high byte of the BASIC line number (CURLIN+1, `$0206`): the ROM writes
+    /// it each time a program arrives on a line (host-only, for line breakpoints).
+    pub line_writes: u32,
 }
 
 impl Default for Observation {
     fn default() -> Self {
-        Observation { reads: [0; 256], writes: [0; 256], reserved_read: false, frames: 0, screen_writes: 0, bitmap_writes: 0 }
+        Observation { reads: [0; 256], writes: [0; 256], reserved_read: false, frames: 0, screen_writes: 0, bitmap_writes: 0, line_writes: 0 }
     }
 }
 
@@ -440,6 +443,9 @@ pub struct Memory {
     pub board: Option<VideoBoard>,
     /// The host's frame meter (`Machine::frame_work`): where this frame's work ended.
     pub meter: FrameMeter,
+    /// The HOLD box's memory view, when the host watches (`Machine::watch`): when each
+    /// byte was written and run, and by what. Host-only, like `obs`.
+    pub trace: Option<Box<crate::trace::Trace>>,
 }
 
 /// How much of a frame a program spent working before it started waiting: the cycle of the
@@ -469,6 +475,7 @@ impl Memory {
             reserved: RESERVED_AT_START,
             board: None,
             meter: FrameMeter::default(),
+            trace: None,
         }
     }
 
@@ -528,6 +535,15 @@ impl Bus for Memory {
             let obs = &mut self.obs;
             obs.screen_writes = obs.screen_writes.wrapping_add((addr.wrapping_sub(SCREEN) < 1000) as u32);
             obs.bitmap_writes = obs.bitmap_writes.wrapping_add((addr.wrapping_sub((self.io.bitmap as u16) << 8) < 8000) as u32);
+            obs.line_writes = obs.line_writes.wrapping_add((addr == 0x0206) as u32);
+            if self.trace.is_some() {
+                let ram = &self.ram;
+                let line = if ram[0x0204] != 0 { u16::from_le_bytes([ram[0x0205], ram[0x0206]]) } else { crate::trace::NO_LINE };
+                let t = self.trace.as_deref_mut().unwrap();
+                t.written[addr as usize] = t.frame;
+                t.writer[addr as usize] = t.pc;
+                t.line[addr as usize] = line;
+            }
         } else if addr >> 8 == 0xC0 {
             let w = &mut self.obs.writes[addr as u8 as usize];
             *w = w.wrapping_add(1);
@@ -789,6 +805,9 @@ pub struct Machine {
     pub cpu: Cpu,
     pub mem: Memory,
     breakpoints: Box<[bool; 0x10000]>,
+    /// BASIC lines to stop on (host-only, like the breakpoints): the moment a running program
+    /// arrives on one, before any of the line has run.
+    line_breaks: Vec<u16>,
     /// Border colour as it stood on each raster line during the last frame.
     pub border_lines: [u8; LINES_PER_FRAME as usize],
     /// The picture as the beam drew it, and the colours of each of its lines (`frame`).
@@ -816,6 +835,7 @@ impl Machine {
             cpu: Cpu::new(),
             mem,
             breakpoints: Box::new([false; 0x10000]),
+            line_breaks: Vec::new(),
             border_lines: [0; LINES_PER_FRAME as usize],
             picture: Box::new([0; PIXELS_W * PIXELS_H]),
             picture_colours: Box::new([[0, 1, 1, 1]; PIXELS_H]),
@@ -1010,6 +1030,20 @@ impl Machine {
 
     pub fn clear_breakpoints(&mut self) {
         self.breakpoints.fill(false);
+        self.line_breaks.clear();
+    }
+
+    /// Stop when a running BASIC program arrives on line `line` (or don't, with `on` false).
+    pub fn set_line_break(&mut self, line: u16, on: bool) {
+        self.line_breaks.retain(|&l| l != line);
+        if on {
+            self.line_breaks.push(line);
+        }
+    }
+
+    /// The BASIC line being run (CURLIN), if a program is running.
+    pub fn basic_line(&self) -> Option<u16> {
+        (self.mem.ram[0x0204] != 0).then(|| u16::from_le_bytes([self.mem.ram[0x0205], self.mem.ram[0x0206]]))
     }
 
     /// Host-only: the cycles the last whole frame spent working before its program started
@@ -1020,6 +1054,7 @@ impl Machine {
 
     /// Runs one instruction and advances the clock. Returns cycles spent (0 if stopped).
     pub fn step(&mut self) -> u8 {
+        self.trace_step();
         let c = self.cpu.step(&mut self.mem);
         self.tick(c as u32);
         c
@@ -1036,6 +1071,9 @@ impl Machine {
         let wrapped = self.mem.frame_cycle >= CYCLES_PER_FRAME;
         if wrapped {
             self.mem.frame_cycle -= CYCLES_PER_FRAME;
+            if let Some(t) = self.mem.trace.as_deref_mut() {
+                t.frame = t.frame.wrapping_add(1);
+            }
         }
         let line = self.mem.raster_line();
         // the beam finishes every line it passed: before the frame ends, its last lines
@@ -1116,7 +1154,14 @@ impl Machine {
                 return Stop::Breakpoint(self.cpu.pc);
             }
             first = false;
+            let lw = self.mem.obs.line_writes;
             self.step();
+            if !self.line_breaks.is_empty() && self.mem.obs.line_writes != lw {
+                let line = u16::from_le_bytes([self.mem.ram[0x0205], self.mem.ram[0x0206]]);
+                if self.line_breaks.contains(&line) {
+                    return Stop::Breakpoint(self.cpu.pc);
+                }
+            }
         }
         self.stopped().unwrap_or(Stop::Budget)
     }
