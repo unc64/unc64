@@ -511,7 +511,7 @@ fn save_states_keep_the_board_and_its_registers() {
     m.run_frame();
     assert_eq!(m.peek(io::SPRHIT), 3);
     let saved = m.save_state();
-    assert_eq!(saved[4], 4, "version 4");
+    assert_eq!(saved[4], 5, "version 5");
     let mut other = Machine::boot(RamSize::K64);
     other.load_state(&saved).unwrap();
     assert!(other.has_board());
@@ -528,11 +528,18 @@ fn save_states_keep_the_board_and_its_registers() {
 #[test]
 fn version_1_and_2_states_still_load() {
     let now = Machine::boot(RamSize::K16).save_state();
-    // the board's byte comes after the I/O, at 89 with no key held, then the sound chip's
+    // the board's byte comes after the I/O, at 90 with no key held, then the sound chip's
     // byte and its 121
-    assert_eq!((now[4], now[89], now[90]), (4, 0, 1));
-    // version 3: no sound chip
-    let mut v3 = now.clone();
+    assert_eq!((now[4], now[90], now[91]), (5, 0, 1));
+    // version 4: no TEXTROWS (byte 36, after the bitmap's page); it loads with four rows
+    let mut v4 = now.clone();
+    assert_eq!(v4.remove(36), 4);
+    v4[4] = 4;
+    let mut m = Machine::boot_with_board(RamSize::K64, true);
+    m.load_state(&v4).unwrap();
+    assert_eq!(m.save_state(), now);
+    // version 3: no sound chip either
+    let mut v3 = v4.clone();
     v3.drain(90..90 + 122);
     v3[4] = 3;
     let mut v1 = v3.clone();
@@ -692,4 +699,52 @@ fn collisions_latch_as_each_line_is_drawn() {
     sprite(&mut m, 1, 58, 20, 0, 0);
     to_line(&mut m, 51 + 25); // lines 0-24 drawn: they overlap from line 20
     assert_eq!(m.peek(io::SPRHIT) & 3, 3, "already set, before the frame ends");
+}
+
+/// SPRTAB 0 is the sprites' off switch: there is no table, so nothing shows and nothing
+/// hits, whatever is in the fast page. Any other page and they're back.
+#[test]
+fn sprtab_0_switches_the_sprites_off() {
+    let mut m = board();
+    image(&mut m, 1, &solid(2));
+    sprite(&mut m, 0, 100, 50, 1, 0);
+    sprite(&mut m, 1, 108, 50, 1, 0);
+    assert_eq!(lit(&picture(&m)), 16 * 24);
+    m.poke(io::SPRTAB, 0);
+    // a fast page that would be a table of shown sprites, if it were read as one
+    for n in 0..32u16 {
+        m.load(n * 4, &[50, 100, 1, attr::SHOWN]);
+    }
+    assert_eq!(lit(&picture(&m)), 0, "no sprites");
+    m.run_frame();
+    m.run_frame();
+    assert_eq!((cpu_read(&mut m, io::SPRHIT), cpu_read(&mut m, io::SPRLINE)), (0, 0), "and nothing they could touch");
+    m.poke(io::SPRTAB, 0x37);
+    assert_eq!(lit(&picture(&m)), 16 * 24, "the table at $3700 again");
+}
+
+/// STOP and RESTORE on a machine with the board: the sprites off, the layer, the scroll and
+/// the colour mode off, text white, so READY. can be read whatever the program had set.
+#[test]
+fn stop_and_restore_clear_the_boards_picture() {
+    let mut m = Machine::boot_with_board(RamSize::K16, true);
+    image(&mut m, 1, &solid(2));
+    sprite(&mut m, 0, 100, 50, 1, 0);
+    for (a, v) in [(io::LAYER, 1), (io::SCROLLX, 5), (io::SCROLLY, 3), (io::COLOURMODE, 1), (io::COLOUR3, 0), (io::BORDER, 4)] {
+        m.poke(a, v);
+    }
+    m.key_matrix(3, true);
+    m.restore();
+    for _ in 0..3 {
+        m.run_frame();
+    }
+    m.key_matrix(3, false);
+    for a in [io::SPRTAB, io::LAYER, io::SCROLLX, io::SCROLLY, io::COLOURMODE, io::BORDER] {
+        assert_eq!(m.peek(a), 0, "${a:04X}");
+    }
+    assert_eq!(m.peek(io::COLOUR3), 1, "text is white again");
+    assert!(m.screen_text().starts_with("READY."), "{}", m.screen_text());
+    let px = picture(&m);
+    assert!(px.iter().all(|&p| p == 0 || p == 3), "only READY. and the cursor, in the text's colour");
+    assert_eq!(m.peek(TABLE + 3) & attr::SHOWN, attr::SHOWN, "the table in memory isn't touched");
 }

@@ -39,12 +39,12 @@ syn match uncSystem "\<\%(BACKGROUND\|BEEPER\|BITMAP\|BOARD\|BORDER\|CHARSET\|CH
 syn match uncSystem "\<\%(COLOUR3\|COLOURMODE\|CURLIN\|CURSAV\|CURX\|CURY\|CUTOFF\|DATAL\|DATAP\|DST\)\>"
 syn match uncSystem "\<\%(ENV3\|FILTER\|FORSP\|FORSTK\|FRAME\|GETKEY\|GFXS\|GOSP\|GOSTK\|HELD\)\>"
 syn match uncSystem "\<\%(IBUF\|INBUF\|INKM\|IRQVEC\|IRQ_ENABLE\|IRQ_STATUS\|KBD\|KBD_STROBE\|KEYS\|LAYER\)\>"
-syn match uncSystem "\<\%(LAYERPAGE\|LAYERSX\|LAYERSY\|LOAD\|NOISE\|NUMBUF\|NUMSTR\|PRDEC\|PRGEND\|PRHEX\)\>"
-syn match uncSystem "\<\%(PRNUM\|PRSTR\|PTR\|RAMTOP\|RASTER\|RASTER_CMP\|RASTER_HI\|READY\|RND\|RNDSEED\)\>"
-syn match uncSystem "\<\%(RUNFLG\|SCROLLX\|SCROLLY\|SEED\|SHIFT_AMOUNT\|SHIFT_FLIP\|SHIFT_IN\|SHIFT_OUT\|SOUND\|SPEAKER\)\>"
-syn match uncSystem "\<\%(SPRBANK\|SPRHIT\|SPRHITBG\|SPRLINE\|SPRTAB\|SRC\|STRP\|TAPE\|TAPEDATA\|TBORD\)\>"
-syn match uncSystem "\<\%(TCHK\|THDR\|TIMER_HI\|TIMER_LO\|TMPA\|TNAME\|TNAMED\|TOVR\|VARS\|VMODE\)\>"
-syn match uncSystem "\<\%(VOICE3\|VOLUME\|WAVETABLE\)\>"
+syn match uncSystem "\<\%(LAYERPAGE\|LAYERSX\|LAYERSY\|LINK\|LOAD\|NMIVEC\|NOISE\|NUMBUF\|NUMSTR\|PRDEC\)\>"
+syn match uncSystem "\<\%(PRGEND\|PRHEX\|PRNUM\|PRSTR\|PTR\|RAMTOP\|RASTER\|RASTER_CMP\|RASTER_HI\|READY\)\>"
+syn match uncSystem "\<\%(RLCOL\|RLMOV\|RLROW\|RND\|RNDSEED\|RUNFLG\|SCROLLX\|SCROLLY\|SEED\|SHIFT_AMOUNT\)\>"
+syn match uncSystem "\<\%(SHIFT_FLIP\|SHIFT_IN\|SHIFT_OUT\|SOUND\|SPEAKER\|SPRBANK\|SPRHIT\|SPRHITBG\|SPRLINE\|SPRTAB\)\>"
+syn match uncSystem "\<\%(SRC\|STRP\|TAPE\|TAPEDATA\|TBORD\|TCHK\|TEXTROWS\|THDR\|TIMER_HI\|TIMER_LO\)\>"
+syn match uncSystem "\<\%(TMPA\|TNAME\|TNAMED\|TOVR\|VARS\|VMODE\|VOICE3\|VOLUME\|WAVETABLE\)\>"
 
 " Definitions: `name:` and `@name:` at the start of a line, `NAME = value` on its own.
 syn match uncLabel "^\s*\zs\h\w*\%(\\\h\w*\)*\ze\s*:"

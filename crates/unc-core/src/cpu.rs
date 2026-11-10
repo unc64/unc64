@@ -29,7 +29,7 @@ pub const IRQ_CYCLES: u8 = 6;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CpuState {
     Running,
-    /// Stopped by HLT. Only a reset restarts it.
+    /// Stopped by HLT. A reset restarts it, and an NMI wakes it.
     Halted,
     /// Stopped by an unassigned opcode. PC points at the offending byte.
     Jammed(u8),
@@ -48,6 +48,8 @@ pub struct Cpu {
     pub state: CpuState,
     /// Level-triggered interrupt request line, driven by the machine's I/O.
     pub irq: bool,
+    /// A non-maskable interrupt waiting to be taken: the RESTORE key was pressed (`nmi`).
+    pub nmi: bool,
 }
 
 impl Default for Cpu {
@@ -58,7 +60,7 @@ impl Default for Cpu {
 
 impl Cpu {
     pub fn new() -> Self {
-        Cpu { a: 0, x: 0, y: 0, sp: 0xFF, pc: 0, p: flag::I | flag::U, cycles: 0, state: CpuState::Running, irq: false }
+        Cpu { a: 0, x: 0, y: 0, sp: 0xFF, pc: 0, p: flag::I | flag::U, cycles: 0, state: CpuState::Running, irq: false, nmi: false }
     }
 
     pub fn reset(&mut self, bus: &mut impl Bus) {
@@ -184,11 +186,33 @@ impl Cpu {
         self.pc = read16(bus, vector);
     }
 
-    /// Executes one instruction, or takes a pending IRQ. Returns the cycles spent;
+    /// The NMI line is pulled: edge-triggered, so once for each call. The interrupt is taken
+    /// before the next instruction, whatever the I flag says, through the vector at $FFFA.
+    /// It wakes a processor stopped by HLT, with the HLT itself as the return address, so an
+    /// RTI halts it again. A jammed processor stays jammed: only a reset helps that.
+    pub fn nmi(&mut self) {
+        match self.state {
+            CpuState::Running => self.nmi = true,
+            CpuState::Halted => {
+                self.pc = self.pc.wrapping_sub(1);
+                self.state = CpuState::Running;
+                self.nmi = true;
+            }
+            CpuState::Jammed(_) => {}
+        }
+    }
+
+    /// Executes one instruction, or takes a pending NMI or IRQ. Returns the cycles spent;
     /// 0 when the CPU is halted or jammed.
     pub fn step(&mut self, bus: &mut impl Bus) -> u8 {
         if self.state != CpuState::Running {
             return 0;
+        }
+        if self.nmi {
+            self.nmi = false;
+            self.interrupt(bus, VEC_NMI, false);
+            self.cycles += IRQ_CYCLES as u64;
+            return IRQ_CYCLES;
         }
         if self.irq && !self.flag(flag::I) {
             self.interrupt(bus, VEC_IRQ, false);

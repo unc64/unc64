@@ -2,14 +2,14 @@
 //! docs/prg/programmers-reference-guide.md, chapter 11.
 
 use crate::machine::Machine;
-use crate::machine::io::{KEY_DOWN, KEY_LEFT};
+use crate::machine::io::{KEY_DOWN, KEY_INSERT, KEY_LEFT};
 
 /// Rows in the matrix, KEYS ($C060) to KEYS + 8.
 pub const KEY_ROWS: usize = 9;
 
 /// Where a key code sits in the matrix: (row, bit mask). Codes $20-$5F take rows 0-7,
 /// row (code - $20) / 8, bit code AND 7. Row 8 holds the cursor keys left, right, up and
-/// down in bits 0-3, RETURN in bit 4, DELETE in bit 5 and STOP in bit 7. Other codes have
+/// down in bits 0-3, RETURN in bit 4, DELETE in bit 5, INSERT in bit 6 and STOP in bit 7. Other codes have
 /// no place in the matrix.
 pub fn key_position(code: u8) -> Option<(usize, u8)> {
     match code {
@@ -17,6 +17,7 @@ pub fn key_position(code: u8) -> Option<(usize, u8)> {
         KEY_LEFT..=KEY_DOWN => Some((8, 1 << (code - KEY_LEFT))),
         13 => Some((8, 0x10)),
         8 => Some((8, 0x20)),
+        KEY_INSERT => Some((8, 0x40)),
         3 => Some((8, 0x80)),
         _ => None,
     }

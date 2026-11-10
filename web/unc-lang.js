@@ -117,7 +117,7 @@
   ];
   // [name, address, what, kind]: I/O registers (Appendix B), ROM routines and system variables (Appendix D).
   const NAMES = [
-    ['VMODE', 0xC000, 'Video mode. Bit 0: 256-glyph character set. Bit 1: bitmap. Bit 2: mixed (bitmap above, text rows 21-24 below). Bit 3: steady cursor.', 'io'],
+    ['VMODE', 0xC000, 'Video mode. Bit 0: 256-glyph character set. Bit 1: bitmap. Bit 2: mixed (bitmap above, the last TEXTROWS text rows below). Bit 3: steady cursor.', 'io'],
     ['RASTER', 0xC001, 'Read: the current raster line, bits 0-7; latches bit 8 for RASTER_HI.', 'io'],
     ['RASTER_HI', 0xC002, 'Read: bit 0 is raster line bit 8, as latched by the last read of RASTER.', 'io'],
     ['RASTER_CMP', 0xC003, 'The raster compare line (0-255) for the raster interrupt.', 'io'],
@@ -131,6 +131,7 @@
     ['BACKGROUND', 0xC021, 'Background colour, 0-15.', 'io'],
     ['CHARSET', 0xC022, 'Character set page; $D0 at reset.', 'io'],
     ['BITMAP', 0xC023, 'Bitmap page; $20 at reset.', 'io'],
+    ['TEXTROWS', 0xC024, 'Text rows under the bitmap in mixed mode, 0-25; 4 at reset.', 'io'],
     ['BEEPER', 0xC030, 'Write: any value flips SPEAKER bit 1.', 'io'],
     ['SPEAKER', 0xC031, 'Bit 0: timer gate. Bit 1: speaker data (BEEPER flips it). Read bit 5: the timer\'s output.', 'io'],
     ['TIMER_LO', 0xC032, 'Write: the tone timer\'s divisor, low byte.', 'io'],
@@ -171,7 +172,7 @@
     ['SEED', 0x020B, 'RND state ($020B-$020C), shared by BASIC and the ROM\'s RND.', 'var'],
     ['INKM', 0x020D, 'The current INK.', 'var'],
     ['GFXS', 0x020E, 'Graphics scratch.', 'var'],
-    ['CURSAV', 0x020F, 'The character under the line editor\'s cursor.', 'var'],
+    ['CURSAV', 0x020F, 'The character under the screen editor\'s cursor.', 'var'],
     ['GOSTK', 0x0210, 'GOSUB stack: 16 frames of 5 bytes ($0210-$025F).', 'var'],
     ['VARS', 0x0260, 'BASIC variables A-Z, 2 bytes each, low byte first ($0260-$0293).', 'var'],
     ['FORSTK', 0x0294, 'FOR stack: 8 frames of 10 bytes ($0294-$02E3).', 'var'],
@@ -182,9 +183,14 @@
     ['TOVR', 0x030E, 'LOAD: $40 if a byte was missed.', 'var'],
     ['TBORD', 0x030F, 'LOAD: the border colour before LOAD.', 'var'],
     ['IRQVEC', 0x0314, 'Interrupt handler address ($0314-$0315).', 'var'],
+    ['NMIVEC', 0x0316, 'NMI handler address: the RESTORE key ($0316-$0317).', 'var'],
     ['IBUF', 0x0320, 'The line being typed: 120 characters and a 0 ($0320-$0398).', 'var'],
     ['INBUF', 0x03A0, 'INPUT\'s line: 40 characters and a 0 ($03A0-$03C8).', 'var'],
     ['NUMBUF', 0x03D0, 'NUMSTR\'s eight ASCII digits, highest first ($03D0-$03D7).', 'var'],
+    ['RLCOL', 0x03D8, 'The screen editor: the column the cursor was in when it began to wait.', 'var'],
+    ['RLROW', 0x03D9, 'The screen editor: the row the cursor was on when it began to wait.', 'var'],
+    ['LINK', 0x03DA, 'The screen editor: a byte a row, 1 if the row carries on the line of the row above ($03DA-$03F2).', 'var'],
+    ['RLMOV', 0x03F3, 'The screen editor: not 0 once the cursor has been moved.', 'var'],
   ];
 
   function builtIn() {

@@ -10,7 +10,7 @@
 //! | 1 | Format version: `VERSION` |
 //! | 1 | RAM: 16 or 64 (K) |
 //! | 18 | The processor: A, X, Y, SP, PC, P, the cycle count, its state and the IRQ line |
-//! | 65 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, the timer and speaker, the shifter |
+//! | 66 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, TEXTROWS (version 5 on), the timer and speaker, the shifter |
 //! | 1, or 16 with the board | The video board (version 2 on): 0 if it isn't in; 1 and its 15 bytes of registers (`VideoBoard::save`) if it is |
 //! | 122 | The sound chip (version 4 on): 1 and its 121 bytes (`Chip::save`); or one byte, 0, if a host took it out |
 //! | 4 | The computer's side of the tape interface: motor, data latch, byte ready, overrun |
@@ -18,10 +18,12 @@
 //! | 312 | The border on each raster line of the last frame (for the picture) |
 //! | 16K or 48K | RAM, from `$0000` to the top of memory |
 //!
-//! So a UNC 16 with no key down saves to 16,916 bytes, and one with the 64K expansion to
-//! 49,684; the video board adds 15 more. (The sprite table and images are in RAM.)
+//! So a UNC 16 with no key down saves to 16,917 bytes, and one with the 64K expansion to
+//! 49,685; the video board adds 15 more. (The sprite table and images are in RAM.)
 //!
-//! **Version 3** is the same without the sound chip's bytes: it loads with the chip as it
+//! **Version 4** is the same without TEXTROWS: it loads with four text rows under the
+//! bitmap, as at reset.
+//! **Version 3** is that without the sound chip's bytes: it loads with the chip as it
 //! is at switch-on, silent.
 //! **Version 2** had the first Rev A board: 37 bytes of registers, eight sprites in them.
 //! That board is gone, so a version 2 state loads with the board in, its bank, scroll and
@@ -50,7 +52,7 @@ use crate::sound::{AudioLog, Timer};
 pub const MAGIC: &[u8; 4] = b"UNCS";
 /// Bumped whenever the layout changes. Older versions this build knows the layout of load;
 /// anything else is refused, never guessed at.
-pub const VERSION: u8 = 4;
+pub const VERSION: u8 = 5;
 /// The oldest version `load_state` reads: version 1, from before the video board.
 pub const OLDEST: u8 = 1;
 
@@ -140,7 +142,7 @@ impl Machine {
         }
         w.u8(io.held.len() as u8);
         w.bytes(&io.held);
-        for v in [io.border, io.background, io.charset, io.bitmap] {
+        for v in [io.border, io.background, io.charset, io.bitmap, io.text_rows] {
             w.u8(v);
         }
         w.u64(io.cycle);
@@ -208,7 +210,7 @@ impl Machine {
             (s, _) => return Err(format!("save state: processor state {s}")),
         };
         let irq = r.bool()?;
-        let cpu = Cpu { a, x, y, sp, pc, p, cycles, state, irq };
+        let cpu = Cpu { a, x, y, sp, pc, p, cycles, state, irq, nmi: false };
 
         let mut io = crate::machine::Io::default();
         let b = r.bytes(7)?;
@@ -221,6 +223,7 @@ impl Machine {
         io.held = r.bytes(held)?.to_vec();
         let b = r.bytes(4)?;
         (io.border, io.background, io.charset, io.bitmap) = (b[0], b[1], b[2], b[3]);
+        io.text_rows = if version >= 5 { r.u8()?.min(25) } else { crate::machine::io::TEXTROWS_AT_RESET };
         io.cycle = r.u64()?;
         io.timer = Timer::restore(&mut r)?;
         io.shifter = Shifter { window: r.u16()?, amount: r.u8()? & 7 };

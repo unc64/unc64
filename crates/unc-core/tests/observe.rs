@@ -56,7 +56,8 @@ fn counts_a_basic_program_reading_the_keyboard_and_drawing() {
     assert_eq!(o.read_count(io::HELD), o.read_count(io::KBD_STROBE), "one of each per pass");
     // BASIC itself reads KBD before every statement, looking for STOP.
     assert!(o.read_count(io::KBD) >= o.read_count(io::HELD));
-    assert!(o.screen_writes >= o.read_count(io::HELD), "{}", o.screen_writes);
+    // (the pass under way when the count is taken may have read and not yet drawn)
+    assert!(o.screen_writes + 1 >= o.read_count(io::HELD), "{}", o.screen_writes);
     assert_eq!(o.bitmap_writes, 0, "nothing near the bitmap at $2000");
     assert!(!o.reserved_read);
     assert_eq!(o.write_count(io::BORDER), 0);

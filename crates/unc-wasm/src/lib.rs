@@ -289,6 +289,12 @@ pub extern "C" fn key(ascii: u32) {
     m(|m| m.key(ascii as u8));
 }
 
+/// The RESTORE key: the processor's NMI. With STOP held (`key(3)`), back to READY.
+#[unsafe(no_mangle)]
+pub extern "C" fn restore() {
+    m(|m| m.restore());
+}
+
 /// A key comes up: HELD forgets it.
 #[unsafe(no_mangle)]
 pub extern "C" fn key_up(ascii: u32) {

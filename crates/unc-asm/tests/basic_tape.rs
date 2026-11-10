@@ -376,6 +376,9 @@ fn a_program_that_wont_fit_beside_the_bitmap_is_refused() {
     let mut m = Machine::boot(RamSize::K16);
     m.set_tape_turbo(true);
     type_line(&mut m, "GR");
+    for _ in 0..10 {
+        m.run_frame(); // GR clears 8,000 bytes before it reads another key
+    }
     run_until(&mut m, 1.0, |m| m.screen_text().contains("READY."));
     m.insert_tape(tape::basic("BIG", &program).encode());
     m.press_play();

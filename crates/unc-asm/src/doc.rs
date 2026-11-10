@@ -24,7 +24,7 @@ pub fn describe(op: Op) -> (&'static str, &'static str) {
     match op {
         Op::Brk => ("Break: push PC and status (B set), jump through $FFFE", "I"),
         Op::Nop => ("No operation", "-"),
-        Op::Hlt => ("Halt the processor until reset", "-"),
+        Op::Hlt => ("Halt the processor until reset, or an NMI", "-"),
         Op::Rts => ("Return from subroutine", "-"),
         Op::Rti => ("Return from interrupt: pull status, then PC", "all"),
         Op::Jsr => ("Jump to subroutine: push the return address", "-"),

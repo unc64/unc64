@@ -1221,9 +1221,19 @@ msg:    .text "HELLO, UNC 64!"
   const held = new Map();
   cv.addEventListener('keydown', (e) => {
     if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); held.set(e.code, 3); wasm.key(3); return; } // the STOP key
-    if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) return;
+    if (e.metaKey || e.altKey || /^F\d+$/.test(e.key)) return;
+    // RESTORE is Page Up: the processor's NMI. With STOP held (Ctrl+C) it's the way back to
+    // READY. from anything; Shift+Page Up presses both.
+    if (e.key === 'PageUp' && wasm.restore) {
+      e.preventDefault();
+      if (e.shiftKey) { wasm.key(3); setTimeout(() => wasm.key_up(3), 150); }
+      wasm.restore();
+      return;
+    }
+    if (e.ctrlKey) return;
     let code = CURSOR[e.key] ?? null;
     if (e.key === 'Enter') code = 13;
+    else if (e.key === 'Insert' || (e.key === 'Backspace' && e.shiftKey)) code = 20; // INSERT: shift and DELETE
     else if (e.key === 'Backspace') code = 8;
     else if (e.key.length === 1) code = e.key.toUpperCase().charCodeAt(0);
     if (code !== null && code < 96) { e.preventDefault(); held.set(e.code, code); wasm.key(code); }

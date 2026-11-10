@@ -17,7 +17,8 @@ pub const ROM_START: u16 = 0xE000;
 pub const CHAR_ROM_START: u16 = 0xD000;
 /// Where the bitmap sits after reset: 8,000 bytes from $2000, RAM even on the UNC 16.
 pub const BITMAP_START: u16 = 0x2000;
-/// Bytes per bitmap line, and the first bitmap line that shows text in mixed mode.
+/// Bytes per bitmap line, and the first bitmap line that shows text in mixed mode at reset:
+/// TEXTROWS is 4 then, and the split is 200 - 8 * TEXTROWS.
 pub const BITMAP_STRIDE: usize = 40;
 pub const MIXED_SPLIT: usize = 168;
 /// The text screen in pixels: 40 x 25 cells of 8 x 8.
@@ -48,6 +49,10 @@ pub mod io {
     pub const BACKGROUND: u16 = 0xC021;
     pub const CHARSET: u16 = 0xC022;
     pub const BITMAP: u16 = 0xC023;
+    /// TEXTROWS: in mixed mode, how many text rows show under the bitmap, 0-25. 4 at reset.
+    pub const TEXTROWS: u16 = 0xC024;
+    /// TEXTROWS at reset: rows 21-24.
+    pub const TEXTROWS_AT_RESET: u8 = 4;
     pub const BEEPER: u16 = 0xC030;
     /// The tape deck's status (read) and the motor (write). Chapter 14.
     pub const TAPE: u16 = 0xC040;
@@ -79,7 +84,8 @@ pub mod io {
     pub const VMODE_256: u8 = 0x01;
     /// VMODE bit 1: the 320 x 200 bitmap, one bit per pixel, at BITMAP * $100.
     pub const VMODE_BITMAP: u8 = 0x02;
-    /// VMODE bit 2: with the bitmap on, text rows 21-24 show below the bitmap's top 168 lines.
+    /// VMODE bit 2: with the bitmap on, the last TEXTROWS text rows show below the bitmap
+    /// (at reset rows 21-24, below its top 168 lines).
     pub const VMODE_MIXED: u8 = 0x04;
     /// VMODE bit 3: no hardware blink. Code $A0 shows as a steady reversed space.
     pub const VMODE_STEADY: u8 = 0x08;
@@ -89,6 +95,8 @@ pub mod io {
     pub const KEY_RIGHT: u8 = 29;
     pub const KEY_UP: u8 = 30;
     pub const KEY_DOWN: u8 = 31;
+    /// The INSERT key (shift and DELETE): the screen editor opens a space at the cursor.
+    pub const KEY_INSERT: u8 = 20;
 
     // Rev A: the beeper's timer and the noise register (chapter 12), the shifter
     // (chapter 8) and the keyboard matrix (chapter 11).
@@ -205,6 +213,8 @@ pub struct Io {
     pub charset: u8,
     /// High byte of the bitmap's address. Resets to $20: $2000-$3F3F.
     pub bitmap: u8,
+    /// TEXTROWS: the text rows under the bitmap in mixed mode, 0-25. Resets to 4.
+    pub text_rows: u8,
     /// Rev A (chapter 12): the cycle count when the instruction running now began.
     /// I/O happens at that cycle: the timer, NOISE and the audio log go by it.
     pub cycle: u64,
@@ -236,6 +246,7 @@ impl Default for Io {
             background: 0,
             charset: (CHAR_ROM_START >> 8) as u8,
             bitmap: (BITMAP_START >> 8) as u8,
+            text_rows: io::TEXTROWS_AT_RESET,
             cycle: 0,
             timer: Timer::default(),
             audio: AudioLog::default(),
@@ -530,6 +541,7 @@ impl Memory {
             io::BACKGROUND => self.io.background,
             io::CHARSET => self.io.charset,
             io::BITMAP => self.io.bitmap,
+            io::TEXTROWS => self.io.text_rows,
             io::TAPE => self.deck.status(),
             io::TAPE_DATA => self.deck.data,
             0xC3F0..=0xC3FF => self.reserved[(addr - io::RESERVED) as usize],
@@ -647,6 +659,7 @@ impl Memory {
                 io::BACKGROUND => self.io.background = value & 0x0F,
                 io::CHARSET => self.io.charset = value,
                 io::BITMAP => self.io.bitmap = value,
+                io::TEXTROWS => self.io.text_rows = value.min(SCREEN_ROWS as u8),
                 io::BEEPER => {
                     self.io.speaker = !self.io.speaker;
                     self.io.speaker_toggles = self.io.speaker_toggles.wrapping_add(1);
@@ -752,6 +765,12 @@ impl Memory {
         }
     }
 
+    /// How many lines of the picture the bitmap takes, from the top, when it's on: all 200,
+    /// or in mixed mode all but the last TEXTROWS text rows (168 at reset).
+    pub fn bitmap_lines(&self) -> usize {
+        if self.io.vmode & io::VMODE_MIXED != 0 { PIXELS_H - 8 * self.io.text_rows as usize } else { PIXELS_H }
+    }
+
     /// Line y (0-199) of the picture, from the registers and memory as they stand now: the
     /// text or the bitmap, with the video board its fine scroll, the layer behind it and the
     /// sprites over it. The sprites' table is the one `sprites` read; what they touch goes in
@@ -765,7 +784,7 @@ impl Memory {
         if y >= sy {
             let src = y - sy;
             let vmode = self.io.vmode;
-            let split = if vmode & io::VMODE_MIXED != 0 { MIXED_SPLIT } else { PIXELS_H };
+            let split = self.bitmap_lines();
             let mut line = [0u8; PIXELS_W];
             if vmode & io::VMODE_BITMAP != 0 && src < split {
                 let four = board.is_some_and(|b| b.colour_mode & board::COLOURMODE_BITMAP4 != 0);
@@ -998,6 +1017,13 @@ impl Machine {
             held.remove(0);
         }
         held.push(code);
+    }
+
+    /// The RESTORE key goes down. It isn't in KBD or the matrix: it pulls the processor's
+    /// NMI line (manual chapter 10), once for each press. With STOP held, the ROM's handler
+    /// goes back to BASIC's `READY.`; alone, it returns at once.
+    pub fn restore(&mut self) {
+        self.cpu.nmi();
     }
 
     /// A key comes up. HELD falls back to the most recent key still down, or 0.
@@ -1293,7 +1319,7 @@ impl Machine {
     ///
     /// With VMODE bit 1 set, the bitmap at BITMAP * $100 replaces the text: line y, pixel x
     /// is bit 7 - (x AND 7) of the byte at base + y * 40 + x / 8. With bit 2 (mixed) also set,
-    /// lines 168-199 still show text rows 21-24.
+    /// the last TEXTROWS text rows still show under it: at reset rows 21-24, lines 168-199.
     ///
     /// With the video board (chapter 15), every pixel is a colour number 0-3 (`colour_of`
     /// says which colour each is): paper 0, the screen's ink 3, the layer's ink 1, a sprite's

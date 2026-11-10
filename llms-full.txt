@@ -57,7 +57,7 @@ This book is the specification of the machine: System Rev A. The emulator in `cr
 
 This is the whole machine. Every register, every address and every instruction is in here, with the exact number of cycles each one takes. Nothing about the UNC 64 is hidden behind a driver or a library. If the computer can do it, this book tells you how.
 
-You don't need to have written machine language before. You do need patience, a pencil, and the willingness to try things and see what happens. You can't damage the computer by typing at it. The worst a program can do is stop, and the reset switch fixes that.
+You don't need to have written machine language before. You do need patience, a pencil, and the willingness to try things and see what happens. You can't damage the computer by typing at it. The worst a program can do is stop, or never stop, and STOP and RESTORE together fix that (chapter 2); the reset switch fixes anything.
 
 Read chapters 1 to 7 in order. After that, dip into whatever you need. The appendices are for keeping open beside the keyboard.
 
@@ -113,7 +113,7 @@ READY.
 
 `PRINT` puts on the screen whatever follows it. The quotation marks mean "these exact letters". Leave them out and BASIC works the answer out instead: `PRINT 2+2` prints `4`, and `PRINT 6*7` prints `42`.
 
-If you make a mistake, BASIC says so with `?SYNTAX ERROR`. Nothing is broken. Type the line again. While you're typing, DELETE rubs out the last letter.
+If you make a mistake, BASIC says so with `?SYNTAX ERROR`. Nothing is broken. Type the line again, or put it right where it stands: the cursor keys move the cursor back up onto the line, you type over the mistake, and RETURN gives BASIC the line again as the screen now shows it. While you're typing, DELETE rubs out the last letter.
 
 ### Your first program
 
@@ -128,7 +128,7 @@ Nothing happens yet. Type `LIST`, and BASIC shows you the program it's keeping. 
 
 To stop it, press **STOP**. BASIC tells you where it was (`BREAK IN 10` or `BREAK IN 20`) and is ready again.
 
-To change a line, type it again with the same number. To get rid of a line, type just its number. `NEW` forgets the whole program. Number your lines in tens, so there's room to slip new ones in between.
+To change a line, type it again with the same number, or `LIST` it, move the cursor up onto it, change it there and press RETURN (chapter 2, "The screen editor"). To get rid of a line, type just its number. `NEW` forgets the whole program. Number your lines in tens, so there's room to slip new ones in between.
 
 ### Counting
 
@@ -181,7 +181,7 @@ The UNC 16 ships with a green monochrome monitor. Plug in a colour monitor and t
 
 ### Typing
 
-The keyboard sends capital letters, digits, punctuation, RETURN, DELETE and STOP. Letters always arrive as capitals.
+The keyboard sends capital letters, digits, punctuation, RETURN, DELETE, INSERT (shift and DELETE), the four cursor keys and STOP. Letters always arrive as capitals. RESTORE, at the top right, sends nothing: it interrupts the processor (chapter 10), and with STOP held it brings BASIC back from anything (chapter 2).
 
 ---
 
@@ -203,7 +203,7 @@ FOR I=1 TO 3:PRINT I:NEXT
 
 `READY.` means BASIC has finished and is waiting for you.
 
-### The line editor
+### Lines and programs
 
 | You type | BASIC |
 |---|---|
@@ -212,9 +212,44 @@ FOR I=1 TO 3:PRINT I:NEXT
 | `NEW` | Forgets the whole program and every variable. |
 | `LIST` | Shows the program, in line-number order. |
 
-Line numbers run from 0 to 65535. Lines can be up to 120 characters: three rows of the screen. While you type, DELETE rubs out the last character, back up the rows of a line that has wrapped.
+Line numbers run from 0 to 65535. Lines can be up to 120 characters: three rows of the screen.
 
 The blinking cursor shows where the next character goes. It's there only while BASIC is waiting for you to type, at `READY.` or at an `INPUT`, and it goes as soon as you press RETURN or STOP, putting back whatever was under it. A running program's screen has no cursor unless the program is waiting at `INPUT` (chapter 13).
+
+### The screen editor
+
+The screen is the editor. The cursor goes anywhere on it, and when you press RETURN after moving it, BASIC reads the line the cursor is on, from the screen, exactly as it shows. It doesn't matter who put the line there: you just now, `LIST` a minute ago, or a program.
+
+A line you simply type, without touching the cursor keys or INSERT, is taken as you typed it, from where the cursor began to where it is now, whatever else is on the row. So after a game has left its picture all over the screen, `CLS` typed in the middle of it is still `CLS`.
+
+| Key | Does |
+|---|---|
+| Cursor keys | Move the cursor a cell. Left from a row's first column goes to the end of the row above, and right from its last to the start of the row below. They stop at the screen's corners, and nothing scrolls. |
+| A character | Goes where the cursor is, over whatever was there, and the cursor moves on. |
+| DELETE | Rubs out the character before the cursor, and the rest of the line moves left to close the gap. |
+| INSERT (shift and DELETE) | Opens a space at the cursor: the rest of the line moves right. |
+| RETURN | Gives BASIC the line. If the cursor has been moved: the line it is on, all of it, wherever in it the cursor is. If not: what you typed. The cursor goes to the start of the row under the line. |
+| STOP | Leaves the line as it looks and gives BASIC nothing. |
+
+So to change a line of your program, `LIST` it, move the cursor up onto it, put it right, and press RETURN:
+
+```text
+LIST 20
+20 PRINT "HELLO WORLF"
+READY.
+```
+
+Cursor up twice and along to the `F`, type `D`, press RETURN. Line 20 is changed, and the cursor is on `READY.`'s row: move down to an empty row before you type the next thing, or you'll be typing over what's there. (Press RETURN on `READY.` itself and BASIC reads `READ Y.`, and says `?OUT OF DATA`.)
+
+Change a line's number and press RETURN, and you have a second copy of the line under the new number: the old one is still in the program. Press RETURN on a line you typed and ran a moment ago, and it runs again.
+
+**Lines of more than one row.** A line that reaches the right edge carries on along the next row, up to three rows: 120 characters. The editor remembers which rows are one line, so RETURN on any of them takes them all, DELETE and INSERT move characters across the edge, and DELETE at a row's first column goes back up onto the row above. When a line you're typing in the middle of the screen needs another row, the rows below move down to make room (the bottom one drops off the screen); on the bottom row, the screen scrolls up instead. At the end of the third row the cursor stays put, and INSERT on a line whose three rows are full does nothing.
+
+What BASIC gets from the screen is the line without the spaces after its end, and with reverse video read as plain characters. A listed line that comes to more than 120 characters (every `?` you typed lists as `PRINT`) shows on four rows, and the fourth isn't part of it: change it on the screen and it's stored without its end.
+
+`INPUT` uses the same editor. Once you move the cursor it reads from just after its prompt to the end of the line, so you can go back and put a number right before RETURN. Move the cursor to some other line and press RETURN, and that line is what `INPUT` reads, and most likely `?REDO`s.
+
+**After a game.** A game steered with the cursor keys often ends with one held down. Whenever BASIC prints `READY.`, it waits for the cursor keys to be let go and forgets a cursor key that hasn't been taken yet, so the cursor is under `READY.` when you look, not half-way up the screen.
 
 BASIC stores each keyword as a single byte, a **token**, so programs take less memory and run faster. `LIST` spells them out again. Spaces are kept as you typed them. `?` is short for `PRINT`, and lists as `PRINT`.
 
@@ -240,7 +275,7 @@ Commands work inside programs too: a program can `LIST` itself.
 | Statement | Does |
 |---|---|
 | `PRINT` *items* | Prints strings in quotes and the values of expressions. `;` between items prints them side by side; `,` moves on to the next tenth column. A `;` or `,` at the very end means no new line. `PRINT` alone prints an empty line. |
-| `INPUT` *v* | Prints `? ` and waits for you to type a number and press RETURN. Puts it in variable *v*. Anything that isn't a whole number gets `?REDO` and another try. |
+| `INPUT` *v* | Prints `? ` and waits for you to type a number and press RETURN, with the screen editor. Puts it in variable *v*. Anything that isn't a whole number gets `?REDO` and another try. |
 | `INPUT "`*prompt*`";`*v* | The same, with your own prompt first. |
 | `LET` *v*`=`*expr* | Puts the value of *expr* into variable *v*. `LET` is optional: `A=A+1` is the same. |
 | `IF` *expr* `THEN` *line* | Goes to *line* if *expr* is true (not zero). |
@@ -260,6 +295,7 @@ Commands work inside programs too: a program can `LIST` itself.
 | `CLS` | Clears the screen. With `GR` on, the picture too, and the cursor goes to the first text row, as after `GR`. |
 | `SYS` *address* | Calls a machine-language routine (see below). |
 | `GR` | Graphics: turns on the bitmap with four text rows below it, clears both, and puts the cursor on the first text row. |
+| `GR` *n* | The same with *n* text rows below the picture: `GR 0` for the whole screen, `GR 1` for one line of status at the bottom. |
 | `TEXT` | Back to the text screen, cleared. |
 | `PLOT` *x*`,`*y* | Draws the pixel at (*x*, *y*). |
 | `LINE` *x1*`,`*y1*`,`*x2*`,`*y2* | Draws a straight line, both ends included. |
@@ -319,7 +355,9 @@ Because true is -1 (every bit set), `AND` and `OR` work on comparisons the way y
 
 ### STOP
 
-The STOP key stops a running program. BASIC prints `BREAK IN` and the line it was on, and goes back to `READY.`. STOP also gets you out of `INPUT` and `LIST`, and throws away a line you're halfway through typing.
+The STOP key stops a running program. BASIC prints `BREAK IN` and the line it was on, and goes back to `READY.`. STOP also gets you out of `INPUT` and `LIST`, and gives up a line you're halfway through typing: it stays on the screen, and BASIC never sees it.
+
+**STOP and RESTORE.** STOP is a key, and it only works on a program that looks at the keys. BASIC does, before every statement. A machine-language routine you called with `SYS` may not, and then STOP does nothing at all. Hold STOP and press RESTORE: the screen clears, the border and background go black, any sound stops, and BASIC says `READY.`, with your program and its variables still there. It works on anything short of a jammed processor (chapter 4), and RESTORE on its own does nothing, so you can't hit it by accident. Chapter 10 says exactly what it resets.
 
 ### Errors
 
@@ -339,6 +377,15 @@ When BASIC can't go on, it prints a message starting with `?`, adds `IN` and the
 ### Graphics
 
 `GR` turns the screen over to the bitmap (chapter 8): 320 pixels across, numbered 0 to 319 from the left, and 200 down, 0 to 199 from the top. You see the top 168 lines; below them, four rows of text keep `READY.` and your typing in view. `CLS` clears the picture and the text rows and stays in graphics; `TEXT` goes back to the text screen.
+
+**More picture, less text.** `GR` *n* gives the picture all but *n* rows of text, each row eight lines: `GR 1` shows lines 0 to 191 with one row under them, where `PRINT` goes, for a score or a status line; `GR 0` shows all 200 lines and no text at all. *n* can be any expression, up to 25. `PRINT` still works with no rows showing; you just can't see it. So when a program ends, or you stop it, and fewer than two rows are showing, BASIC puts back `GR`'s four before it says `READY.`: there has to be somewhere to see it and somewhere to type. In direct mode that makes `GR 0` and `GR 1` the same as `GR`; they're for programs.
+
+```basic
+10 GR 1
+20 FOR R=10 TO 90 STEP 10:CIRCLE 160,96,R:NEXT
+30 PRINT "NINE RINGS. STOP TO END.";
+40 GOTO 40
+```
 
 ```basic
 10 GR
@@ -364,7 +411,7 @@ Anything off the edges is simply not drawn, so a circle can hang half off the sc
 
 **Memory.** The bitmap goes in the top 8K of memory: `$2000-$3F3F` on a UNC 16, `$A000-$BF3F` on a UNC 64. While it's on, your program has to fit below it, which on a UNC 16 leaves 6K. `GR` gives `?OUT OF MEMORY` if the program is already too long, and so does typing a line that would grow it into the bitmap. After `TEXT` the memory is BASIC's again (the picture stays there until something writes over it).
 
-**Speed.** The drawing itself is machine code in the ROM. `PLOT` takes about 0.6 ms, most of it BASIC reading the two numbers. A line 50 pixels long takes about 15 ms, and one corner to corner across the whole screen about 80 ms. A circle of radius 10 takes about 15 ms, and one of radius 90 about 0.1 s. `GR` itself takes about 0.1 s, most of it clearing 8,000 bytes.
+**Speed.** The drawing itself is machine code in the ROM. `PLOT` takes about 0.6 ms, most of it BASIC reading the two numbers. A line 50 pixels long takes about 17 ms, and one corner to corner across the whole screen about 95 ms. A circle of radius 10 takes about 17 ms, and one of radius 90 about 0.12 s. `GR` itself takes about 0.1 s, most of it clearing 8,000 bytes.
 
 ### Machine language: SYS
 
@@ -534,7 +581,7 @@ So `BCC` after a compare means "branch if less than", and `BCS` means "branch if
 
 **Flags.** `CLC`, `SEC`, `CLI`, `SEI` and `CLV` clear and set flags directly.
 
-**Interrupts and stopping.** `BRK` is a deliberate interrupt (chapter 10). `RTI` returns from an interrupt. `NOP` does nothing for 2 cycles. `HLT` stops the processor until reset.
+**Interrupts and stopping.** `BRK` is a deliberate interrupt (chapter 10). `RTI` returns from an interrupt. `NOP` does nothing for 2 cycles. `HLT` stops the processor until a reset, or until RESTORE's interrupt wakes it (chapter 10).
 
 ### Unassigned opcodes
 
@@ -544,7 +591,7 @@ Of the 256 possible opcodes, 136 are the instructions this book describes. Run i
 
 At switch-on, or when you press reset, every register is cleared to 0, SP is set to `$FF`, and P to `$24` (interrupts disabled). Memory and every I/O register are cleared to zero. The processor then loads PC from the reset vector at `$FFFC` and starts the system ROM (chapter 13).
 
-**While the processor is stopped**, halted or jammed, the rest of the machine goes on: the raster keeps scanning, the frame counter counts and the border keeps its colour, line after line. Only the processor waits for the reset.
+**While the processor is stopped**, halted or jammed, the rest of the machine goes on: the raster keeps scanning, the frame counter counts and the border keeps its colour, line after line. Only the processor waits: for the reset, or, if it's halted, for RESTORE (chapter 10).
 
 ---
 
@@ -1097,7 +1144,7 @@ Each byte is a **screen code**. The video chip draws each code as an 8 × 8 **gl
 | `$60-$6F` | Eighth blocks, for bar graphs and smooth edges. |
 | `$70-$7F` | Card suits, a ball, a ring, arrows, triangles, a face, a note. |
 | `$80-$FF` | The glyphs of `$00-$7F` in reverse video. |
-| `$A0` | A reversed space, which blinks (unless VMODE bit 3 is set; see below). BASIC's line editor uses it as the cursor. |
+| `$A0` | A reversed space, which blinks (unless VMODE bit 3 is set; see below). BASIC's screen editor uses it as the cursor. |
 
 The quarter blocks are numbered so you can work them out: `$0F` is a solid block, `$03` the top half of a cell, `$0C` the bottom half. With them, the 40 × 25 screen becomes an 80 × 50 grid of dots. There are no lowercase letters; ASCII's lowercase codes are graphics here.
 
@@ -1256,7 +1303,7 @@ A change to a glyph shows on every cell that uses it, at once. Change one glyph 
 
 ### A steady cursor
 
-The video chip blinks code `$A0` by itself, about once a second, so the cursor BASIC's line editor shows while it waits for you to type (chapter 13) needs no program to blink it. Printing never draws it, so a program only sees `$A0` on the screen if BASIC was waiting when it started, or if it stores one itself. A game that wants a solid reversed block instead sets VMODE bit 3:
+The video chip blinks code `$A0` by itself, about once a second, so the cursor BASIC's screen editor shows while it waits for you to type (chapter 13) needs no program to blink it. Printing never draws it, so a program only sees `$A0` on the screen if BASIC was waiting when it started, or if it stores one itself. A game that wants a solid reversed block instead sets VMODE bit 3:
 
 | Address | Register | Bit 3 |
 |---|---|---|
@@ -1278,7 +1325,7 @@ Reverse video costs half the character set. For a game that wants more glyphs, s
 |---|---|---|
 | `$C000` | VMODE | 0: 128 glyphs, codes `$80-$FF` in reverse video (the default). 1: 256 separate glyphs from a 2K set, no reverse video, no blinking cursor. |
 
-In 256-glyph mode, the set is 2K long and glyph *n* starts at CHARSET × 256 + *n* × 8. The ROM's own printing still works, but the line editor's cursor is whatever you draw for code `$A0`.
+In 256-glyph mode, the set is 2K long and glyph *n* starts at CHARSET × 256 + *n* × 8. The ROM's own printing still works, but the screen editor's cursor is whatever you draw for code `$A0`.
 
 **You need your own set.** UNSCII is only 1K. With CHARSET at `$D0`, glyphs `$80-$FF` would come from `$D400-$D7FF`, which reads `$FF`: every one of them a solid block. So 256-glyph mode starts with a 2K set in RAM. This program builds one, UNSCII in the bottom half and its reversed copy in the top half, and draws a box with the line glyphs `$10-$1A`:
 
@@ -1404,7 +1451,13 @@ The `ORA` is the important part: a byte holds eight pixels, so to light one you 
 
 **Mixed mode.** With VMODE bits 1 and 2 both set, the bitmap shows only its top 168 lines, and below them the last four rows of the text screen, rows 21 to 24, appear as usual. That's how UNC BASIC lets you draw and type at the same time (chapter 2). The split is at raster line 219 (chapter 9): lines 51-218 show bitmap lines 0-167, and lines 219-250 show text rows 21-24.
 
-The bitmap's bottom 32 lines are still in memory; they're just covered up. In mixed mode nothing shows them, so those 1,280 bytes, BITMAP × 256 + `$1A40` to BITMAP × 256 + `$1F3F`, are free RAM for tables and variables. With the 192 bytes after the bitmap in its last page, that's 1,472 bytes: `$3A40-$3FFF` at the default address. Clear the bitmap with care, then: 8,000 bytes, not 32 whole pages, as the listing above does.
+**How many rows.** Four is what TEXTROWS holds at reset. Store another number there and that many rows of text show under the bitmap, the last ones of the screen, with eight lines fewer of picture for each: 1 leaves bitmap lines 0-191 and shows row 24 alone, and 0 leaves the whole bitmap and no text, the same picture as bit 1 without bit 2. It takes 25 at most, which is all text. BASIC's `GR` *n* stores it for you (chapter 2). The video chip looks at TEXTROWS on every line, as it does at everything, so a program that changes it as the beam goes down can have text in the middle of the picture too (chapter 9).
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C024` | TEXTROWS | In mixed mode, the rows of text under the bitmap: 0 to 25. 4 at reset. |
+
+The bitmap's bottom 32 lines are still in memory; they're just covered up. In mixed mode with its four rows nothing shows them, so those 1,280 bytes, BITMAP × 256 + `$1A40` to BITMAP × 256 + `$1F3F`, are free RAM for tables and variables. With the 192 bytes after the bitmap in its last page, that's 1,472 bytes: `$3A40-$3FFF` at the default address. Clear the bitmap with care, then: 8,000 bytes, not 32 whole pages, as the listing above does.
 
 **Where the bitmap can be.** BITMAP can point anywhere. Point it past the memory a machine has (`$40` or above on a UNC 16) and the video chip reads `$FF`: a screen of solid ink.
 
@@ -1747,9 +1800,43 @@ To tell the two apart, look at the B bit in the copy of P on the stack. At the v
         AND #%00010000  ; B: non-zero means BRK
 ```
 
-### NMI
+### NMI: the RESTORE key
 
-The vector at `$FFFA` is reserved for a non-maskable interrupt. Nothing in the UNC 64 generates one.
+The processor has a second interrupt line, the **non-maskable interrupt**, and one thing is wired to it: the RESTORE key. RESTORE isn't read like the other keys. It isn't in KBD or the matrix (chapter 11). Pressing it interrupts the processor, once for each press, however long it's held.
+
+An NMI is taken like an IRQ, with three differences. It doesn't ask the I flag: `SEI` can't keep it out. It goes through the vector at `$FFFA`, not `$FFFE`. And it wakes a processor stopped by `HLT`.
+
+1. The processor finishes the instruction it's on.
+2. It pushes PC (high byte first), then P with the B bit clear.
+3. It sets I.
+4. It jumps to the address stored at `$FFFA-$FFFB`.
+
+That takes 6 cycles. The ROM's handler there does `JMP ($0316)`, 5 more, and `$0316-$0317`, NMIVEC, is yours to change, as IRQVEC is. `RTI` goes back to where the program was.
+
+Woken from a `HLT`, the processor pushes the address of the `HLT` itself, so `RTI` runs the `HLT` again and the processor stops again: an NMI doesn't set a halted program going by accident. A **jammed** processor (chapter 4) stays jammed. Only a reset helps that.
+
+**STOP and RESTORE.** The handler the ROM puts in NMIVEC looks at the STOP key (bit 7 of the matrix's row 8). If STOP isn't down, it returns: RESTORE alone does nothing. If it is, the handler never returns to your program. It:
+
+1. Points IRQVEC and NMIVEC back at the ROM's own handlers.
+2. Sets the border and background to black, VMODE to 0 (the text screen, 128 glyphs, the blinking cursor) and CHARSET to `$D0`, the ROM's characters.
+3. Turns every interrupt source off (IRQ_ENABLE 0) and acknowledges what's waiting.
+4. Stops the speaker (SPEAKER 0) and the tape's motor.
+5. On the video board: SPRTAB 0, which is no sprites (chapter 15); the layer, the scroll and the 4-colour bitmap off; COLOUR3, the colour of text, white.
+6. Clears the screen, empties the stack, clears I, and goes to BASIC's `READY.`.
+
+Memory isn't touched. The BASIC program and its variables are as they were, and so is your machine language, wherever it is: `SYS` will call it again. So STOP and RESTORE is the way out of a program that STOP alone can't reach, one that never looks at the keyboard or has halted, and you lose nothing but the picture.
+
+A program that wants RESTORE for itself points NMIVEC at its own handler, which ends with `RTI`. While it holds the vector, STOP and RESTORE is its business too, and the reset switch is the only way out it can't close.
+
+```text
+NMIVEC  = $0316
+        LDA #<pause
+        STA NMIVEC
+        LDA #>pause
+        STA NMIVEC+1    ; RESTORE now calls pause, at any moment
+```
+
+An NMI can arrive between any two instructions, in the middle of anything, even inside your IRQ handler. Keep the handler short, and save what it uses.
 
 ---
 
@@ -1771,10 +1858,12 @@ When you press a key, its code goes into KBD with bit 7 set. Reading `$C010` lea
 | Digits and punctuation | Their ASCII codes, `$20-$5F` |
 | RETURN | 13 |
 | DELETE | 8 |
+| INSERT (shift and DELETE) | 20 |
 | STOP | 3 |
+| RESTORE | none: it interrupts the processor (chapter 10) |
 | Cursor left, right, up, down | 28, 29, 30, 31 |
 
-UNC BASIC looks for STOP before every statement it runs, and stops the program with `BREAK IN` and the line number. Your own machine-language programs see STOP as code 3, like any other key, and can do what they like with it. BASIC's line editor ignores the cursor keys; games are welcome to them. (Printed with CHROUT or stored on the screen, codes 28-31 are line-drawing glyphs, like every code below 32.)
+UNC BASIC looks for STOP before every statement it runs, and stops the program with `BREAK IN` and the line number. Your own machine-language programs see STOP as code 3, like any other key, and can do what they like with it. BASIC's screen editor moves its cursor with the cursor keys and opens a space with INSERT (chapter 2); while a program runs they're the program's, and games are welcome to them. (Printed with CHROUT or stored on the screen, codes 28-31 are line-drawing glyphs, like every code below 32.)
 
 The keyboard remembers one key. If a program doesn't take a key before the next one arrives, the first is lost.
 
@@ -1810,9 +1899,9 @@ HELD shows one key. A game often wants more: turn while thrusting, and fire whil
 | 5 | `$C065` | `H` | `I` | `J` | `K` | `L` | `M` | `N` | `O` |
 | 6 | `$C066` | `P` | `Q` | `R` | `S` | `T` | `U` | `V` | `W` |
 | 7 | `$C067` | `X` | `Y` | `Z` | `[` | `\` | `]` | `^` | `_` |
-| 8 | `$C068` | LEFT | RIGHT | UP | DOWN | RETURN | DELETE | | STOP |
+| 8 | `$C068` | LEFT | RIGHT | UP | DOWN | RETURN | DELETE | INSERT | STOP |
 
-Rows 0-7 are the codes `$20-$5F` in order: the key with code *c* is bit *c* AND 7 of row (*c* - `$20`) / 8. Row 8 holds the cursor keys in bits 0-3 (code - 28), RETURN, DELETE, and STOP in bit 7, where `BIT $C068` puts it in N: `BMI` and the player wants out. Bit 6 of row 8 is always 0.
+Rows 0-7 are the codes `$20-$5F` in order: the key with code *c* is bit *c* AND 7 of row (*c* - `$20`) / 8. Row 8 holds the cursor keys in bits 0-3 (code - 28), RETURN, DELETE, INSERT, and STOP in bit 7, where `BIT $C068` puts it in N: `BMI` and the player wants out.
 
 ```asm
 ; Read held keys from the matrix: A, D and SPACE, all at once.
@@ -2214,7 +2303,7 @@ The top 8K of memory, `$E000-$FFFF`, is the **system ROM**: the program that run
 ### What it does at start-up
 
 1. Sets the stack pointer to `$FF`.
-2. Points the interrupt hook at `$0314` to its own handler.
+2. Points the interrupt hooks, IRQVEC at `$0314` and NMIVEC at `$0316`, to its own handlers.
 3. Sets the border and background to black.
 4. Checks for the 64K expansion by writing `$55` to `$4000` and reading it back. Sets RAMTOP at `$0203` to `$40` (16K) or `$C0` (64K).
 5. Empties BASIC's program and variables, and seeds RND.
@@ -2246,7 +2335,7 @@ Call the ROM's routines with `JSR` through the **jump table** at `$FF00`. The ad
 
 The routines don't promise to keep the flags.
 
-Printing doesn't draw a cursor. CHROUT, PRSTR, PRHEX, PRDEC and PRNUM put characters on the screen and move CURX and CURY on, and that's all: the screen shows exactly what you printed. GETKEY doesn't draw one either. The blinking cursor you see at `READY.` belongs to BASIC's line editor ("The line editor's cursor", below).
+Printing doesn't draw a cursor. CHROUT, PRSTR, PRHEX, PRDEC and PRNUM put characters on the screen and move CURX and CURY on, and that's all: the screen shows exactly what you printed. GETKEY doesn't draw one either. The blinking cursor you see at `READY.` belongs to BASIC's screen editor ("The screen editor's cursor", below).
 
 **PRDEC** prints a 16-bit number as an unsigned decimal: a score, a count, an address. It uses BASIC's workspace in the fast page (`$E4-$E5` and `$F0-$F1`), so keep your own variables out of `$D0-$FE` when you call it, as with the other routines.
 
@@ -2374,9 +2463,13 @@ CHROUT prints at the cursor and moves the cursor on. Some codes do something ins
 
 After column 39 the cursor moves to the next line. Below row 24 the screen scrolls up one row. Nothing is drawn at the cursor and nothing there is rubbed out: a new line leaves the rest of the old line as it was.
 
-### The line editor's cursor
+CHROUT also keeps the screen editor's note of which rows belong together (LINK, below): a row the cursor wrapped onto carries on the line of the row above, up to three rows, and a row that code 13 moved to starts a line of its own. That's how RETURN on a listed line knows where the line ends. Storing straight to screen memory leaves the notes alone.
 
-The cursor is part of BASIC's line editor, not of printing: it's there only while the machine is waiting for you to type. At `READY.` and at an `INPUT`, the line editor shows a cursor (code `$A0`, a reversed space, which the video chip blinks: chapter 8) where the next key will go, keeping the character that was there in CURSAV (`$020F`). It moves the cursor along as you type, and when it stops waiting it takes it away and puts the character back: on RETURN, and on STOP. So by the time `RUN` starts a program, or `LOAD` starts the tape, the cursor has gone, and a running program has a screen with no cursor on it unless it's waiting at `INPUT`.
+### The screen editor's cursor
+
+The cursor is part of BASIC's screen editor, not of printing: it's there only while the machine is waiting for you to type. At `READY.` and at an `INPUT`, the editor shows a cursor (code `$A0`, a reversed space, which the video chip blinks: chapter 8) where the next key will go, keeping the character that was there in CURSAV (`$020F`). It moves the cursor along as you type, and when it stops waiting it takes it away and puts the character back: on RETURN, and on STOP. So by the time `RUN` starts a program, or `LOAD` starts the tape, the cursor has gone, and a running program has a screen with no cursor on it unless it's waiting at `INPUT`.
+
+The same editor reads every line BASIC waits for (chapter 2, "The screen editor"). It keeps three things in memory. LINK (`$03DA-$03F2`) has a byte for each row of the screen: 1 if the row carries on the line of the row above, 0 if a line starts on it. Clearing the screen sets them all to 0, scrolling moves them up with their rows, and row 0's is always 0. RLCOL and RLROW (`$03D8-$03D9`) are where the cursor was when the editor began to wait: RETURN on that line reads from that column, which is how `INPUT` leaves out its prompt. RLMOV (`$03F3`) is 0 until a cursor key or INSERT is pressed: while it's 0, RETURN takes what was typed, from RLCOL to the cursor. Whenever BASIC prints `READY.` it reads row 8 of the keyboard matrix (chapter 11) and waits while a cursor key is down.
 
 A program started from the Machine Room starts on BASIC's screen just as BASIC left it, `READY.` and all (chapter 6), but without the cursor: the loader takes it away, putting back what was under it. Clear the screen first if you want it empty.
 
@@ -2384,9 +2477,9 @@ A program started from the Machine Room starts on BASIC's screen just as BASIC l
 
 | Routine | Cycles, including the `JSR` |
 |---|---|
-| CLS | about 6,400 |
+| CLS | about 6,700 |
 | CHROUT | about 125, on any row |
-| CHROUT, when it scrolls | about 19,000: nearly a whole frame |
+| CHROUT, when it scrolls | about 18,400: nearly a whole frame |
 | GETKEY, with a key waiting | 27 |
 | PRHEX | about 285 |
 | PRDEC | about 320 for one digit, about 1,700 for 65535 |
@@ -2411,11 +2504,15 @@ These figures are for ROM Rev A, and a later ROM may be faster. The jump-table a
 | `$0201` | CURY | Cursor row, 0-24. |
 | `$0202` | TMPA | Scratch. |
 | `$0203` | RAMTOP | High byte of the first address past memory: `$40` or `$C0`. |
-| `$020F` | CURSAV | The character under the line editor's cursor. |
+| `$020F` | CURSAV | The character under the screen editor's cursor. |
 | `$0314-$0315` | IRQVEC | The interrupt handler's address. |
+| `$0316-$0317` | NMIVEC | The NMI handler's address: the RESTORE key (chapter 10). |
 | `$03D0-$03D7` | NUMBUF | NUMSTR's eight digits. |
+| `$03D8-$03D9` | RLCOL, RLROW | The column and row where the screen editor began to wait. |
+| `$03DA-$03F2` | LINK | A byte a row: 1 if the row carries on the line of the row above. |
+| `$03F3` | RLMOV | Not 0 once the screen editor's cursor has been moved. |
 
-UNC BASIC also uses `$D0-$F6` in the fast page and most of `$0204-$03C8`; Appendix D lists every byte.
+UNC BASIC also uses `$D0-$F6` in the fast page and most of `$0204-$03F3`; Appendix D lists every byte.
 
 Move the cursor by storing to CURX and CURY. The next CHROUT prints there.
 
@@ -2425,7 +2522,7 @@ Keep your programs and data out of `$0200-$03FF`, and out of `$D0-$FE` when you 
 
 | Address | Vector | Points to |
 |---|---|---|
-| `$FFFA` | NMI | Reserved. |
+| `$FFFA` | NMI | `JMP ($0316)`: the RESTORE key (chapter 10). |
 | `$FFFC` | Reset | The start-up code. |
 | `$FFFE` | IRQ and BRK | `JMP ($0314)`. |
 
@@ -2705,11 +2802,13 @@ At reset SPRBANK is `$38`, so image 0 is at `$3800`, image 1 at `$3840`, and ima
 
 | Address | Register | Read and write |
 |---|---|---|
-| `$C0A0` | SPRTAB | High byte of the sprite table's address. `$37` at reset. |
+| `$C0A0` | SPRTAB | High byte of the sprite table's address. `$37` at reset. 0 is no table: the sprites are off. |
 | `$C0A1` | SPRBANK | High byte of the images' bank. `$38` at reset. |
 | `$C0A4` | SPRHIT | Read only. Sprites that have touched another sprite (see "Collisions"). |
 | `$C0A5` | SPRHITBG | Read only. Sprites that have touched the picture. |
 | `$C0A6` | SPRLINE | Read only. Bit 7: some line had more than eight sprites (see "Thirty-two, eight a line"). |
+
+**All of them off.** SPRTAB 0 means there is no table: the board shows no sprites and reports no collisions, whatever the fast page holds, and the entries in memory keep their bit 7s for when the table is back. It's what STOP and RESTORE do (chapter 10), so that `READY.` isn't under a fleet of ships. A program that shows sprites should say where its table is when it starts, `LDA #$37`, `STA SPRTAB` (in BASIC, `POKE 49312,55`), even when that's where the board puts it at reset: then it works the second time too.
 
 The position is the sprite's top-left corner, in pixels of the 320 × 200 picture: the bitmap's own coordinates. The board doesn't care whether the screen shows text or the bitmap.
 
@@ -3014,7 +3113,7 @@ byte  = BITMAP * 256 + y * 40 + x / 4         x from 0 to 159
 shift = 6 - 2 * (x AND 3)                     the pixel is (byte >> shift) AND 3
 ```
 
-The pixels are fat, as they were on every colour home computer of the era: colour costs resolution. Mixed mode (VMODE bit 2) works as before, with text rows 21-24 below the bitmap's top 168 lines. Without VMODE bit 1, COLOURMODE changes nothing.
+The pixels are fat, as they were on every colour home computer of the era: colour costs resolution. Mixed mode (VMODE bit 2) works as before, with TEXTROWS rows of text below the bitmap: at reset rows 21-24, below its top 168 lines. Without VMODE bit 1, COLOURMODE changes nothing.
 
 ```asm
 ; Four colours on the bitmap: four bands, colour 0 to colour 3.
@@ -3276,7 +3375,7 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 |---|---|---|
 | `$0000-$00FF` | 256 | **Fast page.** `$D0-$F6` UNC BASIC; `$F7-$FE` the screen routines' pointers. |
 | `$0100-$01FF` | 256 | **Stack.** |
-| `$0200-$03FF` | 512 | **System variables** and BASIC's workspace (Appendix D). `$0314-$0315` is the IRQ vector. The rest is reserved for future ROMs. |
+| `$0200-$03FF` | 512 | **System variables** and BASIC's workspace (Appendix D). `$0314-$0315` is the IRQ vector and `$0316-$0317` the NMI's. The rest is reserved for future ROMs. |
 | `$0400-$07E7` | 1,000 | **Screen memory.** 40 × 25 screen codes, row by row. |
 | `$07E8-$07FF` | 24 | Free. |
 | `$0800-$3FFF` | 14K | **Your programs.** BASIC programs start at `$0800`; machine-language programs load there too unless they say otherwise. While the bitmap is on, it takes 8,000 bytes from BITMAP × 256: at reset, `$2000-$3F3F`. The video board (chapter 15) reads its sprite table from SPRTAB × 256 (at reset, `$3700-$377F`), its sprite images from SPRBANK × 256 (`$3800`) and its layer from LAYERPAGE × 256 (`$3C00-$3FE7`). |
@@ -3290,7 +3389,7 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 
 | Address | Name | Read | Write | Chapter |
 |---|---|---|---|---|
-| `$C000` | VMODE | Video mode | Bit 0: 256-glyph character set. Bit 1: bitmap. Bit 2: mixed (bitmap above, text rows 21-24 below). Bit 3: steady cursor (`$A0` doesn't blink). All 0 at reset | 8 |
+| `$C000` | VMODE | Video mode | Bit 0: 256-glyph character set. Bit 1: bitmap. Bit 2: mixed (bitmap above, the last TEXTROWS text rows below). Bit 3: steady cursor (`$A0` doesn't blink). All 0 at reset | 8 |
 | `$C001` | RASTER | Current raster line, bits 0-7; latches bit 8 for RASTER_HI | | 9 |
 | `$C002` | RASTER_HI | Bit 0: raster line bit 8, as latched by the last read of RASTER | | 9 |
 | `$C003` | RASTER_CMP | Compare line | Compare line (0-255) | 10 |
@@ -3304,6 +3403,7 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$C021` | BACKGROUND | Background colour | Background colour, 0-15 | 8 |
 | `$C022` | CHARSET | Character set page | Character set page; `$D0` at reset | 8 |
 | `$C023` | BITMAP | Bitmap page | Bitmap page; `$20` at reset | 8 |
+| `$C024` | TEXTROWS | Text rows under the bitmap in mixed mode | 0-25; 4 at reset | 8 |
 | `$C030` | BEEPER | | Any value flips SPEAKER bit 1 | 12 |
 | `$C031` | SPEAKER | Bit 0 gate, bit 1 data, bit 5 the timer's output | Bit 0: timer gate. Bit 1: speaker data; BEEPER flips it | 12 |
 | `$C032` | TIMER_LO | As written | Timer divisor, low byte | 12 |
@@ -3316,7 +3416,7 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$C052` | SHIFT_OUT | The window shifted right by SHIFT_AMOUNT, low byte | | 8 |
 | `$C053` | SHIFT_FLIP | | Pushes a byte with its bits reversed | 8 |
 | `$C060-$C068` | KEYS | Keyboard matrix, rows 0-8: 1 while a key is down | | 11 |
-| `$C0A0` | SPRTAB | The sprite table's page: 32 entries of Y, X, image, attributes. `$37` at reset. Video board, | As read | 15 |
+| `$C0A0` | SPRTAB | The sprite table's page: 32 entries of Y, X, image, attributes. `$37` at reset; 0 for no sprites. Video board, | As read | 15 |
 | `$C0A1` | SPRBANK | The sprite images' page: image *p* at SPRBANK × 256 + *p* × 64. `$38` at reset | As read | 15 |
 | `$C0A4` | SPRHIT | Bit *n*: table entry *n* (0-7) touched another sprite since the last read; reading clears it | | 15 |
 | `$C0A5` | SPRHITBG | Bit *n*: table entry *n* (0-7) touched the picture (not colour 0) since the last read; reading clears it | | 15 |
@@ -3394,7 +3494,7 @@ Rows are the high nibble, columns the low nibble. Blank cells are not instructio
 |---|---|---|---|---|---|
 | `BRK` | $00 | 1 | 6 | Break: push PC and status (B set), jump through $FFFE | I |
 | `NOP` | $01 | 1 | 2 | No operation | - |
-| `HLT` | $02 | 1 | 2 | Halt the processor until reset | - |
+| `HLT` | $02 | 1 | 2 | Halt the processor until reset, or an NMI | - |
 | `RTS` | $03 | 1 | 6 | Return from subroutine | - |
 | `RTI` | $04 | 1 | 6 | Return from interrupt: pull status, then PC | all |
 | `JSR $nnnn` | $05 | 3 | 6 | Jump to subroutine: push the return address | - |
@@ -3552,13 +3652,13 @@ Rows are the high nibble, columns the low nibble. Blank cells are not instructio
 
 The next free slot is `$FF24`.
 
-The ROM doesn't use the timer, the shifter or the keyboard matrix, and leaves SPEAKER at 0. NOISE (`$C034`, chapter 12) is the hardware's own random byte: faster than RND, and the way to seed it.
+The ROM doesn't use the timer or the shifter, and leaves SPEAKER at 0. Of the keyboard matrix it reads only row 8, at `READY.`, to wait for the cursor keys to be let go. NOISE (`$C034`, chapter 12) is the hardware's own random byte: faster than RND, and the way to seed it.
 
 ### Vectors
 
 | Address | Vector | ROM Rev A value |
 |---|---|---|
-| `$FFFA-$FFFB` | NMI | Reserved |
+| `$FFFA-$FFFB` | NMI | `JMP ($0316)` |
 | `$FFFC-$FFFD` | Reset | Start-up code |
 | `$FFFE-$FFFF` | IRQ and BRK | `JMP ($0314)` |
 
@@ -3584,7 +3684,7 @@ The ROM doesn't use the timer, the shifter or the keyboard matrix, and leaves SP
 | `$020B-$020C` | SEED | RND state, shared by BASIC's `RND` and the jump table's RND; RNDSEED sets it |
 | `$020D` | INKM | The current `INK` |
 | `$020E` | GFXS | Graphics scratch |
-| `$020F` | CURSAV | The character under the line editor's cursor, put back when it stops waiting |
+| `$020F` | CURSAV | The character under the screen editor's cursor, put back when it stops waiting |
 | `$0210-$025F` | GOSTK | GOSUB stack: 16 frames of 5 bytes |
 | `$0260-$0293` | VARS | Variables `A`-`Z`, 2 bytes each, low byte first |
 | `$0294-$02E3` | FORSTK | FOR stack: 8 frames of 10 bytes |
@@ -3597,9 +3697,14 @@ The ROM doesn't use the timer, the shifter or the keyboard matrix, and leaves SP
 | `$0310-$0311` | DATAP | `READ`: where the next `DATA` item starts. The high byte is 0 before the first `READ`, and after `RESTORE`, `RUN` and `NEW` |
 | `$0312-$0313` | DATAL | `READ`: the line that item is on |
 | `$0314-$0315` | IRQVEC | Interrupt handler address |
+| `$0316-$0317` | NMIVEC | NMI handler address: the RESTORE key |
 | `$0320-$0398` | IBUF | The line being typed, 120 characters and a 0 |
 | `$03A0-$03C8` | INBUF | INPUT's line, 40 characters and a 0 |
 | `$03D0-$03D7` | NUMBUF | NUMSTR's eight ASCII digits, the highest first, with leading zeros |
+| `$03D8` | RLCOL | The screen editor: the column the cursor was in when it began to wait |
+| `$03D9` | RLROW | The screen editor: the row it was on, kept right when the screen scrolls |
+| `$03DA-$03F2` | LINK | The screen editor: a byte for each row, 1 if the row carries on the line of the row above, 0 if a line starts on it |
+| `$03F3` | RLMOV | The screen editor: 0 until a cursor key or INSERT is pressed; then RETURN takes the line off the screen |
 
 ---
 
@@ -3689,7 +3794,7 @@ If you know the 6502, you know the UNC-1. Mnemonics, registers, flags, the stack
 | `JMP ($xxFF)` | Wraps within the page | Reads the right bytes |
 | `BRK` | 2 bytes, 7 cycles | 1 byte, 6 cycles; `RTI` returns to the next byte |
 | Interrupt entry | 7 cycles | 6 cycles |
-| `HLT` | None | Stops until reset |
+| `HLT` | None | Stops until reset, or an NMI |
 | Undefined opcodes | Do various things | Jam the processor |
 | `BIT #imm`, `STZ`, `PHX` etc. | 65C02 only | None |
 | `INC abs,X`, `DEC abs,X`, shifts `abs,X` | Yes | None |

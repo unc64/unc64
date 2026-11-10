@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use crate::cpu::CpuState;
 use crate::isa::OPCODES;
 use crate::machine::{
-    io, Machine, BITMAP_STRIDE, MIXED_SPLIT, PIXELS_H, PIXELS_W, ROM_START, SCREEN, SCREEN_COLS, SYSTEM_ROM,
+    io, Machine, BITMAP_STRIDE, PIXELS_H, PIXELS_W, ROM_START, SCREEN, SCREEN_COLS, SYSTEM_ROM,
 };
 
 /// Where each byte was last touched: stamped in frames, counted from 1 when the watch began.
@@ -162,7 +162,7 @@ impl Machine {
         }
         let (x, y) = (x - sx, y - sy);
         let vmode = self.mem.io.vmode;
-        let split = if vmode & io::VMODE_MIXED != 0 { MIXED_SPLIT } else { PIXELS_H };
+        let split = self.mem.bitmap_lines();
         let bit = 7 - (x & 7) as u8;
         if vmode & io::VMODE_BITMAP != 0 && y < split {
             let base = (self.mem.io.bitmap as u16) << 8;

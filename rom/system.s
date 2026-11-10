@@ -33,9 +33,18 @@ DATAP   = $0310         ; READ: 2 bytes, where the next DATA item starts; high b
                         ;   the first READ and after RESTORE (and RUN, NEW)
 DATAL   = $0312         ; READ: 2 bytes, the line that DATA item is on
 IRQVEC  = $0314         ; IRQ handler, called through RAM so programs can hook it
+NMIVEC  = $0316         ; and the NMI's: the RESTORE key
 IBUF    = $0320         ; the line you type: 120 characters + 0, $0320-$0398
 INBUF   = $03A0         ; INPUT's line: 40 characters + 0, $03A0-$03C8
 NUMBUF  = $03D0         ; NUMSTR's eight digits, $03D0-$03D7
+RLCOL   = $03D8         ; READLN: the column and
+RLROW   = $03D9         ;   the row it began at (SCROLL keeps the row right)
+RLMOV   = $03F3         ; READLN: not 0 once the cursor has been moved, so the line is
+                        ;   the screen's and no longer just what was typed
+LINK    = $03DA         ; 25 bytes, one a row, $03DA-$03F2: 1 if the row carries on the
+                        ;   line of the row above (it wrapped), 0 if a line starts on it.
+                        ;   Row 0's is always 0.
+K_INS   = 20            ; the INSERT key
 SEEDBOOT = $ACE1        ; RND's start-up seed
 PROG    = $0800         ; BASIC program text starts here
 
@@ -73,11 +82,13 @@ STRP    = $FD
 
 KBD     = $C010
 KBDSTRB = $C011
+KEYS8   = $C068         ; the keyboard matrix's row 8: the cursor keys in bits 0-3
 BORDER  = $C020
 BG      = $C021
 IRQST   = $C005
 VMODE   = $C000
 BMREG   = $C023         ; high byte of the bitmap's address
+TROWS   = $C024         ; TEXTROWS: the text rows under the bitmap in mixed mode, 4 at reset
 FRAME   = $C006         ; frame counter: one up every frame
 SPEAKER = $C031         ; bit 0 the timer's gate, bit 1 the speaker's data
 TIMER_LO = $C032        ; the timer's divisor
@@ -88,6 +99,14 @@ TDATA   = $C041         ; the byte off the tape, reading takes it; recording, th
 MOTOR   = $04           ; TAPE bit 2: write it to run the motor
 RECPLAY = $09           ; TAPE bits 0 and 3: RECORD and PLAY down
 ROOM    = $10           ; TAPE bit 4: recording, and TDATA is empty
+IRQEN   = $C004
+CHARSET = $C022
+SPRTAB  = $C0A0         ; the video board's sprite table's page: 0 for no sprites
+SCROLLX = $C0A8
+SCROLLY = $C0A9
+LAYER   = $C0AA
+COLMODE = $C0B0
+COLOUR3 = $C0B3         ; the colour of text
 VBOARD  = $C0BF         ; the video board's id: $15 with the board in, $FF without
 
 ; Tokens: $80 + position in KWTAB. Statements first, in STTAB order.
@@ -122,13 +141,7 @@ E_DATA  = 7
         .org $E000
 RESET:  LDX #$FF
         TXS
-        LDA #<DEFIRQ
-        STA IRQVEC
-        LDA #>DEFIRQ
-        STA IRQVEC+1
-        LDA #0
-        STA BORDER
-        STA BG
+        JSR VECS
         STA RUNFLG
         LDA #$40        ; probe for the 64K expansion: does $4000 hold a value?
         STA RAMTOP
@@ -196,7 +209,7 @@ CHT:    CMP FRAME
 
 ; ---------------------------------------------------------------- screen and keyboard
 
-; CLS: clear the screen, cursor home.
+; CLS: clear the screen, cursor home. Changes A and X.
 CLS:    LDA #$20
         LDX #0
 CLSL:   STA SCREEN,X
@@ -208,6 +221,10 @@ CLSL:   STA SCREEN,X
         LDA #0
         STA CURX
         STA CURY
+        LDX #24         ; every row starts a line
+CLSK:   STA LINK,X
+        DEX
+        BPL CLSK
         RTS
 
 ; CHROUT: print the character in A. 13 = new line, 12 = clear screen, 8 = backspace.
@@ -234,15 +251,25 @@ CHROUT: STA TMPA
         LDA CURX
         CMP #40
         BNE CDONE1      ; still on this row: PTR is right
-NEWLN:  LDA #0
+        LDX CURY        ; it wrapped: the next row carries the line on, unless this is
+        LDA LINK,X      ; the line's third row already (a line is three rows at most)
+        BEQ WRAP1
+        LDA LINK-1,X
+WRAP1:  EOR #1
+        BPL NEWL1
+NEWLN:  LDA #0          ; a new line starts on the next row
+NEWL1:  PHA
+        LDA #0
         STA CURX
         INC CURY
         LDA CURY
         CMP #25
-        BNE CDONE
+        BNE NEWL2
         JSR SCROLL
-        LDA #24
-        STA CURY
+        DEC CURY
+NEWL2:  LDX CURY
+        PLA
+        STA LINK,X
         JMP CDONE
 BKSP:   LDA CURX
         BEQ CDONE
@@ -292,43 +319,28 @@ CURPTR: LDX CURY
         STA PTR+1
         RTS
 
-; SCROLL: move rows 1-24 up one row, clear row 24. 960 bytes in four 240-byte chunks.
-SCROLL: LDA #<[SCREEN+40]
-        STA SRC
-        LDA #>[SCREEN+40]
-        STA SRC+1
-        LDA #<SCREEN
-        STA DST
-        LDA #>SCREEN
-        STA DST+1
-        LDX #4
-SCHUNK: LDY #0
-SCOPY:  LDA (SRC),Y
-        STA (DST),Y
-        INY
-        CPY #240
-        BNE SCOPY
-        CLC
-        LDA SRC
-        ADC #240
-        STA SRC
-        LDA SRC+1
-        ADC #0
-        STA SRC+1
-        CLC
-        LDA DST
-        ADC #240
-        STA DST
-        LDA DST+1
-        ADC #0
-        STA DST+1
-        DEX
-        BNE SCHUNK
+; SCROLL: move rows 1-24 up one row, clear row 24, and the rows' links with them.
+; The caller says whether row 24 carries a line on (LINK+24). Changes A, X, Y, SRC, DST.
+SCROLL: LDX #0
+SCROW:  JSR ROWSD       ; SRC = row X, DST = the row below
+        LDA LINK+1,X
+        STA LINK,X
+        LDY #39
+SCOPY:  LDA (DST),Y
+        STA (SRC),Y
+        DEY
+        BPL SCOPY
+        INX
+        CPX #24
+        BNE SCROW
         LDA #$20
         LDY #39
-SCLR:   STA SCREEN+960,Y
+SCLR:   STA (DST),Y
         DEY
         BPL SCLR
+        LDA #0          ; row 0 starts a line now
+        STA LINK
+        DEC RLROW       ; and the row READLN began on has moved up too
         RTS
 
 ; GETKEY: wait for a key, return its code in A.
@@ -364,6 +376,51 @@ HEXD:   CMP #10
 HEXD1:  ADC #$30
         JMP CHROUT
 
+; VECS: the interrupt vectors back to the ROM's own handlers, the border and background
+; black. Leaves A = 0.
+VECS:   LDA #<DEFIRQ
+        STA IRQVEC
+        LDA #>DEFIRQ
+        STA IRQVEC+1
+        LDA #<DEFNMI
+        STA NMIVEC
+        LDA #>DEFNMI
+        STA NMIVEC+1
+        LDA #0
+        STA BORDER
+        STA BG
+        RTS
+
+; The RESTORE key pulls the processor's NMI line. Alone it does nothing. With STOP held
+; (bit 7 of the matrix's row 8) it's the way out of anything: the machine's registers go
+; back to the way they are at switch-on (text, the ROM's characters, no interrupts, no
+; sound, the tape's motor off, the video board's sprites, layer, scroll and colour mode
+; off and its text white), the screen is cleared, and BASIC says READY. with the program
+; and its variables as they were.
+NMI:    JMP (NMIVEC)
+DEFNMI: BIT KEYS8
+        BMI RESTORE
+        RTI
+RESTORE: JSR VECS
+        STA VMODE
+        STA IRQEN
+        STA SPEAKER
+        STA TAPE
+        STA SPRTAB
+        STA LAYER
+        STA COLMODE
+        STA SCROLLX
+        STA SCROLLY
+        LDA #$FF
+        STA IRQST
+        LDA #$D0
+        STA CHARSET
+        LDA #1
+        STA COLOUR3
+        BIT KBDSTRB     ; (STOP itself isn't a key press BASIC should see)
+        JSR CLS
+        JMP WARM
+
 IRQ:    JMP (IRQVEC)
 DEFIRQ: PHA             ; acknowledge every source, or the IRQ line stays high forever
         LDA #$FF
@@ -378,77 +435,311 @@ CRIF:   LDA CURX
         JSR CHROUT
 CRIFX:  RTS
 
-; READLN: read a line into (BUFP), at most BUFN characters, zero-terminated.
-; Carry set if the STOP key (3) was pressed instead. The cursor shows only while it waits
-; for a key, so it's gone once the line is handed on, by RETURN or STOP.
-READLN: LDY #0
+; READLN: the screen editor. The cursor goes anywhere on the screen, and RETURN hands
+; over the line it is on, as the screen shows it: up to three rows, read into (BUFP), at
+; most BUFN characters, without the spaces after its end, zero-terminated. On the line
+; READLN began on, that's from the column it began at (after INPUT's prompt). A line
+; typed without moving the cursor is taken as typed (RLEND). Carry set if
+; the STOP key (3) was pressed instead. The cursor shows only while it waits for a key.
+READLN: LDA CURX
+        STA RLCOL
+        LDA CURY
+        STA RLROW
+        LDA #0
+        STA RLMOV
 RLKEY:  JSR CURON
         JSR GETKEY
-        JSR CUROFF
-        CMP #3
-        BEQ RLSTOP
+        JSR CUROFF      ; (PTR = the cursor's row)
         CMP #13
         BEQ RLEND
-        CMP #8
-        BEQ RLBS
-        CMP #$20
-        BCC RLKEY
-        CMP #$60
+        CMP #3
+        BNE RLK1
+        JMP RLSTOP
+RLK1:   CMP #8
+        BNE RLK2
+        JMP RLDEL
+RLK2:   CMP #K_INS
+        BNE RLK3
+        JMP RLINS
+RLK3:   CMP #$20
+        BCS RLK4
+        JMP RLCUR
+RLK4:   CMP #$60
         BCS RLKEY
-        CPY BUFN
-        BCS RLKEY       ; the line is full
-        STA (BUFP),Y
-        JSR CHROUT
-        INY
-        JMP RLKEY
-RLBS:   CPY #0
-        BEQ RLKEY
+        PHA             ; a character
+        LDX CURY
         LDA CURX
-        BNE RLBS1
-        ; at the left edge of a line that wrapped: its last character is at the end of the
-        ; row above. Rub it out there, and the cursor waits on it.
+        CMP #39
+        BNE RLC2
+        CPX #24         ; at the right edge: the line needs the next row
+        BEQ RLC1
+        LDA LINK+1,X
+        BNE RLC2        ; and has it
+RLC1:   JSR GROW
+        BCC RLC2
+        PLA             ; three rows, full: the last cell takes it and the cursor stays
+        LDY #39         ; (so the cursor no longer marks the end of what was typed)
+        STA (PTR),Y
+        STA RLMOV
+        BNE RLKEY
+RLC2:   PLA
+        JSR CHROUT
+        JMP RLKEY
+
+; RETURN. If the cursor was never moved, the line is what was typed: from where READLN
+; began to the cursor, whatever else a program left on the row. Once it has been moved,
+; the line is the screen's: the whole line the cursor is on.
+RLEND:  LDX CURY
+        LDA RLMOV
+        BNE RLSCR
+        LDA CURX        ; the cursor, counted from the start of the row READLN began on
+RLT0:   CPX RLROW
+        BEQ RLT1
+        CLC
+        ADC #40
+        DEX
+        BPL RLT0
+RLT1:   STA T1          ; T1: the cell after the last one to read
+        LDA ROWLO,X
+        STA PTR
+        LDA ROWHI,X
+        STA PTR+1
+        LDY RLCOL
+        BPL RLE2
+RLSCR:  LDA LINK,X      ; back to the line's first row
+        BEQ RLS1
+        DEX
+        BNE RLSCR
+RLS1:   STX CURY
+        JSR LEND        ; PTR = the first row, T1 = the line's last cell
+        INC T1
+        LDY #0
         LDA CURY
-        BEQ RLKEY       ; (the row above has scrolled away)
-        DEY
+        STX CURY        ; the cursor leaves from the line's last row
+        CMP RLROW
+        BNE RLE2
+        LDY RLCOL       ; on the row READLN began on: from where it began
+RLE2:   STY T2          ; T2: the next cell to read
+        LDA #0
+        STA T3          ; T3: characters stored
+        STA T3+1        ; T3+1: of them, up to the last that isn't a space
+RLE3:   LDY T2
+        CPY T1
+        BCS RLE5
+        LDA (PTR),Y
+        AND #$7F        ; reversed reads as plain
+        INC T2
+        LDY T3
+        CPY BUFN
+        BCS RLE5
+        STA (BUFP),Y
+        INY
+        STY T3
+        CMP #' '
+        BEQ RLE3
+        STY T3+1
+        BNE RLE3
+RLE5:   LDY T3+1
+        CLC
+RLOUT:  LDA #0
+        STA (BUFP),Y
+        PHP
+        LDA #13
+        JSR CHROUT
+        PLP
+        RTS
+RLSTOP: JSR LEND
+        STX CURY
+        LDY #0
+        SEC
+        BCS RLOUT
+
+; DELETE: rub out the character before the cursor, and pull the rest of the line left.
+RLDEL:  LDX CURY
+        LDA CURX
+        BNE RLD1
+        LDA LINK,X      ; at the left edge: back onto the row above, if it's the same line
+        BEQ RLD4
         DEC CURY
-        LDA #39
+        LDA #40
         STA CURX
-        TYA
-        PHA
-        JSR CURPTR
+RLD1:   DEC CURX
+        JSR LEND
+        LDY CURX
+RLD2:   CPY T1
+        BEQ RLD3
+        INY
+        LDA (PTR),Y
+        DEY
+        STA (PTR),Y
+        INY
+        BNE RLD2
+RLD3:   LDA #' '
+        STA (PTR),Y
+RLD4:   JMP RLKEY
+
+; INSERT: open a space at the cursor, pushing the rest of the line right. A line full to
+; its last cell takes another row; one of three rows doesn't open.
+RLINS:  STA RLMOV
+        JSR LEND
+        LDY T1
+        LDA (PTR),Y
+        CMP #' '
+        BEQ RLI1
+        JSR GROW
+        BCS RLD4
+        JSR LEND
+        LDY T1
+RLI1:   CPY CURX
+        BEQ RLD3
+        DEY
+        LDA (PTR),Y
+        INY
+        STA (PTR),Y
+        DEY
+        BPL RLI1
+
+; The cursor keys, 28-31: left, right, up, down. They stop at the screen's edges, and
+; under GR at the first row you can see.
+RLCUR:  STA RLMOV
+        CMP #29
+        BEQ RLRT
+        BCS RLVERT
+        CMP #28
+        BNE RLD4
+        LDA CURX        ; left
+        BNE RLL1
+        JSR TOPROW
+        BCS RLD4
+        DEC CURY
+        LDA #40
+        STA CURX
+RLL1:   DEC CURX
+        JMP RLKEY
+RLRT:   LDA CURX        ; right
+        CMP #39
+        BNE RLR1
+        LDA CURY
+        CMP #24
+        BEQ RLD4
+        INC CURY
+        LDA #$FF
+        STA CURX
+RLR1:   INC CURX
+        JMP RLKEY
+RLVERT: CMP #31
+        BEQ RLDN
+        JSR TOPROW      ; up
+        BCS RLD4
+        DEC CURY
+        JMP RLKEY
+RLDN:   LDA CURY        ; down
+        CMP #24
+        BEQ RLD4
+        INC CURY
+        JMP RLKEY
+
+; TOPROW: carry set if the cursor is on the top row: 0, or under GR the first that shows.
+TOPROW: LDA VMODE
+        AND #6
+        CMP #6
+        BNE TOP0
+        JSR GRTOP
+        BNE TOP1
+TOP0:   LDA #0
+TOP1:   CMP CURY
+        RTS
+
+; LEND: PTR = the cursor's row; T1 = the last cell of its line, counted from PTR (39, 79 or
+; 119: only the rows from the cursor's on count); X = that row. Changes A and Y.
+LEND:   JSR CURPTR
+        LDA #39
+LEN1:   CPX #24
+        BEQ LEN2
+        LDY LINK+1,X
+        BEQ LEN2
+        INX
+        CLC
+        ADC #40
+        CMP #119
+        BNE LEN1
+LEN2:   STA T1
+        RTS
+
+; GROW: give the line whose last row is X one more row, blank: the rows below move down
+; (the last one off the screen), or at the bottom everything moves up, the cursor with
+; it. Carry set, and nothing done, if the line has three rows. Changes everything but
+; CURX; PTR is stale after it.
+GROW:   LDA LINK,X
+        BEQ GROW1
+        LDA LINK-1,X
+        BNE GROWNO
+GROW1:  CPX #24
+        BNE GROW2
+        JSR SCROLL
+        DEC CURY
+        LDX #23
+        BNE GROW6
+GROW2:  STX T2
+        LDX #24
+GROW3:  DEX             ; rows 23 down to T2+1 each move to the row below
+        CPX T2
+        BEQ GROW5
+        JSR ROWSD
+        LDA LINK,X
+        STA LINK+1,X
+        LDY #39
+GROW4:  LDA (SRC),Y
+        STA (DST),Y
+        DEY
+        BPL GROW4
+        BMI GROW3
+GROW5:  INX             ; and row T2+1 is blank
+        JSR ROWSD
         LDY #39
         LDA #' '
-        STA (PTR),Y
-        PLA
-        TAY
-        JMP RLKEY
-RLBS1:  DEY
-        LDA #8          ; back, rub out, back
-        JSR CHROUT
-        LDA #' '
-        JSR CHROUT
-        LDA #8
-        JSR CHROUT
-        JMP RLKEY
-RLEND:  LDA #0
-        STA (BUFP),Y
-        LDA #13
-        JSR CHROUT
+GROW7:  STA (SRC),Y
+        DEY
+        BPL GROW7
+        DEX
+GROW6:  LDA #1
+        STA LINK+1,X
         CLC
         RTS
-RLSTOP: LDA #0
-        STA (BUFP),Y
-        LDA #13
-        JSR CHROUT
-        SEC
+GROWNO: SEC
+        RTS
+
+; ROWSD: SRC = row X, DST = the row below it.
+ROWSD:  LDA ROWLO,X
+        STA SRC
+        LDA ROWHI,X
+        STA SRC+1
+        LDA ROWLO+1,X
+        STA DST
+        LDA ROWHI+1,X
+        STA DST+1
         RTS
 
 ; ---------------------------------------------------------------- the shell
 
-READY:  JSR CRIF
+READY:  LDA TROWS       ; READY. and the cursor want two rows: a picture with fewer text
+        CMP #2          ; rows under it gets GR's four back, so they can be seen
+        BCS RDY1
+        LDA #4
+        STA TROWS
+RDY1:   JSR CRIF
         LDX #<MREADY
         LDY #>MREADY
         JSR PRSTR
+RDYW:   LDA KEYS8       ; a game may end with a cursor key still held to steer it: wait
+        AND #$0F        ; for it to be let go, and forget it, or the editor's cursor
+        BNE RDYW        ; would wander off with it
+        LDA KBD         ; (a key not yet taken has bit 7 set)
+        CMP #$80+28
+        BCC MAIN
+        CMP #$80+32
+        BCS MAIN
+        BIT KBDSTRB
 MAIN:   LDX #$FF
         TXS
         LDA #0
@@ -1435,15 +1726,30 @@ DOHELP: LDA VMODE
         STA VMODE
         LDA #12
         JSR CHROUT
-        LDX #<MHELP1
-        LDY #>MHELP1
-        JSR PRSTR
-        LDX #<MHELP2
-        LDY #>MHELP2
-        JSR PRSTR
-        LDX #<MHELP3
-        LDY #>MHELP3
-        JMP PRSTR
+        LDA #<MHELP
+        STA LP
+        LDA #>MHELP
+        STA LP+1
+HLP1:   LDY #0
+        LDA (LP),Y
+        BEQ HLPX
+        CMP #9
+        BNE HLP2
+        LDA #17         ; 9: on to column 17
+        STA CURX
+        BNE HLP4
+HLP2:   CMP #$81        ; a keyword's token
+        BCC HLP3
+        CMP #T_GET+1
+        BCS HLP3
+        JSR KWPRINT
+        JMP HLP4
+HLP3:   JSR CHROUT
+HLP4:   INC LP
+        BNE HLP1
+        INC LP+1
+        BNE HLP1
+HLPX:   RTS
 
 ; LIST [from][-[to]]
 DOLIST: LDA #0
@@ -1557,7 +1863,8 @@ XYARGS: JSR EXPR
         STA PX
         RTS
 
-; GR: bitmap on, below it four rows of text; both cleared.
+; GR [n]: bitmap on, below it n rows of text (four if n isn't given, none for 0); both
+; cleared.
 DOGR:   LDA RAMTOP      ; the bitmap goes in the top 8K of memory
         SEC
         SBC #$20
@@ -1569,6 +1876,15 @@ DOGR:   LDA RAMTOP      ; the bitmap goes in the top 8K of memory
         JMP ERROR
 GR1:    LDA T1
         STA BMREG
+        LDA #4          ; GR alone: four rows of text under the picture
+        STA ACC
+        JSR PEEKC       ; GR n: n rows, 0 for none (TEXTROWS takes 25 at most)
+        BEQ GR2
+        CMP #':'
+        BEQ GR2
+        JSR EXPR
+GR2:    LDA ACC
+        STA TROWS
         JSR GRCLR
         LDA #1
         STA INKM
@@ -1577,7 +1893,7 @@ GR1:    LDA T1
         STA VMODE
         RTS
 
-; GRCLR: clears the bitmap at BMREG and the text, cursor on row 21. GR and CLS.
+; GRCLR: clears the bitmap at BMREG and the text, cursor on the first text row. GR and CLS.
 GRCLR:  LDA BMREG
         STA GP+1
         LDA #0
@@ -1596,9 +1912,19 @@ GRC2:   STA (GP),Y
         BNE GRC2
         LDA #12
         JSR CHROUT
-        LDA #21         ; the cursor moves to row 21, the first one you can see
+        JSR GRTOP       ; the cursor moves to the first text row you can see
         STA CURY
         JMP CURPTR
+
+; GRTOP: A = the first text row that shows under the bitmap, 25 - TEXTROWS: 21 for GR's
+; four. With no rows, 24: the cursor has to be somewhere.
+GRTOP:  LDA #25
+        SEC
+        SBC TROWS
+        CMP #25
+        BCC GRTOPX
+        LDA #24
+GRTOPX: RTS
 
 ; TEXT: back to the text screen, cleared.
 DOTEXT: LDA VMODE
@@ -1629,19 +1955,35 @@ PADDR:  LDA PY+1
         LDA PX
         CMP #64
         BCS PAOFF
-PA1:    LDA PX+1        ; x / 8
+PA1:    LDA PY          ; y * 40 is (y / 8) * 320 + (y AND 7) * 40: the second from the
+        LSR A           ; text rows' table, whose SCREEN Q320HI takes off again
+        LSR A
+        LSR A
+        TAX
+        LDA PY
+        AND #7
+        TAY
+        CLC
+        LDA Q320LO,X
+        ADC ROWLO,Y
+        STA GP
+        LDA Q320HI,X
+        ADC ROWHI,Y
+        CLC
+        ADC BMREG       ; + the bitmap's address
+        STA GP+1
+        LDA PX+1        ; + x / 8
         LSR A
         LDA PX
         ROR A
         LSR A
         LSR A
-        LDY PY          ; + y * 40 + the bitmap's address
         CLC
-        ADC YOFFLO,Y
+        ADC GP
         STA GP
-        LDA YOFFHI,Y
-        ADC BMREG
-        STA GP+1
+        BCC PA2
+        INC GP+1
+PA2:
         LDA PX
         AND #7
         TAX
@@ -3181,27 +3523,14 @@ ROWHI:  .byte >[SCREEN+0*40], >[SCREEN+1*40], >[SCREEN+2*40], >[SCREEN+3*40], >[
         .byte >[SCREEN+15*40], >[SCREEN+16*40], >[SCREEN+17*40], >[SCREEN+18*40], >[SCREEN+19*40]
         .byte >[SCREEN+20*40], >[SCREEN+21*40], >[SCREEN+22*40], >[SCREEN+23*40], >[SCREEN+24*40]
 
-; Bitmap line offsets: y * 40, and the mask for each pixel of a byte.
-YOFFLO:  .byte <0, <40, <80, <120, <160, <200, <240, <280, <320, <360, <400, <440, <480, <520, <560, <600, <640, <680, <720, <760
-        .byte <800, <840, <880, <920, <960, <1000, <1040, <1080, <1120, <1160, <1200, <1240, <1280, <1320, <1360, <1400, <1440, <1480, <1520, <1560
-        .byte <1600, <1640, <1680, <1720, <1760, <1800, <1840, <1880, <1920, <1960, <2000, <2040, <2080, <2120, <2160, <2200, <2240, <2280, <2320, <2360
-        .byte <2400, <2440, <2480, <2520, <2560, <2600, <2640, <2680, <2720, <2760, <2800, <2840, <2880, <2920, <2960, <3000, <3040, <3080, <3120, <3160
-        .byte <3200, <3240, <3280, <3320, <3360, <3400, <3440, <3480, <3520, <3560, <3600, <3640, <3680, <3720, <3760, <3800, <3840, <3880, <3920, <3960
-        .byte <4000, <4040, <4080, <4120, <4160, <4200, <4240, <4280, <4320, <4360, <4400, <4440, <4480, <4520, <4560, <4600, <4640, <4680, <4720, <4760
-        .byte <4800, <4840, <4880, <4920, <4960, <5000, <5040, <5080, <5120, <5160, <5200, <5240, <5280, <5320, <5360, <5400, <5440, <5480, <5520, <5560
-        .byte <5600, <5640, <5680, <5720, <5760, <5800, <5840, <5880, <5920, <5960, <6000, <6040, <6080, <6120, <6160, <6200, <6240, <6280, <6320, <6360
-        .byte <6400, <6440, <6480, <6520, <6560, <6600, <6640, <6680, <6720, <6760, <6800, <6840, <6880, <6920, <6960, <7000, <7040, <7080, <7120, <7160
-        .byte <7200, <7240, <7280, <7320, <7360, <7400, <7440, <7480, <7520, <7560, <7600, <7640, <7680, <7720, <7760, <7800, <7840, <7880, <7920, <7960
-YOFFHI:  .byte >0, >40, >80, >120, >160, >200, >240, >280, >320, >360, >400, >440, >480, >520, >560, >600, >640, >680, >720, >760
-        .byte >800, >840, >880, >920, >960, >1000, >1040, >1080, >1120, >1160, >1200, >1240, >1280, >1320, >1360, >1400, >1440, >1480, >1520, >1560
-        .byte >1600, >1640, >1680, >1720, >1760, >1800, >1840, >1880, >1920, >1960, >2000, >2040, >2080, >2120, >2160, >2200, >2240, >2280, >2320, >2360
-        .byte >2400, >2440, >2480, >2520, >2560, >2600, >2640, >2680, >2720, >2760, >2800, >2840, >2880, >2920, >2960, >3000, >3040, >3080, >3120, >3160
-        .byte >3200, >3240, >3280, >3320, >3360, >3400, >3440, >3480, >3520, >3560, >3600, >3640, >3680, >3720, >3760, >3800, >3840, >3880, >3920, >3960
-        .byte >4000, >4040, >4080, >4120, >4160, >4200, >4240, >4280, >4320, >4360, >4400, >4440, >4480, >4520, >4560, >4600, >4640, >4680, >4720, >4760
-        .byte >4800, >4840, >4880, >4920, >4960, >5000, >5040, >5080, >5120, >5160, >5200, >5240, >5280, >5320, >5360, >5400, >5440, >5480, >5520, >5560
-        .byte >5600, >5640, >5680, >5720, >5760, >5800, >5840, >5880, >5920, >5960, >6000, >6040, >6080, >6120, >6160, >6200, >6240, >6280, >6320, >6360
-        .byte >6400, >6440, >6480, >6520, >6560, >6600, >6640, >6680, >6720, >6760, >6800, >6840, >6880, >6920, >6960, >7000, >7040, >7080, >7120, >7160
-        .byte >7200, >7240, >7280, >7320, >7360, >7400, >7440, >7480, >7520, >7560, >7600, >7640, >7680, >7720, >7760, >7800, >7840, >7880, >7920, >7960
+; Bitmap rows of eight lines: q * 320, the high bytes less SCREEN's (PADDR adds a text
+; row's address, which has it in), and the mask for each pixel of a byte.
+Q320LO: .rept 25, q
+        .byte <[q*320]
+        .endr
+Q320HI: .rept 25, q
+        .byte <[[>[q*320]]-[>SCREEN]]
+        .endr
 BITMSK: .byte $80, $40, $20, $10, $08, $04, $02, $01
 
 ; Statement handlers, in token order.
@@ -3335,63 +3664,70 @@ MSGFREE: .text " BYTES FREE"
 ; The HELP screen: rows 0-22, READY. under it. [Brackets] in the comments are reverse video
 ; (the bar on top and the headings): bit 7 set. The bar's gaps are $80, glyph $00 (blank)
 ; reversed, not $A0, which the video chip blinks as the cursor. A full row wraps by itself.
-MHELP1:
+; To fit, DOHELP reads two codes of its own: $81-$A6 is a keyword's token, spelled out as
+; LIST does (PRINT, $80, is the bar's gap, so it's written in letters), and 9 moves to
+; column 17, where each row's second half begins.
+MHELP:
         ; [ UNC BASIC REV A      MORE: MANUAL CH. 2]
         .byte $80, $D5, $CE, $C3, $80, $C2, $C1, $D3, $C9, $C3, $80, $D2, $C5, $D6, $80, $C1
         .byte $80, $80, $80, $80, $80, $80, $CD, $CF, $D2, $C5, $BA, $80, $CD, $C1, $CE, $D5
-        .byte $C1, $CC, $80, $C3, $C8, $AE, $80, $B2
-        ;
-        .byte $0D
+        .byte $C1, $CC, $80, $C3, $C8, $AE, $80, $B2, $0D
         ; [PROGRAMS]
         .byte $D0, $D2, $CF, $C7, $D2, $C1, $CD, $D3, $0D
         ;  10 PRINT "HI"   STORES THE LINE
-        .byte $20, $31, $30, $20, $50, $52, $49, $4E, $54, $20, $22, $48, $49, $22, $20, $20
-        .byte $20, $53, $54, $4F, $52, $45, $53, $20, $54, $48, $45, $20, $4C, $49, $4E, $45
-        .byte $0D
-        .text " RUN LIST NEW    RUN, SHOW, FORGET IT"
-        .byte 13
+        .byte $20, $31, $30, $20, $50, $52, $49, $4E, $54, $20, $22, $48, $49, $22, $09, $53
+        .byte $54, $4F, $52, $45, $53, $20, $54, $48, $45, $20, $95, $0D
+        ;  RUN LIST NEW    RUN, SHOW, FORGET IT
+        .byte $20, $8E, $20, $8F, $20, $90, $09, $8E, $2C, $20, $53, $48, $4F, $57, $2C, $20
+        .byte $46, $4F, $52, $47, $45, $54, $20, $49, $54, $0D
         ;  LOAD "NAME"     FROM TAPE
-        .byte $20, $4C, $4F, $41, $44, $20, $22, $4E, $41, $4D, $45, $22, $20, $20, $20, $20
-        .byte $20, $46, $52, $4F, $4D, $20, $54, $41, $50, $45, $0D
+        .byte $20, $A1, $20, $22, $4E, $41, $4D, $45, $22, $09, $46, $52, $4F, $4D, $20, $54
+        .byte $41, $50, $45, $0D
         ;  SAVE "NAME"     ONTO TAPE
-        .byte $20, $53, $41, $56, $45, $20, $22, $4E, $41, $4D, $45, $22, $20, $20, $20, $20
-        .byte $20, $4F, $4E, $54, $4F, $20, $54, $41, $50, $45, $0D
-        .text " STOP (CTRL+C)   STOPS A PROGRAM"
-        .byte 13
-        ;
+        .byte $20, $A2, $20, $22, $4E, $41, $4D, $45, $22, $09, $4F, $4E, $54, $4F, $20, $54
+        .byte $41, $50, $45, $0D
+        ;  STOP (CTRL+C)   STOPS A PROGRAM
+        .byte $20, $53, $54, $4F, $50, $20, $28, $43, $54, $52, $4C, $2B, $43, $29, $09, $53
+        .byte $54, $4F, $50, $53, $20, $41, $20, $50, $52, $4F, $47, $52, $41, $4D, $0D
+        ; 
         .byte $0D
-        .byte 0
-MHELP2:
         ; [STATEMENTS]
         .byte $D3, $D4, $C1, $D4, $C5, $CD, $C5, $CE, $D4, $D3, $0D
-        .text " PRINT INPUT LET IF..THEN REM END CLS"
-        .byte 13
-        .text " GOTO GOSUB RETURN  DATA READ RESTORE"
-        .byte 13
-        .text " FOR I=1 TO 9 STEP 2 ... NEXT I"
-        .byte 13
-        .text " POKE A,V        SYS A (MACHINE CODE)"
-        .byte 13
-        ;
+        ;  PRINT INPUT LET IF..THEN REM END CLS
+        .byte $20, $50, $52, $49, $4E, $54, $20, $82, $20, $81, $20, $83, $2E, $2E, $98, $20
+        .byte $8A, $20, $8B, $20, $8C, $0D
+        ;  GOTO GOSUB RETURN  DATA READ RESTORE
+        .byte $20, $84, $20, $85, $20, $86, $20, $20, $A3, $20, $A4, $20, $A5, $0D
+        ;  FOR I=1 TO 9 STEP 2 ... NEXT I
+        .byte $20, $87, $20, $49, $3D, $31, $20, $99, $20, $39, $20, $9A, $20, $32, $20, $2E
+        .byte $2E, $2E, $20, $88, $20, $49, $0D
+        ;  POKE A,V        SYS A (MACHINE CODE)
+        .byte $20, $89, $20, $41, $2C, $56, $09, $8D, $20, $41, $20, $28, $4D, $41, $43, $48
+        .byte $49, $4E, $45, $20, $43, $4F, $44, $45, $29, $0D
+        ; 
         .byte $0D
-        .byte 0
-MHELP3:
         ; [GRAPHICS]
         .byte $C7, $D2, $C1, $D0, $C8, $C9, $C3, $D3, $0D
-        .text " GR / TEXT       PICTURE ON / OFF"
-        .byte 13
-        .text " PLOT X,Y        LINE X1,Y1,X2,Y2"
-        .byte 13
-        .text " CIRCLE X,Y,R    INK 0 ERASES, 2 FLIPS"
-        .byte 13
-        ;
+        ;  GR / TEXT       PICTURE ON / OFF
+        .byte $20, $92, $20, $2F, $20, $93, $09, $50, $49, $43, $54, $55, $52, $45, $20, $4F
+        .byte $4E, $20, $2F, $20, $4F, $46, $46, $0D
+        ;  PLOT X,Y        LINE X1,Y1,X2,Y2
+        .byte $20, $94, $20, $58, $2C, $59, $09, $95, $20, $58, $31, $2C, $59, $31, $2C, $58
+        .byte $32, $2C, $59, $32, $0D
+        ;  CIRCLE X,Y,R    INK 0 ERASES, 2 FLIPS
+        .byte $20, $96, $20, $58, $2C, $59, $2C, $52, $09, $97, $20, $30, $20, $45, $52, $41
+        .byte $53, $45, $53, $2C, $20, $32, $20, $46, $4C, $49, $50, $53, $0D
+        ; 
         .byte $0D
         ; [NUMBERS]
         .byte $CE, $D5, $CD, $C2, $C5, $D2, $D3, $0D
-        .text " A-Z  + - * /  = <> < > <= >=  AND OR"
-        .byte 13
-        .text " RND(N) ABS(N) PEEK(A) POINT(X,Y) GET"
-        .byte 13
+        ;  A-Z  + - * /  = <> < > <= >=  AND OR
+        .byte $20, $41, $2D, $5A, $20, $20, $2B, $20, $2D, $20, $2A, $20, $2F, $20, $20, $3D
+        .byte $20, $3C, $3E, $20, $3C, $20, $3E, $20, $3C, $3D, $20, $3E, $3D, $20, $20, $9E
+        .byte $20, $9F, $0D
+        ;  RND(N) ABS(N) PEEK(A) POINT(X,Y) GET
+        .byte $20, $9C, $28, $4E, $29, $20, $9D, $28, $4E, $29, $20, $9B, $28, $41, $29, $20
+        .byte $A0, $28, $58, $2C, $59, $29, $20, $A6, $0D
         .byte 0
 
 ; ---------------------------------------------------------------- DATA, READ, RESTORE, GET
@@ -3542,6 +3878,6 @@ GT0:    LDA #0
         JMP WARM        ; $FF21: READY, back to BASIC
 
         .org $FFFA
-        .word DEFIRQ    ; NMI (unused)
+        .word NMI
         .word RESET
         .word IRQ
