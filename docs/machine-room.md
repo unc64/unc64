@@ -53,6 +53,7 @@ The monitor shows the machine at 50 frames a second. Each refresh of your screen
 | Run / Pause | F8 | Run the machine, or stop it where it is. |
 | Step | F7 | Run one instruction. |
 | Step over | F6 | Run one instruction, but run a `JSR`'s whole subroutine as one step. |
+| Reset | | The RESET button: the processor and the I/O start over, memory is kept, and BASIC says `READY.` with your program still there. It gets out of anything, a jammed processor too (chapter 13). |
 | Power cycle | | Switch the machine off and on. The program is gone; the tape stays in the deck. |
 
 The status under the monitor shows RUNNING, PAUSED, HALTED, `JAMMED ON $nn` (the opcode it jammed on) or `BREAK AT $nnnn`.

@@ -7,7 +7,7 @@
 
 <p align="center"><b>A computer that fits in your head.</b></p>
 
-The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid-1980s that never existed. This is the machine, emulated for real: a cycle-counted 6502-family processor, a system ROM with UNC BASIC, a character set, a beeper, tape, and a video board with sprites and smooth scrolling. 64K of memory. One manual. You can know all of it.
+The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid-1980s that never existed. This is the machine, emulated for real: a cycle-counted 6502-family processor, a system ROM with UNC BASIC, a character set, a beeper and a three-voice sound chip, tape, and a video board with sprites and smooth scrolling. 64K of memory. One manual. You can know all of it.
 
 ## Start in one minute: the Machine Room
 
@@ -40,7 +40,7 @@ msg:    .text "HELLO FROM THE UNC 64!"
 
 Change the message, run it again. Then:
 
-- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and five games with their full source: SNAKE, STACK, ORBIT, DEBUG, and AURORA for the video board.
+- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and five games with their full source: SNAKE, STACK, ORBIT, DEBUG, and AURORA for the video board. MUSIC TRACKER is there too, an editor for the sound chip written in assembly.
 - **Hover** over any instruction, register or ROM call in the editor for what it does and how many cycles it takes. **Help** explains the Machine Room; the whole machine is in [the manual](docs/prg/programmers-reference-guide.md).
 - **The debugger**: breakpoints, stepping (F7, F6 over), run and stop (F8), registers and memory.
 - **Save** puts your program on a cassette: a `.unc.png`, a picture of a tape with the program inside, to share or to load in the game.
@@ -88,9 +88,9 @@ node scripts/check-machine-room.mjs    # and a check of it in a real browser
 
 [`AGENTS.md`](AGENTS.md) has the rules of the road. Issues and pull requests are welcome, and so are corrections from anyone who wrote 6502 code for real.
 
-## Rev A
+## Rev A (alpha)
 
-The machine is frozen at **System Rev A**: a program that runs on a Rev A machine runs the same, cycle for cycle, on every later one. [`REVISIONS.md`](REVISIONS.md) says what that covers.
+The machine is **System Rev A**, and Rev A is in alpha: not frozen yet. Until it is, anything in it can still change, and a program may need changing with it. Once it's frozen, a program that runs on a Rev A machine runs the same, cycle for cycle, on every later one. [`REVISIONS.md`](REVISIONS.md) says what that will cover.
 
 ## The game
 

@@ -71,7 +71,21 @@ fn the_reserved_range_answers() {
     let m = Machine::new(RamSize::K16);
     assert_eq!((m.peek(0xC3F0), m.peek(0xC3F1)), (19, 86));
     assert_eq!(m.peek(0xC3F2), 0);
-    assert_eq!(m.peek(0xC0FF), 0xFF, "unmapped I/O reads $FF");
+    assert_eq!(m.peek(0xC070), 0xFF, "unmapped I/O reads $FF");
+}
+
+/// A write to the reserved range changes nothing in the machine, and the host hears of it.
+#[test]
+fn the_host_hears_writes_to_the_reserved_range() {
+    let mut m = Machine::new(RamSize::K16);
+    assert_eq!(m.observe().reserved_write, None);
+    m.mem.write(0xC3FF, 3);
+    m.mem.write(0xC3F4, 9);
+    assert_eq!(m.peek(0xC3FF), 0, "nothing changed");
+    assert_eq!(m.observe().reserved_write, Some((4, 9)), "the last one");
+    assert_eq!(m.observe().reserved_write, None, "and once");
+    m.poke(0xC3FF, 3);
+    assert_eq!(m.observe().reserved_write, None, "the host's own pokes don't count");
 }
 
 /// The host can make the reserved range answer more (part one, chapter 8): kept by a reset,
@@ -660,4 +674,37 @@ fn the_clock_keeps_running_while_the_processor_is_halted() {
     j.run_cycles(CYCLES_PER_LINE * 10);
     j.run_frame();
     assert_eq!(j.peek(io::FRAME), f.wrapping_add(1));
+}
+
+/// TEXTROWS ($C024): in mixed mode the last n text rows show under the bitmap. 4 at reset,
+/// 25 at most, and it means nothing unless VMODE has both the bitmap and mixed.
+#[test]
+fn textrows_sets_how_many_text_rows_show_under_the_bitmap() {
+    let mut m = Machine::new(RamSize::K16);
+    assert_eq!(m.peek(io::TEXTROWS), 4);
+    m.load(0x2000, &[0xFF; 8000]); // the bitmap, all lit
+    let lit_lines = |m: &Machine| {
+        let mut px = vec![0u8; 320 * 200];
+        m.render(true, &mut px);
+        px.chunks(320).filter(|l| l.iter().all(|&p| p == 1)).count()
+    };
+    m.poke(io::VMODE, io::VMODE_BITMAP);
+    assert_eq!(lit_lines(&m), 200, "the bitmap alone: TEXTROWS doesn't count");
+    m.poke(io::VMODE, io::VMODE_BITMAP | io::VMODE_MIXED);
+    assert_eq!(lit_lines(&m), 168, "four rows of text at reset");
+    for n in 0..=25u8 {
+        m.poke(io::TEXTROWS, n);
+        assert_eq!(m.peek(io::TEXTROWS), n);
+        assert_eq!(lit_lines(&m), 200 - 8 * n as usize, "{n} rows");
+    }
+    m.poke(io::TEXTROWS, 200);
+    assert_eq!((m.peek(io::TEXTROWS), lit_lines(&m)), (25, 0), "25 at most: all text");
+    m.poke(io::VMODE, 0);
+    m.poke(io::TEXTROWS, 1);
+    let state = m.save_state();
+    let mut again = Machine::new(RamSize::K16);
+    again.load_state(&state).unwrap();
+    assert_eq!(again.peek(io::TEXTROWS), 1, "a save state keeps it");
+    m.reset();
+    assert_eq!(m.peek(io::TEXTROWS), 4, "and a reset puts it back");
 }

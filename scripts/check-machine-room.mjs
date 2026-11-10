@@ -76,6 +76,14 @@ async function main() {
     ok(await page.textContent('#status') === 'HALTED', 'it halts', await page.textContent('#status'));
     ok((await page.textContent('#output')).includes('Starts at $0800'), 'Output shows the assembly');
 
+    // Reset: back to READY. from a halted processor, with memory kept
+    const first = await page.evaluate(() => window.uncRoom.wasm.peek(0x0800));
+    await page.click('#resetbtn');
+    await page.waitForFunction(() => { const s = window.uncRoom.screenText(); return s.includes('READY.') && !s.includes('HELLO FROM'); }, null, { timeout: 5000 }).catch(() => {});
+    const after = await page.evaluate(() => ({ s: window.uncRoom.screenText(), b: window.uncRoom.wasm.peek(0x0800), st: document.getElementById('status').textContent }));
+    ok(after.s.includes('READY.') && !after.s.includes('HELLO FROM') && after.st === 'RUNNING', 'Reset goes back to READY. from a halted processor', after.st);
+    ok(after.b === first && first !== 0, 'and the program is still in memory', `${first} / ${after.b}`);
+
     // breakpoints in the source: dots in the gutter, clicked; a dot on a line with no code
     // moves to the next that has some; Run stops there and lights the line; stepping into a
     // subroutine in another file opens it; the disassembly's dot is the same breakpoint

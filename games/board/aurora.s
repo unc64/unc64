@@ -775,6 +775,7 @@ newgame:
         STA STATE
         LDA #1
         STA NOCHK
+        STA SCRON           ; game over stopped the terrain
         STA LAYON
         LDA #0
         LDX #5

@@ -432,7 +432,7 @@ fn the_shifter_window_joins_two_bytes_and_flip_mirrors() {
 
 /// Every key that is in the matrix.
 fn matrix_keys() -> Vec<u8> {
-    (0x20..=0x5F).chain([28, 29, 30, 31, 13, 8, 3]).collect()
+    (0x20..=0x5F).chain([28, 29, 30, 31, 13, 8, 20, 3]).collect()
 }
 
 fn rows(m: &Machine) -> Vec<u8> {
@@ -456,7 +456,7 @@ fn each_key_lights_one_bit_of_the_matrix_while_it_is_down() {
     }
     let row8 = |c: u8| key_position(c).unwrap();
     assert_eq!([row8(28), row8(29), row8(30), row8(31)], [(8, 1), (8, 2), (8, 4), (8, 8)]);
-    assert_eq!([row8(13), row8(8), row8(3)], [(8, 0x10), (8, 0x20), (8, 0x80)]);
+    assert_eq!([row8(13), row8(8), row8(20), row8(3)], [(8, 0x10), (8, 0x20), (8, 0x40), (8, 0x80)]);
     for code in [0u8, 1, 9, 27, 0x60, 0x7F] {
         m.key(code);
         assert_eq!(rows(&m), vec![0; 9], "{code} is not in the matrix");

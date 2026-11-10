@@ -176,6 +176,549 @@ fn delete_backs_up_a_wrapped_line() {
     assert!(screen(&m).contains(&format!(" {ones}")), "it ran what was left: {:?}", last_rows(&m, 4));
 }
 
+// ---------- the screen editor ----------
+
+const LEFT: u8 = io::KEY_LEFT;
+const RIGHT: u8 = io::KEY_RIGHT;
+const UP: u8 = io::KEY_UP;
+const DOWN: u8 = io::KEY_DOWN;
+const INSERT: u8 = io::KEY_INSERT;
+
+/// Presses and lets go of each key, as fingers do, and lets the editor finish with the last.
+fn press(m: &mut Machine, keys: &[u8]) {
+    for &k in keys {
+        type_keys(m, &[k]);
+        m.key_up(k);
+    }
+    settle(m);
+}
+
+/// Runs until nothing on the screen is moving and the cursor is back.
+fn settle(m: &mut Machine) {
+    for _ in 0..400 {
+        let before = m.screen().to_vec();
+        m.run_cycles(5_000);
+        if m.screen() == &before[..] && cursors(m).len() == 1 {
+            return;
+        }
+    }
+    panic!("the editor never came back for a key: {:?}", rows(m));
+}
+
+/// The cursor to the first empty row under everything on the screen: where you'd type next.
+fn clear_row(m: &mut Machine) {
+    let y = rows(m).iter().rposition(|l| !l.is_empty() && l != "_").map_or(0, |y| y + 1);
+    cursor_to(m, 0, y as u8);
+}
+
+/// The row of the screen that reads `text`.
+fn row_of(m: &Machine, text: &str) -> u8 {
+    rows(m).iter().position(|l| l == text).unwrap_or_else(|| panic!("no row {text:?}: {:?}", rows(m))) as u8
+}
+
+/// Moves the cursor to a column and row with the cursor keys.
+fn cursor_to(m: &mut Machine, x: u8, y: u8) {
+    let mut moves = 0;
+    let mut step = |m: &mut Machine, k: u8| {
+        press(m, &[k]);
+        moves += 1;
+        assert!(moves < 200, "the cursor won't go to {x},{y}: {:?}", rows(m));
+    };
+    while m.peek(CURY) > y {
+        step(m, UP);
+    }
+    while m.peek(CURY) < y {
+        step(m, DOWN);
+    }
+    while m.peek(CURX) > x {
+        step(m, LEFT);
+    }
+    while m.peek(CURX) < x {
+        step(m, RIGHT);
+    }
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (x, y));
+}
+
+/// RETURN, and time for BASIC to take the line.
+fn ret(m: &mut Machine) {
+    press(m, b"\r");
+}
+
+/// CLS: READY. on row 0, and the cursor's row, 1.
+fn cls(m: &mut Machine) -> u8 {
+    direct(m, "CLS");
+    assert_eq!(rows(m)[0], "READY.");
+    m.peek(CURY)
+}
+
+/// The C64's defining nicety: cursor up into a LISTed line, type over it,
+/// RETURN, and the program has the line as the screen shows it.
+#[test]
+fn a_listed_line_is_changed_where_it_stands() {
+    let mut m = boot();
+    program(&mut m, &["10 PRINT \"HELLO\"", "20 GOTO 10"]);
+    direct(&mut m, "CLS");
+    direct(&mut m, "LIST");
+    let y = row_of(&m, "10 PRINT \"HELLO\"");
+    cursor_to(&mut m, 10, y);
+    press(&mut m, b"JELLY");
+    ret(&mut m);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, y + 1), "RETURN leaves the cursor on the next row");
+    assert_eq!(rows(&m)[y as usize + 1], "_0 GOTO 10", "a stored line says nothing, and the cursor is on the next");
+    clear_row(&mut m);
+    direct(&mut m, "CLS");
+    assert_eq!(direct(&mut m, "LIST"), ["10 PRINT \"JELLY\"", "20 GOTO 10"]);
+    // a new number over an old line copies it: the C64's way to duplicate a line
+    let y = row_of(&m, "20 GOTO 10");
+    cursor_to(&mut m, 0, y);
+    press(&mut m, b"3");
+    ret(&mut m);
+    clear_row(&mut m);
+    direct(&mut m, "CLS");
+    assert_eq!(direct(&mut m, "LIST"), ["10 PRINT \"JELLY\"", "20 GOTO 10", "30 GOTO 10"]);
+}
+
+/// INSERT opens a space at the cursor and DELETE closes one, each moving the rest of the
+/// line; the cursor keys wrap from one row's edge to the next row's.
+#[test]
+fn insert_opens_a_space_and_delete_closes_one() {
+    let mut m = boot();
+    let y = cls(&mut m);
+    let row = |m: &Machine| rows(m)[y as usize].clone();
+    press(&mut m, b"10 PRINT 12");
+    cursor_to(&mut m, 9, y);
+    press(&mut m, &[INSERT, INSERT]);
+    assert_eq!(row(&m), "10 PRINT _ 12", "two cells open under the cursor");
+    press(&mut m, b"9+");
+    assert_eq!(row(&m), "10 PRINT 9+_2");
+    cursor_to(&mut m, 5, y);
+    press(&mut m, &[8, 8]);
+    assert_eq!(row(&m), "10 _NT 9+12", "DELETE takes the two before the cursor and pulls the rest left");
+    press(&mut m, &[INSERT, INSERT]);
+    press(&mut m, b"PR");
+    ret(&mut m);
+    clear_row(&mut m);
+    assert_eq!(direct(&mut m, "LIST"), ["10 PRINT 9+12"]);
+    // left from a row's first column goes to the last of the row above, and right comes back
+    cursor_to(&mut m, 0, 5);
+    press(&mut m, &[LEFT]);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (39, 4));
+    press(&mut m, &[RIGHT]);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, 5));
+    // and the screen's corners stop them
+    cursor_to(&mut m, 0, 0);
+    press(&mut m, &[LEFT, UP]);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, 0));
+    cursor_to(&mut m, 39, 24);
+    press(&mut m, &[RIGHT, DOWN]);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (39, 24));
+    assert!(!screen(&m).contains("READY.\nREADY."), "and nothing scrolled: {:?}", rows(&m));
+}
+
+/// A line that wrapped is one line on any of its rows: RETURN on the second row takes
+/// both, DELETE and INSERT move characters across the edge, and RETURN leaves the cursor
+/// under the whole line.
+#[test]
+fn a_wrapped_line_is_one_line_on_any_of_its_rows() {
+    let mut m = boot();
+    let long = format!("10 PRINT {}1", "1+".repeat(20)); // 50 characters
+    program(&mut m, &[&long, "20 END"]);
+    direct(&mut m, "CLS");
+    direct(&mut m, "LIST");
+    let y = row_of(&m, &long[..40]);
+    let row = |m: &Machine, n: u8| rows(m)[(y + n) as usize].clone();
+    assert_eq!(row(&m, 1), &long[40..]);
+    assert_eq!(row(&m, 2), "20 END");
+    // on its second row, the last 1 becomes a 5
+    cursor_to(&mut m, 9, y + 1);
+    press(&mut m, b"5");
+    ret(&mut m);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, y + 2));
+    clear_row(&mut m);
+    direct(&mut m, "RUN");
+    assert_eq!(last_rows(&m, 2), ["25", "READY."], "twenty 1s and a 5");
+    // DELETE at the second row's first column takes the first row's last character, and
+    // the second row moves left with it
+    direct(&mut m, "CLS");
+    direct(&mut m, "LIST");
+    assert_eq!(row_of(&m, &long[..40]), y);
+    cursor_to(&mut m, 0, y + 1);
+    press(&mut m, &[8]);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (39, y));
+    cursor_to(&mut m, 0, y + 2);
+    assert_eq!(row(&m, 0).len(), 40);
+    assert_eq!(row(&m, 1).len(), 9, "the second row moved left by one");
+    // INSERT at the line's start pushes one back over the edge
+    cursor_to(&mut m, 9, y);
+    press(&mut m, &[INSERT]);
+    press(&mut m, &[DOWN, DOWN, DOWN, DOWN]);
+    assert_eq!(&row(&m, 0)[..10], "10 PRINT  ");
+    assert_eq!(row(&m, 1).len(), 10);
+    // RETURN on the first row goes past both
+    cursor_to(&mut m, 9, y);
+    press(&mut m, b"2");
+    ret(&mut m);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, y + 2));
+    assert_eq!(row(&m, 2), "_0 END", "the line below is untouched, the cursor on it");
+}
+
+/// Typing past the right edge, or INSERT on a full row, gives the line another row: the
+/// rows below move down out of its way instead of being taken for part of it.
+#[test]
+fn a_line_that_grows_pushes_the_rows_below_down() {
+    let mut m = boot();
+    program(&mut m, &["10 REM", "20 END"]);
+    direct(&mut m, "CLS");
+    direct(&mut m, "LIST");
+    let y = row_of(&m, "10 REM");
+    let at = y as usize;
+    assert_eq!(&rows(&m)[at..at + 4], ["10 REM", "20 END", "READY.", "_"]);
+    cursor_to(&mut m, 6, y);
+    press(&mut m, "X".repeat(34).as_bytes());
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, y + 1), "the cursor wrapped onto a row of the line's own");
+    assert_eq!(&rows(&m)[at + 1..at + 4], ["_", "20 END", "READY."], "which the rows below made room for");
+    press(&mut m, b"YZ");
+    ret(&mut m);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, y + 2));
+    clear_row(&mut m);
+    direct(&mut m, "CLS");
+    assert_eq!(direct(&mut m, "LIST"), [&format!("10 REM{}", "X".repeat(34))[..], "YZ", "20 END"]);
+    // INSERT on a row that is full does the same (a row a program filled: one that was
+    // typed or listed has its second row already)
+    let y = cls(&mut m) + 1;
+    let at = y as usize;
+    for x in 0..40 {
+        m.poke(0x0400 + y as u16 * 40 + x, b'A');
+    }
+    press(&mut m, &[DOWN, DOWN]);
+    press(&mut m, b"BELOW");
+    cursor_to(&mut m, 7, y);
+    press(&mut m, &[INSERT]);
+    assert_eq!(rows(&m)[at], format!("AAAAAAA_{}", "A".repeat(32)));
+    assert_eq!(rows(&m)[at + 1], "A", "a row of its own for it");
+    assert_eq!(rows(&m)[at + 2], "BELOW");
+    // a line is three rows at most: at the end of the third the cursor stays, and INSERT
+    // on a full one does nothing
+    let y = cls(&mut m);
+    press(&mut m, "40 REM".as_bytes());
+    press(&mut m, "B".repeat(114).as_bytes());
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (39, y + 2), "120 characters, and the cursor waits on the last");
+    press(&mut m, b"C");
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (39, y + 2));
+    cursor_to(&mut m, 6, y);
+    press(&mut m, &[INSERT]);
+    m.run_cycles(5_000);
+    assert_eq!(rows(&m)[y as usize], format!("40 REM_{}", "B".repeat(33)), "full: INSERT opens nothing");
+    ret(&mut m);
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, y + 3));
+    clear_row(&mut m);
+    direct(&mut m, "CLS");
+    let listed = direct(&mut m, "LIST 40").concat();
+    assert_eq!(listed, format!("40 REM{}C", "B".repeat(113)));
+}
+
+/// At the bottom of the screen a growing line moves everything up instead.
+#[test]
+fn a_line_that_grows_on_the_bottom_row_scrolls_the_screen() {
+    let mut m = boot();
+    for _ in 0..30 {
+        press(&mut m, b"\r");
+    }
+    assert_eq!(m.peek(CURY), 24);
+    press(&mut m, format!("PRINT {}5", "1+".repeat(20)).as_bytes());
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (7, 24));
+    cursor_to(&mut m, 6, 23);
+    press(&mut m, b"9\r");
+    wait_ready(&mut m);
+    assert_eq!(last_rows(&m, 2), ["33", "READY."], "9 + nineteen 1s + 5: {:?}", rows(&m));
+}
+
+/// RETURN takes whatever row the cursor is on. On READY. itself that's READ Y, as it was
+/// on the machines this one remembers.
+#[test]
+fn return_on_any_row_runs_what_it_shows() {
+    let mut m = boot();
+    direct(&mut m, "CLS");
+    direct(&mut m, "PRINT 1+1");
+    let y = row_of(&m, "PRINT 1+1");
+    cursor_to(&mut m, 8, y);
+    press(&mut m, b"8\r");
+    assert_eq!(rows(&m)[y as usize + 1], "9", "PRINT 1+8, its answer printed over the old one");
+    let y = row_of(&m, "READY.");
+    cursor_to(&mut m, 3, y);
+    press(&mut m, b"\r");
+    assert_eq!(rows(&m)[y as usize + 1], "?OUT OF DATA", "{:?}", rows(&m));
+    clear_row(&mut m);
+    // reverse video reads as plain: HELP's headings are only words
+    direct(&mut m, "HELP");
+    let y = row_of(&m, " STOP (CTRL+C)   STOPS A PROGRAM");
+    cursor_to(&mut m, 0, y);
+    press(&mut m, b"\r");
+    assert_eq!(rows(&m)[y as usize + 1], "?SYNTAX ERROR", "{:?}", rows(&m));
+}
+
+/// A line typed without moving the cursor is what was typed, whatever a program left on
+/// the row: after a game, CLS is CLS. Move the cursor and the line is the screen's.
+#[test]
+fn a_typed_line_is_what_was_typed_on_a_row_a_program_left_full() {
+    let mut m = boot();
+    let y = cls(&mut m);
+    let fill = |m: &mut Machine, row: u8| {
+        for x in 6..40 {
+            m.poke(0x0400 + row as u16 * 40 + x, b'#');
+        }
+    };
+    for row in [y, y + 2, y + 4] {
+        fill(&mut m, row); // READY. takes the rows between
+    }
+    press(&mut m, b"A=7");
+    assert_eq!(&rows(&m)[y as usize][..10], "A=7_  ####", "typed in front of what's there");
+    ret(&mut m);
+    assert_eq!(m.peek(0x0260), 7, "A=7 is all BASIC got");
+    // DELETE pulls the row left under the cursor, and it's still only what was typed
+    press(&mut m, b"A=91");
+    press(&mut m, &[8]);
+    ret(&mut m);
+    assert_eq!(m.peek(0x0260), 9);
+    // a cursor key, and RETURN takes the row as it shows
+    press(&mut m, b"A=5");
+    assert_eq!(m.peek(CURY), y + 4);
+    press(&mut m, &[LEFT]);
+    ret(&mut m);
+    assert_eq!(rows(&m)[y as usize + 5], "?SYNTAX ERROR", "A=5 and a row of #s: {:?}", rows(&m));
+    assert_eq!(m.peek(0x0260), 5, "(the 5 went in first)");
+}
+
+/// INPUT is the same editor: its line is read from after the prompt, and a number put
+/// right with the cursor keys is the number it gets.
+#[test]
+fn input_reads_its_line_from_after_the_prompt() {
+    let mut m = boot();
+    program(&mut m, &["10 INPUT \"HOW MANY 2\";A", "20 PRINT A*2"]);
+    line(&mut m, "RUN", 3);
+    press(&mut m, b"1234");
+    press(&mut m, &[LEFT, LEFT, LEFT, 8, RIGHT, INSERT]);
+    press(&mut m, b"0\r");
+    wait_ready(&mut m);
+    assert_eq!(last_rows(&m, 3), ["HOW MANY 2? 2034", "4068", "READY."]);
+}
+
+/// A game steered with the cursor keys ends with one held. READY. waits for it to be let
+/// go and forgets it, so the cursor is where READY. left it.
+#[test]
+fn a_cursor_key_held_when_a_program_ends_does_not_move_the_cursor() {
+    let mut m = boot();
+    program(&mut m, &["10 IF PEEK(49170)<>30 THEN 10"]);
+    line(&mut m, "RUN", 3);
+    m.key(UP);
+    for _ in 0..20 {
+        m.run_frame();
+    }
+    assert_eq!(m.peek(RUNFLG), 0, "the program is over");
+    assert!(cursors(&m).is_empty(), "no cursor while the key is down");
+    m.key_up(UP);
+    wait_ready(&mut m);
+    assert_eq!(m.peek(CURX), 0);
+    assert_eq!(rows(&m)[m.peek(CURY) as usize - 1], "READY.", "the cursor is under READY.");
+    // a letter typed ahead is kept
+    line(&mut m, "RUN", 3);
+    m.key(UP);
+    m.run_frame();
+    m.key_up(UP);
+    press(&mut m, b"L");
+    press(&mut m, b"IST\r");
+    wait_ready(&mut m);
+    assert_eq!(last_rows(&m, 3), ["LIST", "10 IF PEEK(49170)<>30 THEN 10", "READY."]);
+}
+
+/// Under GR the cursor stays on the four rows you can see.
+#[test]
+fn under_gr_the_cursor_stays_on_the_text_rows() {
+    let mut m = boot();
+    direct(&mut m, "GR");
+    for _ in 0..6 {
+        press(&mut m, &[UP, LEFT]);
+    }
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, 21));
+    direct(&mut m, "TEXT");
+}
+
+// ---------- STOP and RESTORE ----------
+
+/// STOP held, and RESTORE pressed: the NMI.
+fn stop_restore(m: &mut Machine) {
+    m.key_matrix(3, true);
+    m.restore();
+    for _ in 0..3 {
+        m.run_frame();
+    }
+    m.key_matrix(3, false);
+    settle(m);
+}
+
+/// STOP and RESTORE get BASIC back from a program STOP can't reach: machine code with
+/// interrupts off, going round for ever. The screen is cleared, the machine's registers
+/// are as at switch-on, and the program and its variables are still there.
+#[test]
+fn stop_and_restore_come_back_from_anything() {
+    let mut m = boot();
+    // SEI, JMP * at $3000; a border, a hooked interrupt vector, and the speaker's gate on
+    program(&mut m, &[
+        "10 A=42:POKE 49184,5:POKE 49185,6:POKE 788,0:POKE 789,48:POKE 49201,3",
+        "20 POKE 12288,33:POKE 12289,6:POKE 12290,1:POKE 12291,48:SYS 12288",
+    ]);
+    line(&mut m, "RUN", 5);
+    assert_eq!(m.cpu.pc, 0x3001, "going round at $3001");
+    m.key(3);
+    for _ in 0..5 {
+        m.run_frame();
+    }
+    m.key_up(3);
+    assert_eq!(m.cpu.pc, 0x3001, "STOP alone is only a key, and nobody is reading the keys");
+    stop_restore(&mut m);
+    assert_eq!(rows(&m)[0], "READY.", "a clear screen and READY.: {:?}", rows(&m));
+    assert_eq!((m.peek(CURX), m.peek(CURY)), (0, 1));
+    assert_eq!(m.peek(RUNFLG), 0);
+    assert_eq!((m.peek(io::BORDER), m.peek(io::BACKGROUND), m.peek(io::SPEAKER) & 3), (0, 0, 0));
+    assert_ne!(m.peek(0x0315), 0x30, "the interrupt vector is the ROM's again");
+    assert_eq!(direct(&mut m, "PRINT A"), ["42"], "the variables are as they were");
+    assert!(direct(&mut m, "LIST").concat().ends_with("12291,48:SYS 12288"), "and so is the program");
+    // from BASIC's graphics too: back to text
+    direct(&mut m, "GR");
+    program(&mut m, &["NEW", "10 GOTO 10"]);
+    line(&mut m, "RUN", 3);
+    stop_restore(&mut m);
+    assert_eq!(m.peek(io::VMODE), 0, "the text screen");
+    assert_eq!(rows(&m)[0], "READY.");
+    assert_eq!(direct(&mut m, "LIST"), ["10 GOTO 10"]);
+}
+
+/// The uncle's three lines (the game's chapter 9c, ch09c_restore.gd): a JMP to itself at
+/// $1000, called with SYS. STOP can't reach it. The switch gets BASIC back without them;
+/// STOP and RESTORE get it back with them.
+#[test]
+fn his_three_lines_lock_up_and_only_restore_keeps_them() {
+    const LINES: [&str; 3] = ["10 POKE 4096,6:POKE 4097,0:POKE 4098,16", "20 PRINT \"BACK IN A MOMENT.\"", "30 SYS 4096"];
+    assert!(LINES.iter().all(|l| l.len() < 40), "each fits a row of the screen");
+    let mut m = boot();
+    program(&mut m, &LINES);
+    line(&mut m, "RUN", 5);
+    assert_eq!(last_rows(&m, 1), ["BACK IN A MOMENT."]);
+    assert!(cursors(&m).is_empty(), "no cursor");
+    let reads = |m: &mut Machine| {
+        m.observe();
+        for _ in 0..100 {
+            m.run_frame();
+        }
+        let o = m.observe();
+        o.read_count(io::KBD) + o.read_count(io::KBD_STROBE)
+    };
+    m.key(3);
+    assert_eq!(reads(&mut m), 0, "two seconds, and nothing reads the keys: STOP is never seen");
+    m.key_up(3);
+    assert!((0x1000..0x1003).contains(&m.cpu.pc) && m.peek(RUNFLG) != 0, "still going round");
+    // the switch: BASIC is back, and the three lines aren't
+    let mut off_and_on = boot();
+    assert_eq!(direct(&mut off_and_on, "LIST"), Vec::<String>::new());
+    // STOP and RESTORE: BASIC is back, and so are they
+    stop_restore(&mut m);
+    assert_eq!(direct(&mut m, "LIST"), LINES);
+}
+
+/// RESTORE without STOP does nothing: the handler returns and the program carries on.
+#[test]
+fn restore_alone_does_nothing() {
+    let mut m = boot();
+    program(&mut m, &["10 A=A+1:GOTO 10"]);
+    line(&mut m, "RUN", 3);
+    let a = m.peek(0x0260);
+    m.restore();
+    for _ in 0..3 {
+        m.run_frame();
+    }
+    assert_ne!(m.peek(RUNFLG), 0, "still running");
+    assert_ne!(m.peek(0x0260), a, "and counting");
+    // at READY. too: nothing moves
+    type_keys(&mut m, &[3]);
+    m.key_up(3);
+    wait_ready(&mut m);
+    let before = m.screen().to_vec();
+    m.restore();
+    m.run_frame();
+    settle(&mut m);
+    assert_eq!(m.screen(), &before[..]);
+}
+
+/// The NMI wakes a processor stopped by HLT. RESTORE alone goes back to the HLT, so it
+/// stays stopped; with STOP it's BASIC again. A jammed processor needs the reset switch.
+#[test]
+fn restore_wakes_a_halted_processor_but_not_a_jammed_one() {
+    let mut m = boot();
+    program(&mut m, &["10 A=7:POKE 12288,2:SYS 12288"]);
+    line(&mut m, "RUN", 5);
+    assert_eq!(m.cpu.state, unc_core::CpuState::Halted);
+    m.restore();
+    for _ in 0..2 {
+        m.run_frame();
+    }
+    assert_eq!(m.cpu.state, unc_core::CpuState::Halted, "RESTORE alone: the HLT again");
+    assert_eq!(m.cpu.pc, 0x3001);
+    stop_restore(&mut m);
+    assert_eq!(m.cpu.state, unc_core::CpuState::Running);
+    assert_eq!(rows(&m)[0], "READY.");
+    assert_eq!(direct(&mut m, "PRINT A"), ["7"]);
+    // $FF is no instruction
+    program(&mut m, &["10 POKE 12288,255:SYS 12288"]);
+    line(&mut m, "RUN", 5);
+    assert!(matches!(m.cpu.state, unc_core::CpuState::Jammed(0xFF)));
+    stop_restore_jammed(&mut m);
+    assert!(matches!(m.cpu.state, unc_core::CpuState::Jammed(0xFF)), "only a reset");
+}
+
+fn stop_restore_jammed(m: &mut Machine) {
+    m.key_matrix(3, true);
+    m.restore();
+    for _ in 0..3 {
+        m.run_frame();
+    }
+    m.key_matrix(3, false);
+}
+
+/// The NMI goes through NMIVEC ($0316), so a program can have RESTORE for itself; it takes
+/// six cycles to get there and doesn't ask the I flag.
+#[test]
+fn a_program_can_hook_restore() {
+    let mut m = boot();
+    // $3000: SEI, JMP *. $3010: INC $C020, RTI (opcodes from Appendix C)
+    let inc_abs = unc_core::isa::opcode_for(unc_core::Op::Inc, unc_core::Mode::Abs).unwrap();
+    for (i, b) in [0x21u8, 0x06, 0x01, 0x30].into_iter().enumerate() {
+        m.poke(0x3000 + i as u16, b);
+    }
+    for (i, b) in [inc_abs, 0x20, 0xC0, 0x04].into_iter().enumerate() {
+        m.poke(0x3010 + i as u16, b);
+    }
+    m.poke(0x0316, 0x10);
+    m.poke(0x0317, 0x30);
+    line(&mut m, "SYS 12288", 2);
+    assert_eq!(m.cpu.pc, 0x3001);
+    assert_eq!(m.peek(io::BORDER), 0);
+    let sp = m.cpu.sp;
+    m.restore();
+    let t = m.cpu.cycles;
+    m.run_cycles(1);
+    assert_eq!(m.cpu.cycles - t, 6, "six cycles in, as an IRQ takes");
+    assert_eq!(m.cpu.sp, sp.wrapping_sub(3), "PC and the flags are on the stack");
+    m.run_frame();
+    assert_eq!(m.peek(io::BORDER), 1, "the program's own handler ran, once, with I set");
+    assert_eq!((m.cpu.pc, m.cpu.sp), (0x3001, sp), "and RTI went back");
+    // STOP and RESTORE is the program's too, while it holds the vector
+    m.key_matrix(3, true);
+    m.restore();
+    m.run_frame();
+    m.key_matrix(3, false);
+    assert_eq!((m.peek(io::BORDER), m.cpu.pc), (2, 0x3001));
+}
+
 #[test]
 fn lines_are_stored_sorted_and_list_round_trips() {
     let mut m = boot();
@@ -314,7 +857,7 @@ fn the_cursor_puts_back_what_was_under_it() {
     type_keys(&mut m, b"\r");
     m.run_frame();
     assert_eq!(rows(&m)[0], "? 5X", "and gives it back on RETURN");
-    assert_eq!(m.peek(0x0260), 5, "A = 5");
+    assert_eq!(m.peek(0x0260), 5, "A = 5: the line is what was typed, not the X after it");
     // STOP while typing a line throws the line away; the cursor goes with it.
     m.key(3);
     wait_ready(&mut m);
@@ -487,7 +1030,8 @@ fn manual_chapter_1_the_border_program() {
     program(&mut m, &["NEW", "10 FOR C=0 TO 15", "20 POKE 49184,C", "30 NEXT C", "40 GOTO 10"]);
     line(&mut m, "RUN", 2);
     let seen: std::collections::BTreeSet<u8> = m.border_lines.iter().copied().collect();
-    assert!(seen.len() >= 8, "the border cycles through the colours: {seen:?}");
+    // seven or eight in a frame, by where in the loop the frame begins
+    assert!(seen.len() >= 7, "the border cycles through the colours: {seen:?}");
 }
 
 #[test]
@@ -705,6 +1249,78 @@ fn the_bitmap_takes_the_top_8k_from_basic() {
     line(&mut m, "TEXT", 2);
     line(&mut m, &format!("{n} {body}"), 0);
     assert!(!screen(&m).contains("?OUT OF MEMORY"), "back in TEXT the memory is BASIC's again");
+}
+
+/// The picture as the beam draws it now.
+fn picture(m: &Machine) -> Vec<u8> {
+    let mut px = vec![0u8; 320 * 200];
+    m.render(true, &mut px);
+    px
+}
+
+/// GR takes the number of text rows under the picture: four if it isn't given, none for
+/// the whole screen, one for a status line. TEXTROWS ($C024) is where it goes.
+#[test]
+fn gr_takes_the_number_of_text_rows() {
+    let mut m = boot();
+    assert_eq!(m.peek(io::TEXTROWS), 4, "four at reset");
+    // the whole screen: the bottom line of the bitmap shows, and no text at all
+    program(&mut m, &["10 GR 0:LINE 0,199,319,199:LINE 0,0,319,0:PRINT \"UNSEEN\"", "20 GOTO 20"]);
+    line(&mut m, "RUN", 30);
+    assert_eq!(m.peek(io::TEXTROWS), 0);
+    let px = picture(&m);
+    assert!(px[199 * 320..].iter().all(|&p| p == 1), "line 199 is the bitmap's");
+    assert!(px[..320].iter().all(|&p| p == 1));
+    assert_eq!(px[320..199 * 320].iter().filter(|&&p| p != 0).count(), 0, "and nothing else: the text is under it");
+    assert!(screen(&m).contains("UNSEEN"), "(it's in screen memory all the same)");
+    // STOP: READY. needs somewhere to be seen, so the four rows are back
+    type_keys(&mut m, &[3]);
+    m.key_up(3);
+    wait_ready(&mut m);
+    assert_eq!(m.peek(io::TEXTROWS), 4, "READY. brings GR's four rows back");
+    assert_eq!(m.peek(io::VMODE) & VMODE_GFX, VMODE_GFX, "still graphics");
+    assert!(m.peek(CURY) >= 21, "and the cursor is on one of them");
+    assert!(picture(&m)[168 * 320..].contains(&1), "READY. shows");
+    // one row: a status line under 192 lines of picture
+    direct(&mut m, "TEXT");
+    program(&mut m, &["10 GR 1:LINE 0,191,319,191:PRINT \"SCORE 100\";", "20 GOTO 20"]);
+    line(&mut m, "RUN", 30);
+    assert_eq!(m.peek(io::TEXTROWS), 1);
+    assert_eq!(rows(&m)[24], "SCORE 100", "PRINT starts on the row that shows");
+    let px = picture(&m);
+    assert!(px[191 * 320..192 * 320].iter().all(|&p| p == 1), "line 191 is still picture");
+    let status = &px[192 * 320..];
+    assert!(status.contains(&1) && status.contains(&0) && status[9 * 8..320].iter().step_by(8).all(|&p| p == 0), "then eight lines of text");
+    type_keys(&mut m, &[3]);
+    m.key_up(3);
+    wait_ready(&mut m);
+    assert_eq!(m.peek(io::TEXTROWS), 4, "and four again at READY.");
+    // any expression, and CLS keeps the count
+    direct(&mut m, "TEXT");
+    program(&mut m, &["10 N=3:GR N*2:CLS:PRINT \"TOP\"", "20 GOTO 20"]);
+    line(&mut m, "RUN", 20);
+    assert_eq!(m.peek(io::TEXTROWS), 6);
+    assert_eq!(rows(&m)[19], "TOP", "six rows: the first is row 19");
+    type_keys(&mut m, &[3]);
+    m.key_up(3);
+    wait_ready(&mut m);
+    assert_eq!(m.peek(io::TEXTROWS), 6, "two rows or more stay as they are");
+    // GR alone is four, as it always was
+    assert_eq!(direct(&mut m, "GR"), Vec::<String>::new());
+    assert_eq!((m.peek(io::TEXTROWS), m.peek(CURY)), (4, 22));
+    direct(&mut m, "TEXT");
+}
+
+/// Chapter 2's listing: nine rings over a status line.
+#[test]
+fn manual_chapter_2_nine_rings_over_a_status_line() {
+    let mut m = boot();
+    program(&mut m, &["10 GR 1", "20 FOR R=10 TO 90 STEP 10:CIRCLE 160,96,R:NEXT", "30 PRINT \"NINE RINGS. STOP TO END.\";", "40 GOTO 40"]);
+    line(&mut m, "RUN", 60);
+    assert_eq!(rows(&m)[24], "NINE RINGS. STOP TO END.");
+    assert!(pixel(&m, 160, 6) && pixel(&m, 160, 186) && pixel(&m, 250, 96), "the outer ring, top, bottom and right");
+    let px = picture(&m);
+    assert!(px[186 * 320 + 160] == 1 && px[192 * 320..].contains(&1), "all of it shows, above the line of text");
 }
 
 #[test]

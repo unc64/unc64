@@ -204,11 +204,12 @@ impl VideoBoard {
         self.colours[((n & 3) as usize).max(1) - 1]
     }
 
-    /// Entry n of the sprite table, at SPRTAB * 256 + n * 4.
+    /// Entry n of the sprite table, at SPRTAB * 256 + n * 4. With SPRTAB 0 there is no
+    /// table: the board shows no sprites, and every entry reads as not shown.
     pub fn sprite(&self, read: &impl Fn(u16) -> u8, n: usize) -> Sprite {
         let at = ((self.table as u16) << 8).wrapping_add(n as u16 * ENTRY_BYTES);
         let b = |i: u16| read(at.wrapping_add(i));
-        Sprite { y: b(0), x: b(1), image: b(2), attr: b(3) }
+        Sprite { y: b(0), x: b(1), image: b(2), attr: if self.table == 0 { 0 } else { b(3) } }
     }
 
     /// Where image p starts: SPRBANK * 256 + p * 64.

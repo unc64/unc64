@@ -7,6 +7,6 @@ The UNC-1 is in the 6502 family but is not a 6502, and the UNC 64 is not a Commo
 - [llms-full.txt](llms-full.txt): the whole Programmer's Reference Guide and the cassette format, in one file. Read this first.
 - [The manual](docs/prg/programmers-reference-guide.md): the same, as the source.
 - [Cassettes](docs/cassettes.md): the `.unc.png` and `.tap` formats.
-- [REVISIONS.md](REVISIONS.md): what System Rev A fixes.
+- [REVISIONS.md](REVISIONS.md): what System Rev A (alpha, not yet frozen) will fix.
 - [Examples](games/): games with their tests; `web/samples/` for small programs.
 - [AGENTS.md](AGENTS.md): the rules for changing this repository.

@@ -2,6 +2,7 @@
 //! The spec for everything here is docs/prg/programmers-reference-guide.md (chapters 8-13, Appendix B).
 
 use crate::board::{self, VideoBoard};
+use crate::chip;
 use crate::charset::CHAR_ROM;
 use crate::cpu::{Bus, Cpu, CpuState};
 use crate::keys::KEY_ROWS;
@@ -16,7 +17,8 @@ pub const ROM_START: u16 = 0xE000;
 pub const CHAR_ROM_START: u16 = 0xD000;
 /// Where the bitmap sits after reset: 8,000 bytes from $2000, RAM even on the UNC 16.
 pub const BITMAP_START: u16 = 0x2000;
-/// Bytes per bitmap line, and the first bitmap line that shows text in mixed mode.
+/// Bytes per bitmap line, and the first bitmap line that shows text in mixed mode at reset:
+/// TEXTROWS is 4 then, and the split is 200 - 8 * TEXTROWS.
 pub const BITMAP_STRIDE: usize = 40;
 pub const MIXED_SPLIT: usize = 168;
 /// The text screen in pixels: 40 x 25 cells of 8 x 8.
@@ -47,6 +49,10 @@ pub mod io {
     pub const BACKGROUND: u16 = 0xC021;
     pub const CHARSET: u16 = 0xC022;
     pub const BITMAP: u16 = 0xC023;
+    /// TEXTROWS: in mixed mode, how many text rows show under the bitmap, 0-25. 4 at reset.
+    pub const TEXTROWS: u16 = 0xC024;
+    /// TEXTROWS at reset: rows 21-24.
+    pub const TEXTROWS_AT_RESET: u8 = 4;
     pub const BEEPER: u16 = 0xC030;
     /// The tape deck's status (read) and the motor (write). Chapter 14.
     pub const TAPE: u16 = 0xC040;
@@ -78,7 +84,8 @@ pub mod io {
     pub const VMODE_256: u8 = 0x01;
     /// VMODE bit 1: the 320 x 200 bitmap, one bit per pixel, at BITMAP * $100.
     pub const VMODE_BITMAP: u8 = 0x02;
-    /// VMODE bit 2: with the bitmap on, text rows 21-24 show below the bitmap's top 168 lines.
+    /// VMODE bit 2: with the bitmap on, the last TEXTROWS text rows show below the bitmap
+    /// (at reset rows 21-24, below its top 168 lines).
     pub const VMODE_MIXED: u8 = 0x04;
     /// VMODE bit 3: no hardware blink. Code $A0 shows as a steady reversed space.
     pub const VMODE_STEADY: u8 = 0x08;
@@ -88,6 +95,8 @@ pub mod io {
     pub const KEY_RIGHT: u8 = 29;
     pub const KEY_UP: u8 = 30;
     pub const KEY_DOWN: u8 = 31;
+    /// The INSERT key (shift and DELETE): the screen editor opens a space at the cursor.
+    pub const KEY_INSERT: u8 = 20;
 
     // Rev A: the beeper's timer and the noise register (chapter 12), the shifter
     // (chapter 8) and the keyboard matrix (chapter 11).
@@ -140,6 +149,19 @@ pub mod io {
     pub const COLOUR1: u16 = 0xC0B1;
     pub const COLOUR2: u16 = 0xC0B2;
     pub const COLOUR3: u16 = 0xC0B3;
+    /// The sound chip (manual ch. 12): `$C0C0-$C0FF`. Without it every one of them
+    /// reads $FF and ignores writes. Voice 1 is eight registers from AUNT, voice 2 from
+    /// AUNT + 8, voice 3 from AUNT + 16 (`chip::FREQ_LO` and the rest are the offsets).
+    pub const AUNT: u16 = 0xC0C0;
+    pub const CUTOFF: u16 = 0xC0D8;
+    pub const FILTER: u16 = 0xC0D9;
+    pub const VOLUME: u16 = 0xC0DA;
+    pub const VOICE3: u16 = 0xC0DC;
+    pub const ENV3: u16 = 0xC0DD;
+    /// SOUND: $16 with the chip in.
+    pub const SOUND: u16 = 0xC0DF;
+    /// WAVETABLE to WAVETABLE + 31: the drawn waveform.
+    pub const WAVETABLE: u16 = 0xC0E0;
     /// BOARD: $15 with the board in, $FF without.
     pub const BOARD: u16 = 0xC0BF;
 }
@@ -191,6 +213,8 @@ pub struct Io {
     pub charset: u8,
     /// High byte of the bitmap's address. Resets to $20: $2000-$3F3F.
     pub bitmap: u8,
+    /// TEXTROWS: the text rows under the bitmap in mixed mode, 0-25. Resets to 4.
+    pub text_rows: u8,
     /// Rev A (chapter 12): the cycle count when the instruction running now began.
     /// I/O happens at that cycle: the timer, NOISE and the audio log go by it.
     pub cycle: u64,
@@ -222,6 +246,7 @@ impl Default for Io {
             background: 0,
             charset: (CHAR_ROM_START >> 8) as u8,
             bitmap: (BITMAP_START >> 8) as u8,
+            text_rows: io::TEXTROWS_AT_RESET,
             cycle: 0,
             timer: Timer::default(),
             audio: AudioLog::default(),
@@ -393,6 +418,9 @@ pub struct Observation {
     pub writes: [u32; 256],
     /// Something read the reserved range, `$C3F0-$C3FF`.
     pub reserved_read: bool,
+    /// The last write the processor made to the reserved range: (offset 0-15, value). The
+    /// write changes nothing in the machine; the host may make something of it.
+    pub reserved_write: Option<(u8, u8)>,
     /// Frames that ended.
     pub frames: u32,
     /// Processor writes to screen memory, `$0400-$07E7`.
@@ -400,11 +428,14 @@ pub struct Observation {
     /// Processor writes to the 8,000 bytes from BITMAP * `$100`, wherever BITMAP points
     /// at the time of the write (and whether or not the bitmap is showing).
     pub bitmap_writes: u32,
+    /// Writes to the high byte of the BASIC line number (CURLIN+1, `$0206`): the ROM writes
+    /// it each time a program arrives on a line (host-only, for line breakpoints).
+    pub line_writes: u32,
 }
 
 impl Default for Observation {
     fn default() -> Self {
-        Observation { reads: [0; 256], writes: [0; 256], reserved_read: false, frames: 0, screen_writes: 0, bitmap_writes: 0 }
+        Observation { reads: [0; 256], writes: [0; 256], reserved_read: false, reserved_write: None, frames: 0, screen_writes: 0, bitmap_writes: 0, line_writes: 0 }
     }
 }
 
@@ -438,8 +469,14 @@ pub struct Memory {
     pub reserved: [u8; 16],
     /// The video board (chapter 15), if it's in.
     pub board: Option<VideoBoard>,
+    /// The AUNT, the sound chip (manual ch. 12). In every machine from the UNC 16 up;
+    /// `Machine::set_sound(false)` takes it out, for a host that wants a machine without.
+    pub sound: Option<Box<chip::Card>>,
     /// The host's frame meter (`Machine::frame_work`): where this frame's work ended.
     pub meter: FrameMeter,
+    /// The HOLD box's memory view, when the host watches (`Machine::watch`): when each
+    /// byte was written and run, and by what. Host-only, like `obs`.
+    pub trace: Option<Box<crate::trace::Trace>>,
 }
 
 /// How much of a frame a program spent working before it started waiting: the cycle of the
@@ -468,7 +505,9 @@ impl Memory {
             obs: Box::default(),
             reserved: RESERVED_AT_START,
             board: None,
+            sound: Some(Box::default()),
             meter: FrameMeter::default(),
+            trace: None,
         }
     }
 
@@ -502,11 +541,13 @@ impl Memory {
             io::BACKGROUND => self.io.background,
             io::CHARSET => self.io.charset,
             io::BITMAP => self.io.bitmap,
+            io::TEXTROWS => self.io.text_rows,
             io::TAPE => self.deck.status(),
             io::TAPE_DATA => self.deck.data,
             0xC3F0..=0xC3FF => self.reserved[(addr - io::RESERVED) as usize],
             0xC031..=0xC03F | 0xC050..=0xC06F => self.io_peek_rev_a(addr),
             0xC080..=0xC0BF => self.board.as_ref().map_or(0xFF, |b| b.peek(addr)),
+            0xC0C0..=0xC0FF => self.sound.as_ref().map_or(0xFF, |c| c.chip.peek(addr as u8 - 0xC0)),
             0xD000..=0xD3FF => CHAR_ROM[(addr - CHAR_ROM_START) as usize],
             _ => 0xFF,
         }
@@ -515,11 +556,18 @@ impl Memory {
 
 impl Bus for Memory {
     fn read(&mut self, addr: u16) -> u8 {
-        let v = self.peek(addr);
         // One test on the hot path: everything else is RAM and ROM, which nothing watches.
-        if addr & 0xF000 == 0xC000 {
-            self.io_read(addr);
+        if addr & 0xF000 != 0xC000 {
+            return self.peek(addr);
         }
+        // the sound chip's voice 3 is read as it stands at this cycle
+        if addr & 0xFFC0 == 0xC0C0
+            && let Some(c) = &mut self.sound
+        {
+            c.catch_up(self.io.cycle);
+        }
+        let v = self.peek(addr);
+        self.io_read(addr);
         v
     }
 
@@ -528,9 +576,20 @@ impl Bus for Memory {
             let obs = &mut self.obs;
             obs.screen_writes = obs.screen_writes.wrapping_add((addr.wrapping_sub(SCREEN) < 1000) as u32);
             obs.bitmap_writes = obs.bitmap_writes.wrapping_add((addr.wrapping_sub((self.io.bitmap as u16) << 8) < 8000) as u32);
+            obs.line_writes = obs.line_writes.wrapping_add((addr == 0x0206) as u32);
+            if self.trace.is_some() {
+                let ram = &self.ram;
+                let line = if ram[0x0204] != 0 { u16::from_le_bytes([ram[0x0205], ram[0x0206]]) } else { crate::trace::NO_LINE };
+                let t = self.trace.as_deref_mut().unwrap();
+                t.written[addr as usize] = t.frame;
+                t.writer[addr as usize] = t.pc;
+                t.line[addr as usize] = line;
+            }
         } else if addr >> 8 == 0xC0 {
             let w = &mut self.obs.writes[addr as u8 as usize];
             *w = w.wrapping_add(1);
+        } else if addr & 0xFFF0 == io::RESERVED {
+            self.obs.reserved_write = Some(((addr & 15) as u8, value));
         }
         self.store(addr, value);
     }
@@ -600,6 +659,7 @@ impl Memory {
                 io::BACKGROUND => self.io.background = value & 0x0F,
                 io::CHARSET => self.io.charset = value,
                 io::BITMAP => self.io.bitmap = value,
+                io::TEXTROWS => self.io.text_rows = value.min(SCREEN_ROWS as u8),
                 io::BEEPER => {
                     self.io.speaker = !self.io.speaker;
                     self.io.speaker_toggles = self.io.speaker_toggles.wrapping_add(1);
@@ -609,6 +669,12 @@ impl Memory {
                 0xC080..=0xC0BF => {
                     if let Some(b) = &mut self.board {
                         b.store(addr, value);
+                    }
+                }
+                0xC0C0..=0xC0FF => {
+                    if let Some(c) = &mut self.sound {
+                        c.catch_up(self.io.cycle);
+                        c.chip.store(addr as u8 - 0xC0, value);
                     }
                 }
                 _ => {}
@@ -699,6 +765,12 @@ impl Memory {
         }
     }
 
+    /// How many lines of the picture the bitmap takes, from the top, when it's on: all 200,
+    /// or in mixed mode all but the last TEXTROWS text rows (168 at reset).
+    pub fn bitmap_lines(&self) -> usize {
+        if self.io.vmode & io::VMODE_MIXED != 0 { PIXELS_H - 8 * self.io.text_rows as usize } else { PIXELS_H }
+    }
+
     /// Line y (0-199) of the picture, from the registers and memory as they stand now: the
     /// text or the bitmap, with the video board its fine scroll, the layer behind it and the
     /// sprites over it. The sprites' table is the one `sprites` read; what they touch goes in
@@ -712,7 +784,7 @@ impl Memory {
         if y >= sy {
             let src = y - sy;
             let vmode = self.io.vmode;
-            let split = if vmode & io::VMODE_MIXED != 0 { MIXED_SPLIT } else { PIXELS_H };
+            let split = self.bitmap_lines();
             let mut line = [0u8; PIXELS_W];
             if vmode & io::VMODE_BITMAP != 0 && src < split {
                 let four = board.is_some_and(|b| b.colour_mode & board::COLOURMODE_BITMAP4 != 0);
@@ -789,6 +861,9 @@ pub struct Machine {
     pub cpu: Cpu,
     pub mem: Memory,
     breakpoints: Box<[bool; 0x10000]>,
+    /// BASIC lines to stop on (host-only, like the breakpoints): the moment a running program
+    /// arrives on one, before any of the line has run.
+    line_breaks: Vec<u16>,
     /// Border colour as it stood on each raster line during the last frame.
     pub border_lines: [u8; LINES_PER_FRAME as usize],
     /// The picture as the beam drew it, and the colours of each of its lines (`frame`).
@@ -816,6 +891,7 @@ impl Machine {
             cpu: Cpu::new(),
             mem,
             breakpoints: Box::new([false; 0x10000]),
+            line_breaks: Vec::new(),
             border_lines: [0; LINES_PER_FRAME as usize],
             picture: Box::new([0; PIXELS_W * PIXELS_H]),
             picture_colours: Box::new([[0, 1, 1, 1]; PIXELS_H]),
@@ -836,13 +912,27 @@ impl Machine {
         let obs = std::mem::take(&mut self.mem.obs);
         let reserved = self.mem.reserved;
         let board = self.mem.board.is_some();
+        let sound = self.mem.sound.is_some();
         self.mem = Memory::new(size);
         self.mem.board = board.then(VideoBoard::default);
+        // the clock starts again at 0 with the processor's
+        self.mem.sound = sound.then(Box::default);
         self.mem.rom = rom;
         self.mem.obs = obs;
         self.mem.reserved = reserved;
         self.mem.deck = Deck { motor: false, ready: false, overrun: false, data: 0, ..deck };
         self.border_lines = [0; LINES_PER_FRAME as usize];
+        self.cpu.reset(&mut self.mem);
+    }
+
+    /// The RESET button: the processor and the I/O start over as at switch-on, but memory
+    /// keeps what it holds. The ROM sees it has been running (WARMMK) and goes back to
+    /// `READY.` with the program, as STOP and RESTORE does. It works on anything, a jammed
+    /// processor too.
+    pub fn reset_button(&mut self) {
+        let ram = self.mem.ram.clone();
+        self.reset();
+        self.mem.ram = ram;
         self.cpu.reset(&mut self.mem);
     }
 
@@ -899,6 +989,21 @@ impl Machine {
         m
     }
 
+    /// Takes the sound chip out, or puts it back (manual ch. 12). Every machine has
+    /// it from the start; a chip put back is silent, every register 0. The machine carries
+    /// on: no reset.
+    pub fn set_sound(&mut self, on: bool) {
+        if on != self.mem.sound.is_some() {
+            let now = self.cpu.cycles + self.idle_cycles;
+            self.mem.sound = on.then(|| Box::new(chip::Card::at(chip::Chip::default(), now)));
+        }
+    }
+
+    /// Whether the sound chip is in. SOUND (`$C0DF`) reads $16 if it is.
+    pub fn has_sound(&self) -> bool {
+        self.mem.sound.is_some()
+    }
+
     /// Whether the video board is in (chapter 15). BOARD (`$C0BF`) reads $15 if it is.
     pub fn has_board(&self) -> bool {
         self.mem.board.is_some()
@@ -923,6 +1028,13 @@ impl Machine {
             held.remove(0);
         }
         held.push(code);
+    }
+
+    /// The RESTORE key goes down. It isn't in KBD or the matrix: it pulls the processor's
+    /// NMI line (manual chapter 10), once for each press. With STOP held, the ROM's handler
+    /// goes back to BASIC's `READY.`; alone, it returns at once.
+    pub fn restore(&mut self) {
+        self.cpu.nmi();
     }
 
     /// A key comes up. HELD falls back to the most recent key still down, or 0.
@@ -1010,6 +1122,20 @@ impl Machine {
 
     pub fn clear_breakpoints(&mut self) {
         self.breakpoints.fill(false);
+        self.line_breaks.clear();
+    }
+
+    /// Stop when a running BASIC program arrives on line `line` (or don't, with `on` false).
+    pub fn set_line_break(&mut self, line: u16, on: bool) {
+        self.line_breaks.retain(|&l| l != line);
+        if on {
+            self.line_breaks.push(line);
+        }
+    }
+
+    /// The BASIC line being run (CURLIN), if a program is running.
+    pub fn basic_line(&self) -> Option<u16> {
+        (self.mem.ram[0x0204] != 0).then(|| u16::from_le_bytes([self.mem.ram[0x0205], self.mem.ram[0x0206]]))
     }
 
     /// Host-only: the cycles the last whole frame spent working before its program started
@@ -1020,6 +1146,7 @@ impl Machine {
 
     /// Runs one instruction and advances the clock. Returns cycles spent (0 if stopped).
     pub fn step(&mut self) -> u8 {
+        self.trace_step();
         let c = self.cpu.step(&mut self.mem);
         self.tick(c as u32);
         c
@@ -1036,6 +1163,9 @@ impl Machine {
         let wrapped = self.mem.frame_cycle >= CYCLES_PER_FRAME;
         if wrapped {
             self.mem.frame_cycle -= CYCLES_PER_FRAME;
+            if let Some(t) = self.mem.trace.as_deref_mut() {
+                t.frame = t.frame.wrapping_add(1);
+            }
         }
         let line = self.mem.raster_line();
         // the beam finishes every line it passed: before the frame ends, its last lines
@@ -1063,7 +1193,11 @@ impl Machine {
         }
         if wrapped {
             self.mem.obs.frames = self.mem.obs.frames.wrapping_add(1);
-            self.mem.io.audio.end_frame(now.saturating_sub(self.mem.frame_cycle as u64));
+            let end = now.saturating_sub(self.mem.frame_cycle as u64);
+            self.mem.io.audio.end_frame(end);
+            if let Some(c) = &mut self.mem.sound {
+                c.end_frame(end);
+            }
         }
         if line != before && line < 256 && line as u8 == self.mem.io.raster_cmp {
             self.mem.io.irq_status |= io::IRQ_RASTER;
@@ -1116,7 +1250,14 @@ impl Machine {
                 return Stop::Breakpoint(self.cpu.pc);
             }
             first = false;
+            let lw = self.mem.obs.line_writes;
             self.step();
+            if !self.line_breaks.is_empty() && self.mem.obs.line_writes != lw {
+                let line = u16::from_le_bytes([self.mem.ram[0x0205], self.mem.ram[0x0206]]);
+                if self.line_breaks.contains(&line) {
+                    return Stop::Breakpoint(self.cpu.pc);
+                }
+            }
         }
         self.stopped().unwrap_or(Stop::Budget)
     }
@@ -1189,7 +1330,7 @@ impl Machine {
     ///
     /// With VMODE bit 1 set, the bitmap at BITMAP * $100 replaces the text: line y, pixel x
     /// is bit 7 - (x AND 7) of the byte at base + y * 40 + x / 8. With bit 2 (mixed) also set,
-    /// lines 168-199 still show text rows 21-24.
+    /// the last TEXTROWS text rows still show under it: at reset rows 21-24, lines 168-199.
     ///
     /// With the video board (chapter 15), every pixel is a colour number 0-3 (`colour_of`
     /// says which colour each is): paper 0, the screen's ink 3, the layer's ink 1, a sprite's

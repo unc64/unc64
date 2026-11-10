@@ -67,13 +67,23 @@ fn the_io_registers_are_the_machines() {
         ("LAYERSY", io::LAYERSY),
         ("COLOURMODE", io::COLOURMODE),
         ("COLOUR1", io::COLOUR1),
+        ("TEXTROWS", io::TEXTROWS),
         ("COLOUR2", io::COLOUR2),
         ("COLOUR3", io::COLOUR3),
         ("BOARD", io::BOARD),
+        ("CUTOFF", io::CUTOFF),
+        ("FILTER", io::FILTER),
+        ("VOLUME", io::VOLUME),
+        ("VOICE3", io::VOICE3),
+        ("ENV3", io::ENV3),
+        ("SOUND", io::SOUND),
+        ("WAVETABLE", io::WAVETABLE),
     ] {
         assert_eq!(at(name), addr, "{name}");
     }
-    assert_eq!(l.io.len(), 42, "a register in the manual the test doesn't know");
+    assert_eq!(l.io.len(), 50, "a register in the manual the test doesn't know");
+    let table = l.io.iter().find(|r| r.name == "WAVETABLE").unwrap();
+    assert_eq!(table.end, io::WAVETABLE + 31);
     let keys = l.io.iter().find(|r| r.name == "KEYS").unwrap();
     assert_eq!(keys.end, io::KEYS + 8);
     assert!(l.io.iter().all(|r| !(0xC080..=0xC09F).contains(&r.address)), "the first board's sprite registers are gone");

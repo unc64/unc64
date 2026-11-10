@@ -376,6 +376,9 @@ fn a_program_that_wont_fit_beside_the_bitmap_is_refused() {
     let mut m = Machine::boot(RamSize::K16);
     m.set_tape_turbo(true);
     type_line(&mut m, "GR");
+    for _ in 0..10 {
+        m.run_frame(); // GR clears 8,000 bytes before it reads another key
+    }
     run_until(&mut m, 1.0, |m| m.screen_text().contains("READY."));
     m.insert_tape(tape::basic("BIG", &program).encode());
     m.press_play();
@@ -438,9 +441,9 @@ fn the_jump_table_vectors_and_banner_are_unchanged() {
         let target = u16::from_le_bytes([m.peek(at + 1), m.peek(at + 2)]);
         assert_eq!((m.peek(at), target), (0x06, rom.symbol(name).unwrap()), "${at:04X}: JMP {name}");
     }
-    assert!((0xFF24..0xFFFA).all(|a| m.peek(a) == 0xFF), "$FF24 on: still free for the jump table");
+    assert!((0xFF24..0xFFE0).all(|a| m.peek(a) == 0xFF), "$FF24 to the RESET button's check at $FFE0: still free for the jump table");
     let word = |a: u16| u16::from_le_bytes([m.peek(a), m.peek(a + 1)]);
-    assert_eq!([word(0xFFFC), word(0xFFFE)], [rom.symbol("RESET").unwrap(), rom.symbol("IRQ").unwrap()]);
+    assert_eq!([word(0xFFFC), word(0xFFFE)], [rom.symbol("POWER").unwrap(), rom.symbol("IRQ").unwrap()]);
     assert_eq!(
         rows(&m),
         ["    UNC 64 SYSTEM ROM  REV A", " 16K RAM SYSTEM", " UNC BASIC REV A  14335 BYTES FREE", " TYPE HELP FOR HELP", "READY."]

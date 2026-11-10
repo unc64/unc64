@@ -700,6 +700,17 @@ msg:    .text "HELLO, UNC 64!"
     if (power && changed) powerOn();
   }
   $('reset').addEventListener('click', powerOn);
+  // RESET, the button on the monitor: the processor and the I/O start over, memory is kept,
+  // and the ROM goes back to READY. with the program. Out of anything, a jammed processor
+  // too. Not a power cycle: what's in memory, the breakpoints and the tape all stay.
+  $('resetbtn').addEventListener('click', () => {
+    if (!wasm.reset_button) return;
+    typing = [];
+    pendingRun = false;
+    wasm.reset_button();
+    setRunning(true);
+    cv.focus();
+  });
   $('ram').addEventListener('change', () => { project.machine.ram = Number($('ram').value); markDirty(); powerOn(); });
   $('board').addEventListener('change', () => { project.machine.board = $('board').checked; markDirty(); powerOn(); });
   $('colour').checked = colour;
@@ -1221,9 +1232,19 @@ msg:    .text "HELLO, UNC 64!"
   const held = new Map();
   cv.addEventListener('keydown', (e) => {
     if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); held.set(e.code, 3); wasm.key(3); return; } // the STOP key
-    if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) return;
+    if (e.metaKey || e.altKey || /^F\d+$/.test(e.key)) return;
+    // RESTORE is Page Up: the processor's NMI. With STOP held (Ctrl+C) it's the way back to
+    // READY. from anything; Shift+Page Up presses both.
+    if (e.key === 'PageUp' && wasm.restore) {
+      e.preventDefault();
+      if (e.shiftKey) { wasm.key(3); setTimeout(() => wasm.key_up(3), 150); }
+      wasm.restore();
+      return;
+    }
+    if (e.ctrlKey) return;
     let code = CURSOR[e.key] ?? null;
     if (e.key === 'Enter') code = 13;
+    else if (e.key === 'Backspace' && e.shiftKey) code = 20; // INSERT: shift and DELETE (not the host's Insert key: not every keyboard has one)
     else if (e.key === 'Backspace') code = 8;
     else if (e.key.length === 1) code = e.key.toUpperCase().charCodeAt(0);
     if (code !== null && code < 96) { e.preventDefault(); held.set(e.code, code); wasm.key(code); }

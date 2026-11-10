@@ -1,9 +1,13 @@
-//! System Rev A, pinned (REVISIONS.md): a program that runs on a Rev A machine runs the same,
-//! cycle for cycle, on every later one. These are the tables that promise rests on: the
+//! System Rev A, pinned (REVISIONS.md). Rev A is in alpha, not frozen yet; once it is, a
+//! program that runs on a Rev A machine runs the same, cycle for cycle, on every later one.
+//! These are the tables that promise will rest on: the
 //! instruction set and its cycles (the documented ones and the eight the book leaves out),
-//! the timing of a frame, the ROM's jump table, UNC BASIC's tokens and the tape format. Each
-//! is compared with `rev_a.txt`, written when Rev A was frozen. If this test fails, the change
-//! is a Rev B change: put it back, or make it a later revision that only adds.
+//! the timing of a frame, the ROM's jump table, UNC BASIC's tokens, the tape format and the
+//! AUNT's tables. Each
+//! is compared with `rev_a.txt`, so none of them changes by accident. If this test fails
+//! during the alpha: put the change back, or, if it's meant, write the file again
+//! (`UNC_FREEZE_REV_A=1`) with the manual and REVISIONS.md in the same commit. After the
+//! freeze the same failure is a Rev B change.
 
 use unc_core::isa::{OPCODES, UNDOCUMENTED};
 use unc_core::machine::{self, CYCLES_PER_FRAME, CYCLES_PER_LINE, LINES_PER_FRAME, Machine, RamSize, VBLANK_LINE};
@@ -49,11 +53,21 @@ fn rev_a() -> String {
     }
     out.push_str("# The tape format\n");
     out.push_str(&format!("{} version {}\n", String::from_utf8_lossy(unc_asm::tape::MAGIC), unc_asm::tape::VERSION));
+    // the AUNT is Rev A too: its id, its sample clock and the tables its sound is made of
+    use unc_core::chip;
+    out.push_str("# The AUNT: id, cycles a sample, the envelope's cycles a step, the filter's corners and resonances\n");
+    out.push_str(&format!("${:02X} at ${:04X}, a sample every {} cycles\n", chip::ID, machine::io::SOUND, chip::CYCLES_PER_SAMPLE));
+    let row = |v: &[u32]| v.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
+    out.push_str(&format!("{}\n", row(&chip::RATE_CYCLES.map(u32::from))));
+    for line in chip::CUTOFF_TABLE.chunks(16) {
+        out.push_str(&format!("{}\n", row(&line.iter().map(|&c| c as u32).collect::<Vec<_>>())));
+    }
+    out.push_str(&format!("{}\n", row(&chip::RESONANCE_TABLE)));
     out
 }
 
 #[test]
-fn rev_a_is_as_it_was_frozen() {
+fn rev_a_is_as_it_was_written_down() {
     let path = format!("{}/tests/rev_a.txt", env!("CARGO_MANIFEST_DIR"));
     let now = rev_a();
     if std::env::var("UNC_FREEZE_REV_A").is_ok() {
@@ -69,6 +83,6 @@ fn rev_a_is_as_it_was_frozen() {
             .take(5)
             .map(|(a, b)| format!("  was: {a}\n  now: {b}"))
             .collect();
-        panic!("this is a Rev B change: System Rev A is frozen (REVISIONS.md)\n{}", diff.join("\n"));
+        panic!("this changes what System Rev A pins (REVISIONS.md). Rev A is in alpha: if the change is meant, UNC_FREEZE_REV_A=1 writes rev_a.txt again\n{}", diff.join("\n"));
     }
 }

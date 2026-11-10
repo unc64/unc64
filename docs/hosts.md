@@ -35,17 +35,17 @@ The format, numbers low byte first:
 | Bytes | Holds |
 |---|---|
 | 4 | `UNCS` |
-| 1 | Format version: 3 |
+| 1 | Format version: 5 |
 | 1 | RAM: 16 or 64 (K) |
 | 18 | The processor: A, X, Y, SP, PC, P, the cycle count, whether it's running, halted or jammed (and on what), and the IRQ line |
-| 65 + keys held | The I/O: VMODE, the raster compare, the interrupt registers, FRAME, KBD and the keys held, the keyboard matrix, the colours, CHARSET, BITMAP, the timer, the speaker, the shifter |
+| 66 + keys held | The I/O: VMODE, the raster compare, the interrupt registers, FRAME, KBD and the keys held, the keyboard matrix, the colours, CHARSET, BITMAP, TEXTROWS, the timer, the speaker, the shifter |
 | 1, or 16 | The video board: 0 if it isn't in; 1 and its 15 bytes of registers (SPRTAB, SPRBANK, the collision and line registers, the scrolls, the layer, COLOURMODE and the colours) if it is. Its sprite table and images are in RAM |
 | 4 | The computer's side of the tape interface: the motor, TAPEDATA, byte ready, overrun |
 | 4 | Cycles into the current frame |
 | 312 | The border colour on each line of the last frame (for the picture) |
 | 16K or 48K | RAM, from `$0000` to the top of memory |
 
-A UNC 16 with no key down saves to 16,794 bytes; with the 64K expansion, 49,562. The video board adds 15. A save state takes the board with it: loading one puts the board in or takes it out, as it does the 64K expansion.
+A UNC 16 with no key down saves to 16,917 bytes; with the 64K expansion, 49,685. The video board adds 15. The AUNT, the sound chip (manual ch. 12), is in every machine and in every save (121 bytes of it); `Machine::set_sound(false)` takes it out, and the bindings' `set_sound_chip` does that at the next power-on. `observe()` also reports the last write the program made to the reserved range (`reserved_write`), which changes nothing in the machine: the game makes its secret of it. A save state takes the board with it: loading one puts the board in or takes it out, as it does the 64K expansion.
 
 **Not saved:** the tape deck (the cassette in it, how far it has wound and the PLAY and RECORD keys), the host's `observe` counts, breakpoints, and sound already played. The deck isn't part of the computer, just as a reset doesn't touch it. `load_state` leaves the deck as the host has it and takes only the computer's side of the interface from the save, so a host that wants the tape back puts it in again. That's safe at any moment: a `LOAD` that was reading carries on with whatever tape it finds, and stops with `BREAK` or `?LOAD ERROR` if it isn't the same one; a `SAVE` that was recording stops with `BREAK` unless RECORD is down.
 

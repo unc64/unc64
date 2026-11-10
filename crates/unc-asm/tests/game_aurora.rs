@@ -1019,6 +1019,52 @@ fn losing_the_last_ship_is_game_over_and_space_starts_again() {
 }
 
 #[test]
+fn a_new_game_after_game_over_scrolls_again() {
+    // Game over stops the terrain; the next game must start it again, and the
+    // layer must keep its quarter speed (with SCR stuck where the layer's coarse
+    // step falls, the aurora jumped a cell every frame).
+    let mut g = Game::play();
+    g.frames(5);
+    g.set("LIVES", 1);
+    g.set("INVUL", 0);
+    g.set_at("BUT", 0, 1);
+    g.set_at("BUX", 0, g.get("SHX") + 2);
+    g.set_at("BUY", 0, g.get("SHY"));
+    g.set_at("BUVX", 0, 0);
+    g.set_at("BUVY", 0, 0);
+    g.until(200, "game over", |g| g.get("STATE") == OVER);
+    g.frames(40);
+    g.set("SCR", 27); // (SCR + 4) & 31 == 31: the layer's coarse step
+    g.press(b' ');
+    g.until(3, "a new game", |g| g.get("STATE") == PLAY);
+    g.frames(2);
+    let mut fine = vec![];
+    let mut lsx = vec![];
+    let lay0 = g.layer_text();
+    let mut lay_steps = 0;
+    let mut lay = lay0.clone();
+    for _ in 0..32 {
+        g.frame();
+        fine.push(g.get("FINE"));
+        lsx.push(g.m.peek(io::LAYERSX));
+        let l = g.layer_text();
+        if l != lay {
+            lay_steps += 1;
+            lay = l;
+        }
+    }
+    assert!(
+        fine.windows(2).all(|w| w[0] != w[1]),
+        "the terrain moves a pixel every frame: {fine:?}"
+    );
+    assert!(lsx.windows(2).any(|w| w[0] != w[1]), "the layer moves: {lsx:?}");
+    assert!(
+        lay_steps <= 2,
+        "the layer moves a cell every 32 frames, not every frame ({lay_steps} in 32)"
+    );
+}
+
+#[test]
 fn game_over_goes_back_to_the_title_by_itself() {
     let mut g = Game::play();
     g.frames(5);
