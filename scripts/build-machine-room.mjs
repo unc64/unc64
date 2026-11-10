@@ -27,9 +27,9 @@ const ABOUT = {
   orbit: 'Shoot the drifting rocks around a small planet that pulls on everything.',
   debug: 'Bugs march down the screen in formation. You\'re the cursor. Fix them.',
   aurora: 'Fly low over the fells at night, under the northern lights. The video board\'s demonstration cassette.',
-  tracker: 'A three-voice tracker for the AUNT, the sound chip, with a tune on it. RETURN plays.',
+  tracker: 'A three-voice tracker for the AUNT, the sound chip, with four tunes on it. RETURN plays, T is the next tune.',
 };
-const TITLE = { sun: 'SUN OVER A HOUSE', tracker: 'AUNT TRACKER' };
+const TITLE = { sun: 'SUN OVER A HOUSE', tracker: 'MUSIC TRACKER' };
 function header(src, mark) {
   const first = src.split('\n').find((l) => l.startsWith(mark));
   return first ? first.slice(mark.length).trim() : '';

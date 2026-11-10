@@ -1233,7 +1233,7 @@ msg:    .text "HELLO, UNC 64!"
     if (e.ctrlKey) return;
     let code = CURSOR[e.key] ?? null;
     if (e.key === 'Enter') code = 13;
-    else if (e.key === 'Insert' || (e.key === 'Backspace' && e.shiftKey)) code = 20; // INSERT: shift and DELETE
+    else if (e.key === 'Backspace' && e.shiftKey) code = 20; // INSERT: shift and DELETE (not the host's Insert key: not every keyboard has one)
     else if (e.key === 'Backspace') code = 8;
     else if (e.key.length === 1) code = e.key.toUpperCase().charCodeAt(0);
     if (code !== null && code < 96) { e.preventDefault(); held.set(e.code, code); wasm.key(code); }
