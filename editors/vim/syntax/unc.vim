@@ -44,7 +44,7 @@ syn match uncSystem "\<\%(PRGEND\|PRHEX\|PRNUM\|PRSTR\|PTR\|RAMTOP\|RASTER\|RAST
 syn match uncSystem "\<\%(RLCOL\|RLMOV\|RLROW\|RND\|RNDSEED\|RUNFLG\|SCROLLX\|SCROLLY\|SEED\|SHIFT_AMOUNT\)\>"
 syn match uncSystem "\<\%(SHIFT_FLIP\|SHIFT_IN\|SHIFT_OUT\|SOUND\|SPEAKER\|SPRBANK\|SPRHIT\|SPRHITBG\|SPRLINE\|SPRTAB\)\>"
 syn match uncSystem "\<\%(SRC\|STRP\|TAPE\|TAPEDATA\|TBORD\|TCHK\|TEXTROWS\|THDR\|TIMER_HI\|TIMER_LO\)\>"
-syn match uncSystem "\<\%(TMPA\|TNAME\|TNAMED\|TOVR\|VARS\|VMODE\|VOICE3\|VOLUME\|WAVETABLE\)\>"
+syn match uncSystem "\<\%(TMPA\|TNAME\|TNAMED\|TOVR\|VARS\|VMODE\|VOICE3\|VOLUME\|WARMMK\|WAVETABLE\)\>"
 
 " Definitions: `name:` and `@name:` at the start of a line, `NAME = value` on its own.
 syn match uncLabel "^\s*\zs\h\w*\%(\\\h\w*\)*\ze\s*:"

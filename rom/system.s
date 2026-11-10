@@ -34,6 +34,8 @@ DATAP   = $0310         ; READ: 2 bytes, where the next DATA item starts; high b
 DATAL   = $0312         ; READ: 2 bytes, the line that DATA item is on
 IRQVEC  = $0314         ; IRQ handler, called through RAM so programs can hook it
 NMIVEC  = $0316         ; and the NMI's: the RESTORE key
+WARMMK  = $0318         ; 2 bytes, $55 $AA once switched on: the RESET button finds them
+                        ;   and keeps the program (power-on clears memory, so they're 0)
 IBUF    = $0320         ; the line you type: 120 characters + 0, $0320-$0398
 INBUF   = $03A0         ; INPUT's line: 40 characters + 0, $03A0-$03C8
 NUMBUF  = $03D0         ; NUMSTR's eight digits, $03D0-$03D7
@@ -153,6 +155,10 @@ RESET:  LDX #$FF
         LDA #$C0
         STA RAMTOP
 R16K:   JSR NEW0
+        LDA #$55        ; from now on, a reset is warm
+        STA WARMMK
+        LDA #$AA
+        STA WARMMK+1
         JSR SEED0
         JSR CLS
         LDX #<BANNER
@@ -3877,7 +3883,24 @@ GT0:    LDA #0
         JMP RNDSEED     ; $FF1E
         JMP WARM        ; $FF21: READY, back to BASIC
 
+; The processor starts here, at switch-on and when the RESET button is pressed. Switched
+; on, memory is clear and it's a cold start (RESET). Pressed, the machine has been running
+; and WARMMK says so: as STOP and RESTORE, back to READY. with the program and its
+; variables, whatever the processor was doing, jammed or not. (At the top of the ROM,
+; clear of the jump table, which can grow.)
+        .org $FFE0
+POWER:  LDX #$FF
+        TXS
+        LDA WARMMK
+        CMP #$55
+        BNE COLD
+        LDA WARMMK+1
+        CMP #$AA
+        BNE COLD
+        JMP RESTORE
+COLD:   JMP RESET
+
         .org $FFFA
         .word NMI
-        .word RESET
+        .word POWER
         .word IRQ

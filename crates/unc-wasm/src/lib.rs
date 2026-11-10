@@ -289,6 +289,13 @@ pub extern "C" fn key(ascii: u32) {
     m(|m| m.key(ascii as u8));
 }
 
+/// The RESET button: the processor and the I/O start over, memory kept, and the ROM goes
+/// back to READY. with the program. Out of anything, a jammed processor too.
+#[unsafe(no_mangle)]
+pub extern "C" fn reset_button() {
+    m(|m| m.reset_button());
+}
+
 /// The RESTORE key: the processor's NMI. With STOP held (`key(3)`), back to READY.
 #[unsafe(no_mangle)]
 pub extern "C" fn restore() {

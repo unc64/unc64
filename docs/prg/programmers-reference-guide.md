@@ -43,7 +43,7 @@ This book is the specification of the machine: System Rev A. The emulator in `cr
 
 This is the whole machine. Every register, every address and every instruction is in here, with the exact number of cycles each one takes. Nothing about the UNC 64 is hidden behind a driver or a library. If the computer can do it, this book tells you how.
 
-You don't need to have written machine language before. You do need patience, a pencil, and the willingness to try things and see what happens. You can't damage the computer by typing at it. The worst a program can do is stop, or never stop, and STOP and RESTORE together fix that (chapter 2); the reset switch fixes anything.
+You don't need to have written machine language before. You do need patience, a pencil, and the willingness to try things and see what happens. You can't damage the computer by typing at it. The worst a program can do is stop, or never stop, and STOP and RESTORE together fix that (chapter 2); the RESET button, next to the power switch, fixes anything, and your program is still there.
 
 Read chapters 1 to 7 in order. After that, dip into whatever you need. The appendices are for keeping open beside the keyboard.
 
@@ -343,7 +343,7 @@ Because true is -1 (every bit set), `AND` and `OR` work on comparisons the way y
 
 The STOP key stops a running program. BASIC prints `BREAK IN` and the line it was on, and goes back to `READY.`. STOP also gets you out of `INPUT` and `LIST`, and gives up a line you're halfway through typing: it stays on the screen, and BASIC never sees it.
 
-**STOP and RESTORE.** STOP is a key, and it only works on a program that looks at the keys. BASIC does, before every statement. A machine-language routine you called with `SYS` may not, and then STOP does nothing at all. Hold STOP and press RESTORE: the screen clears, the border and background go black, any sound stops, and BASIC says `READY.`, with your program and its variables still there. It works on anything short of a jammed processor (chapter 4), and RESTORE on its own does nothing, so you can't hit it by accident. Chapter 10 says exactly what it resets.
+**STOP and RESTORE.** STOP is a key, and it only works on a program that looks at the keys. BASIC does, before every statement. A machine-language routine you called with `SYS` may not, and then STOP does nothing at all. Hold STOP and press RESTORE: the screen clears, the border and background go black, any sound stops, and BASIC says `READY.`, with your program and its variables still there. It works on anything short of a jammed processor (chapter 4); for that, press RESET, next to the power switch, which does the same from anything. RESTORE on its own does nothing, so you can't hit it by accident. Chapter 10 says exactly what it resets.
 
 ### Errors
 
@@ -571,11 +571,11 @@ So `BCC` after a compare means "branch if less than", and `BCS` means "branch if
 
 ### Unassigned opcodes
 
-Of the 256 possible opcodes, 136 are the instructions this book describes. Run into one of the other 120 and, as a rule, the processor **jams**: it stops at the faulty byte, and only a reset will restart it. This usually means your program ran into data, or into empty memory. Empty memory on a newly switched-on machine is all zeros, and `$00` is `BRK`, so running off the end of a program usually lands in the interrupt handler instead (chapter 10). The ROM's handler returns to the next byte, which is another `BRK`, and the processor crawls through empty memory one `BRK` at a time until it reaches something else.
+Of the 256 possible opcodes, 136 are the instructions this book describes. Run into one of the other 120 and, as a rule, the processor **jams**: it stops at the faulty byte, and only a reset will restart it. Press RESET, on the monitor: your program is still there (chapter 13). This usually means your program ran into data, or into empty memory. Empty memory on a newly switched-on machine is all zeros, and `$00` is `BRK`, so running off the end of a program usually lands in the interrupt handler instead (chapter 10). The ROM's handler returns to the next byte, which is another `BRK`, and the processor crawls through empty memory one `BRK` at a time until it reaches something else.
 
 ### Reset
 
-At switch-on, or when you press reset, every register is cleared to 0, SP is set to `$FF`, and P to `$24` (interrupts disabled). Memory and every I/O register are cleared to zero. The processor then loads PC from the reset vector at `$FFFC` and starts the system ROM (chapter 13).
+At switch-on, or when you press RESET, every register is cleared to 0, SP is set to `$FF`, and P to `$24` (interrupts disabled), and every I/O register is cleared to zero. Switching on clears memory too; RESET leaves it as it is. The processor then loads PC from the reset vector at `$FFFC` and starts the system ROM, which can tell the two apart (chapter 13).
 
 **While the processor is stopped**, halted or jammed, the rest of the machine goes on: the raster keeps scanning, the frame counter counts and the border keeps its colour, line after line. Only the processor waits: for the reset, or, if it's halted, for RESTORE (chapter 10).
 
@@ -1799,7 +1799,7 @@ An NMI is taken like an IRQ, with three differences. It doesn't ask the I flag: 
 
 That takes 6 cycles. The ROM's handler there does `JMP ($0316)`, 5 more, and `$0316-$0317`, NMIVEC, is yours to change, as IRQVEC is. `RTI` goes back to where the program was.
 
-Woken from a `HLT`, the processor pushes the address of the `HLT` itself, so `RTI` runs the `HLT` again and the processor stops again: an NMI doesn't set a halted program going by accident. A **jammed** processor (chapter 4) stays jammed. Only a reset helps that.
+Woken from a `HLT`, the processor pushes the address of the `HLT` itself, so `RTI` runs the `HLT` again and the processor stops again: an NMI doesn't set a halted program going by accident. A **jammed** processor (chapter 4) stays jammed. Only a reset helps that: the RESET button.
 
 **STOP and RESTORE.** The handler the ROM puts in NMIVEC looks at the STOP key (bit 7 of the matrix's row 8). If STOP isn't down, it returns: RESTORE alone does nothing. If it is, the handler never returns to your program. It:
 
@@ -1812,7 +1812,7 @@ Woken from a `HLT`, the processor pushes the address of the `HLT` itself, so `RT
 
 Memory isn't touched. The BASIC program and its variables are as they were, and so is your machine language, wherever it is: `SYS` will call it again. So STOP and RESTORE is the way out of a program that STOP alone can't reach, one that never looks at the keyboard or has halted, and you lose nothing but the picture.
 
-A program that wants RESTORE for itself points NMIVEC at its own handler, which ends with `RTI`. While it holds the vector, STOP and RESTORE is its business too, and the reset switch is the only way out it can't close.
+A program that wants RESTORE for itself points NMIVEC at its own handler, which ends with `RTI`. While it holds the vector, STOP and RESTORE is its business too, and the RESET button is the only way out it can't close.
 
 ```text
 NMIVEC  = $0316
@@ -2288,11 +2288,13 @@ The top 8K of memory, `$E000-$FFFF`, is the **system ROM**: the program that run
 
 ### What it does at start-up
 
+The reset vector points at `$FFE0`, the top of the ROM. It sets the stack pointer to `$FF` and looks at WARMMK, `$0318-$0319`. If it holds `$55 $AA`, the machine has been running and someone pressed RESET: the ROM does what STOP and RESTORE does (chapter 10), and BASIC says `READY.` with your program and its variables as they were, whatever the processor was doing, jammed or not. Switched on, memory is all zeros, so it's a cold start:
+
 1. Sets the stack pointer to `$FF`.
 2. Points the interrupt hooks, IRQVEC at `$0314` and NMIVEC at `$0316`, to its own handlers.
 3. Sets the border and background to black.
 4. Checks for the 64K expansion by writing `$55` to `$4000` and reading it back. Sets RAMTOP at `$0203` to `$40` (16K) or `$C0` (64K).
-5. Empties BASIC's program and variables, and seeds RND.
+5. Empties BASIC's program and variables, seeds RND, and sets WARMMK to `$55 $AA`: from now on a reset is warm.
 6. Clears the screen and prints the start-up message, with the bytes free for BASIC. If BOARD at `$C0BF` reads `$15`, a line under the memory says `VIDEO BOARD REV A` (chapter 15).
 7. Clears I, and prints `READY.`.
 8. Beeps: 880 Hz for 300 ms on the speaker's timer (divisor 1,136; chapter 12), counted out in 15 frames on FRAME. Then the timer's gate and the speaker's data go back to 0.
@@ -2493,6 +2495,7 @@ These figures are for ROM Rev A, and a later ROM may be faster. The jump-table a
 | `$020F` | CURSAV | The character under the screen editor's cursor. |
 | `$0314-$0315` | IRQVEC | The interrupt handler's address. |
 | `$0316-$0317` | NMIVEC | The NMI handler's address: the RESTORE key (chapter 10). |
+| `$0318-$0319` | WARMMK | `$55 $AA` once switched on: RESET keeps the program. Change it, and the next RESET is a cold start. |
 | `$03D0-$03D7` | NUMBUF | NUMSTR's eight digits. |
 | `$03D8-$03D9` | RLCOL, RLROW | The column and row where the screen editor began to wait. |
 | `$03DA-$03F2` | LINK | A byte a row: 1 if the row carries on the line of the row above. |
@@ -2509,7 +2512,7 @@ Keep your programs and data out of `$0200-$03FF`, and out of `$D0-$FE` when you 
 | Address | Vector | Points to |
 |---|---|---|
 | `$FFFA` | NMI | `JMP ($0316)`: the RESTORE key (chapter 10). |
-| `$FFFC` | Reset | The start-up code. |
+| `$FFFC` | Reset | The start-up code, at `$FFE0`: a cold start, or a warm one after RESET. |
 | `$FFFE` | IRQ and BRK | `JMP ($0314)`. |
 
 ---
@@ -3638,7 +3641,7 @@ Rows are the high nibble, columns the low nibble. Blank cells are not instructio
 | `$FF1E` | RNDSEED | X/Y = a 16-bit seed, low byte in X | SEED = X/Y; 0 becomes `$ACE1`, the start-up seed | A |
 | `$FF21` | READY | | Doesn't return: SP = `$FF`, I clear, RUNFLG 0, then BASIC's `READY.` on a new line. Memory, the BASIC program and its variables untouched | everything |
 
-The next free slot is `$FF24`.
+The next free slot is `$FF24`. The table can grow up to `$FFDF`; the reset code starts at `$FFE0`.
 
 The ROM doesn't use the timer or the shifter, and leaves SPEAKER at 0. Of the keyboard matrix it reads only row 8, at `READY.`, to wait for the cursor keys to be let go. NOISE (`$C034`, chapter 12) is the hardware's own random byte: faster than RND, and the way to seed it.
 
@@ -3647,7 +3650,7 @@ The ROM doesn't use the timer or the shifter, and leaves SPEAKER at 0. Of the ke
 | Address | Vector | ROM Rev A value |
 |---|---|---|
 | `$FFFA-$FFFB` | NMI | `JMP ($0316)` |
-| `$FFFC-$FFFD` | Reset | Start-up code |
+| `$FFFC-$FFFD` | Reset | `$FFE0`: start-up, cold or (after RESET) warm |
 | `$FFFE-$FFFF` | IRQ and BRK | `JMP ($0314)` |
 
 ### System variables
@@ -3686,6 +3689,7 @@ The ROM doesn't use the timer or the shifter, and leaves SPEAKER at 0. Of the ke
 | `$0312-$0313` | DATAL | `READ`: the line that item is on |
 | `$0314-$0315` | IRQVEC | Interrupt handler address |
 | `$0316-$0317` | NMIVEC | NMI handler address: the RESTORE key |
+| `$0318-$0319` | WARMMK | `$55 $AA` once switched on: RESET is a warm start |
 | `$0320-$0398` | IBUF | The line being typed, 120 characters and a 0 |
 | `$03A0-$03C8` | INBUF | INPUT's line, 40 characters and a 0 |
 | `$03D0-$03D7` | NUMBUF | NUMSTR's eight ASCII digits, the highest first, with leading zeros |

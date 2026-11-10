@@ -925,6 +925,17 @@ impl Machine {
         self.cpu.reset(&mut self.mem);
     }
 
+    /// The RESET button: the processor and the I/O start over as at switch-on, but memory
+    /// keeps what it holds. The ROM sees it has been running (WARMMK) and goes back to
+    /// `READY.` with the program, as STOP and RESTORE does. It works on anything, a jammed
+    /// processor too.
+    pub fn reset_button(&mut self) {
+        let ram = self.mem.ram.clone();
+        self.reset();
+        self.mem.ram = ram;
+        self.cpu.reset(&mut self.mem);
+    }
+
     pub fn peek(&self, addr: u16) -> u8 {
         self.mem.peek(addr)
     }
