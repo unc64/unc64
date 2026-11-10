@@ -321,6 +321,40 @@ async function main() {
       await m.ctx.close();
     }
 
+    // ---------- a phone: tap the screen and the keyboard's field has the focus ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: browserName !== 'firefox' });
+      const p = await ctx.newPage();
+      const perr = [];
+      p.on('pageerror', (e) => perr.push(e.message));
+      await p.goto(pathToFileURL(built).href);
+      await p.waitForFunction(() => window.uncRoom && window.uncEditor, null, { timeout: 20000 });
+      await screenHas(p, 'READY.');
+      const coarse = await p.evaluate(() => matchMedia('(pointer: coarse)').matches);
+      ok(await p.evaluate(() => document.activeElement.id) !== 'typein', 'on a phone the keyboard is not asked for until the screen is tapped');
+      await p.tap('#screen');
+      ok(await p.evaluate(() => document.activeElement.id) === 'typein', 'a tap on the screen focuses the field a phone\'s keyboard types into');
+      // a phone's keyboard: text arrives in the field with no keydown, and delete takes a character out of it
+      await p.keyboard.insertText('PRINT 6*7X');
+      await p.evaluate(() => { const k = document.getElementById('typein'); k.value = ''; k.dispatchEvent(new Event('input', { bubbles: true })); });
+      await p.keyboard.press('Enter');
+      ok(await p.waitForFunction(() => /PRINT 6\*7\s*\n\s*42/.test(window.uncRoom.screenText()), null, { timeout: 10000 }).then(() => true, () => false), 'typed text and the keyboard\'s delete reach the machine: PRINT 6*7, 42');
+      if (coarse) {
+        ok(await p.isVisible('#softkeys [data-key="3"]'), 'the cursor keys, STOP and RESTORE are under the monitor');
+        const held = await p.evaluate(() => {
+          const b = document.querySelector('#softkeys [data-key="29"]');
+          b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+          const w = window.uncRoom.wasm; for (let i = 0; i < 2000; i++) w.step();
+          const down = w.peek(0xC012);
+          b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          return [down, document.activeElement.id];
+        });
+        ok(held[0] === 29 && held[1] === 'typein', 'a cursor key is down while it is held, and the keyboard keeps the focus', String(held));
+      } else console.log('     (this browser does not report a touch screen: the key row is not checked)');
+      ok(perr.length === 0, 'no errors on a phone', perr.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+
     // ---------- web/ in development mode ----------
     const port = 8600 + Math.floor(Math.random() * 300);
     const srv = spawn('python3', ['-m', 'http.server', String(port), '-d', path.join(ROOT, 'web'), '--bind', '127.0.0.1'], { stdio: 'ignore' });

@@ -56,6 +56,8 @@ The monitor shows the machine at 50 frames a second. Each refresh of your screen
 | Reset | | The RESET button: the processor and the I/O start over, memory is kept, and BASIC says `READY.` with your program still there. It gets out of anything, a jammed processor too (chapter 13). |
 | Power cycle | | Switch the machine off and on. The program is gone; the tape stays in the deck. |
 
+On a phone or a tablet, tap the screen and the keyboard comes up. The keys it doesn't have are in a row under the monitor: the four cursor keys and STOP, which are down for as long as you hold them, and RESTORE.
+
 The status under the monitor shows RUNNING, PAUSED, HALTED, `JAMMED ON $nn` (the opcode it jammed on) or `BREAK AT $nnnn`.
 
 ## The debugger

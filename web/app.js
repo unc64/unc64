@@ -206,6 +206,13 @@
 
   // ---------- the screen ----------
   const cv = $('screen');
+  // The keys go to a field over the screen (#typein), not to the canvas: a canvas can't bring
+  // up a phone's keyboard, and a field can. A tap on the screen focuses it. Run and the deck
+  // focus it too, except on a touch screen, where the keyboard only comes up when asked.
+  const kb = $('typein');
+  const touch = window.matchMedia?.('(pointer: coarse)').matches;
+  const focusScreen = () => { if (!touch) kb.focus({ preventScroll: true }); };
+  if (touch) $('kbd-hint').textContent = 'Tap the screen to type.';
   const ctx = cv.getContext('2d');
   const pix = document.createElement('canvas');
   pix.width = 320;
@@ -709,7 +716,7 @@ msg:    .text "HELLO, UNC 64!"
     pendingRun = false;
     wasm.reset_button();
     setRunning(true);
-    cv.focus();
+    focusScreen();
   });
   $('ram').addEventListener('change', () => { project.machine.ram = Number($('ram').value); markDirty(); powerOn(); });
   $('board').addEventListener('change', () => { project.machine.board = $('board').checked; markDirty(); powerOn(); });
@@ -751,7 +758,7 @@ msg:    .text "HELLO, UNC 64!"
     // step off it: a breakpoint stops the machine before an instruction it arrives at)
     if (wasm.breakpoint(wasm.reg(5))) { running = false; lastStop = 1; showPane('debugger'); updateDebugger(true); revealPC(); return; }
     setRunning(true);
-    cv.focus();
+    focusScreen();
   }
   // BASIC: switched on, the listing typed in for you (fast), then RUN.
   function runBasic() {
@@ -761,7 +768,7 @@ msg:    .text "HELLO, UNC 64!"
     $('output').textContent = `${project.main}: ${lines.length} line${lines.length === 1 ? '' : 's'} typed into the machine, then RUN.\nBASIC finds its own errors: they show on the screen as ?SYNTAX ERROR IN 20, and so on.`;
     typing = keysOf(lines.join('\r') + '\rRUN\r');
     afterTyping = null;
-    cv.focus();
+    focusScreen();
   }
   $('b-run').addEventListener('click', run);
 
@@ -973,7 +980,7 @@ msg:    .text "HELLO, UNC 64!"
       // LOAD starts a machine-language program; a BASIC one it leaves at READY., so RUN it
       const basic = C.programs(c.tape)[0]?.type === 2;
       afterTyping = () => { wasm.press_play(); pendingRun = basic; updateDeck(true); };
-      cv.focus();
+      focusScreen();
       const warn = c.machine.board && !wasm.set_video_board ? ' It needs the video board.' : '';
       toast(`${c.title} is in the deck: LOAD, PLAY.${warn}`);
     },
@@ -1226,11 +1233,12 @@ msg:    .text "HELLO, UNC 64!"
 
   // ---------- help, keys ----------
   $('b-help').addEventListener('click', () => $('dlg-help').showModal());
-  cv.addEventListener('click', () => cv.focus());
+  cv.addEventListener('click', () => kb.focus({ preventScroll: true }));
+  cv.addEventListener('focus', () => kb.focus({ preventScroll: true }));
   // The cursor keys' codes (manual chapter 11), and the keys that are down: e.code -> code.
   const CURSOR = { ArrowLeft: 28, ArrowRight: 29, ArrowUp: 30, ArrowDown: 31 };
   const held = new Map();
-  cv.addEventListener('keydown', (e) => {
+  kb.addEventListener('keydown', (e) => {
     if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); held.set(e.code, 3); wasm.key(3); return; } // the STOP key
     if (e.metaKey || e.altKey || /^F\d+$/.test(e.key)) return;
     // RESTORE is Page Up: the processor's NMI. With STOP held (Ctrl+C) it's the way back to
@@ -1247,7 +1255,12 @@ msg:    .text "HELLO, UNC 64!"
     else if (e.key === 'Backspace' && e.shiftKey) code = 20; // INSERT: shift and DELETE (not the host's Insert key: not every keyboard has one)
     else if (e.key === 'Backspace') code = 8;
     else if (e.key.length === 1) code = e.key.toUpperCase().charCodeAt(0);
-    if (code !== null && code < 96) { e.preventDefault(); held.set(e.code, code); wasm.key(code); }
+    if (code === null || code >= 96) return;
+    e.preventDefault();
+    // behind anything still being typed (a phone's keyboard sends its text one way and its
+    // RETURN another): the keys arrive in the order they were pressed
+    if (typing.length) typing.push(code);
+    else { held.set(e.code, code); wasm.key(code); }
   });
   // Key-up lets the key go, so HELD ($C012) sees it come up. Matched by the physical key.
   const release = (physical) => {
@@ -1256,8 +1269,44 @@ msg:    .text "HELLO, UNC 64!"
     held.delete(physical);
     if (![...held.values()].includes(code)) wasm.key_up(code);
   };
-  cv.addEventListener('keyup', (e) => release(e.code));
-  cv.addEventListener('blur', () => [...held.keys()].forEach(release));
+  kb.addEventListener('keyup', (e) => release(e.code));
+  kb.addEventListener('blur', () => [...held.keys()].forEach(release));
+  // A phone's keyboard often sends no usable keydown: what it types is taken from the field.
+  // The field always holds one space, so there's something for the keyboard's delete key to
+  // take: the space gone is DELETE.
+  const KEEP = ' ';
+  const refill = () => { kb.value = KEEP; try { kb.setSelectionRange(1, 1); } catch { /* not focused */ } };
+  kb.addEventListener('input', () => {
+    const v = kb.value;
+    if (!v.startsWith(KEEP)) typing.push(8, ...keysOf(v));
+    else typing.push(...keysOf(v.slice(1)));
+    refill();
+  });
+  kb.addEventListener('focus', refill);
+  // A paste goes in as typing, line breaks and all (a one-line field would drop them).
+  kb.addEventListener('paste', (e) => {
+    e.preventDefault();
+    typing.push(...keysOf((e.clipboardData ? e.clipboardData.getData('text') : '').replace(/\r\n/g, '\n')));
+  });
+  // The keys a phone's keyboard doesn't have, under the monitor on a touch screen: the cursor
+  // keys and STOP are down for as long as they're held, RESTORE is the NMI. They don't take
+  // the focus, so the keyboard stays up.
+  document.querySelectorAll('#softkeys [data-key]').forEach((b) => {
+    const code = Number(b.dataset.key);
+    const id = `soft${code}`;
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (code === 0) { wasm.restore?.(); return; }
+      held.set(id, code);
+      wasm.key(code);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => b.addEventListener(t, () => release(id)));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
+  // With the keyboard up there's less of the page: keep the screen in what's left.
+  window.visualViewport?.addEventListener('resize', () => {
+    if (document.activeElement === kb) cv.scrollIntoView({ block: 'nearest' });
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'F8') { e.preventDefault(); setRunning(!running); }
     else if (e.key === 'F7') { e.preventDefault(); doStep(); }
