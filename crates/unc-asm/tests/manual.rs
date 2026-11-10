@@ -404,6 +404,20 @@ fn every_listing_in_the_manual_assembles_and_runs() {
             let flips = (m.mem.io.speaker_toggles - before.0) as f64;
             let hz = flips / 2.0 / ((m.cpu.cycles - before.1) as f64 / 1_000_000.0);
             assert!((hz - 439.4).abs() < 0.5, "tone is {hz} Hz");
+        } else if has("on voice 1 of the AUNT") {
+            // the note sounds for 25 frames, at A, and the gate is off when it halts
+            let r = run(src, None, 10);
+            let mut m = r.m;
+            assert_eq!(u16::from_le_bytes([m.peek(0xC0C0), m.peek(0xC0C1)]), 7382);
+            assert_eq!(m.peek(0xC0C4) & 1, 1, "the gate is on");
+            let mut out = [0.0f32; 882];
+            m.audio_frame(44_100, &mut out);
+            let rises = out.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+            assert!((8..=10).contains(&rises), "a frame of A has about 9 waves: {rises}");
+            let r = run(src, None, 40);
+            assert!(matches!(r.stop, Stop::Halted), "{:?}", r.stop);
+            assert_eq!(r.m.peek(0xC0C4) & 1, 0, "and off");
+            assert!(r.m.cpu.cycles > 25 * 19_968);
         } else if has("A first sprite: a ship") {
             check_ship(src);
         } else if has("Twelve birds in a row") {

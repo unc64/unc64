@@ -1,7 +1,8 @@
 //! System Rev A, pinned (REVISIONS.md): a program that runs on a Rev A machine runs the same,
 //! cycle for cycle, on every later one. These are the tables that promise rests on: the
 //! instruction set and its cycles (the documented ones and the eight the book leaves out),
-//! the timing of a frame, the ROM's jump table, UNC BASIC's tokens and the tape format. Each
+//! the timing of a frame, the ROM's jump table, UNC BASIC's tokens, the tape format and the
+//! AUNT's tables. Each
 //! is compared with `rev_a.txt`, written when Rev A was frozen. If this test fails, the change
 //! is a Rev B change: put it back, or make it a later revision that only adds.
 
@@ -49,6 +50,16 @@ fn rev_a() -> String {
     }
     out.push_str("# The tape format\n");
     out.push_str(&format!("{} version {}\n", String::from_utf8_lossy(unc_asm::tape::MAGIC), unc_asm::tape::VERSION));
+    // the AUNT is Rev A too: its id, its sample clock and the tables its sound is made of
+    use unc_core::chip;
+    out.push_str("# The AUNT: id, cycles a sample, the envelope's cycles a step, the filter's corners and resonances\n");
+    out.push_str(&format!("${:02X} at ${:04X}, a sample every {} cycles\n", chip::ID, machine::io::SOUND, chip::CYCLES_PER_SAMPLE));
+    let row = |v: &[u32]| v.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
+    out.push_str(&format!("{}\n", row(&chip::RATE_CYCLES.map(u32::from))));
+    for line in chip::CUTOFF_TABLE.chunks(16) {
+        out.push_str(&format!("{}\n", row(&line.iter().map(|&c| c as u32).collect::<Vec<_>>())));
+    }
+    out.push_str(&format!("{}\n", row(&chip::RESONANCE_TABLE)));
     out
 }
 

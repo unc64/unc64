@@ -511,7 +511,7 @@ fn save_states_keep_the_board_and_its_registers() {
     m.run_frame();
     assert_eq!(m.peek(io::SPRHIT), 3);
     let saved = m.save_state();
-    assert_eq!(saved[4], 3, "version 3");
+    assert_eq!(saved[4], 4, "version 4");
     let mut other = Machine::boot(RamSize::K64);
     other.load_state(&saved).unwrap();
     assert!(other.has_board());
@@ -527,9 +527,14 @@ fn save_states_keep_the_board_and_its_registers() {
 
 #[test]
 fn version_1_and_2_states_still_load() {
-    let v3 = Machine::boot(RamSize::K16).save_state();
-    // the board's byte comes after the I/O, at 89 with no key held
-    assert_eq!((v3[4], v3[89]), (3, 0));
+    let now = Machine::boot(RamSize::K16).save_state();
+    // the board's byte comes after the I/O, at 89 with no key held, then the sound chip's
+    // byte and its 121
+    assert_eq!((now[4], now[89], now[90]), (4, 0, 1));
+    // version 3: no sound chip
+    let mut v3 = now.clone();
+    v3.drain(90..90 + 122);
+    v3[4] = 3;
     let mut v1 = v3.clone();
     v1.remove(89);
     v1[4] = 1;
@@ -537,7 +542,9 @@ fn version_1_and_2_states_still_load() {
     let mut m = Machine::boot_with_board(RamSize::K64, true);
     m.load_state(&v1).unwrap();
     assert!(!m.has_board(), "version 1: no board");
-    assert_eq!(m.save_state(), v3);
+    assert_eq!(m.save_state(), now);
+    m.load_state(&v3).unwrap();
+    assert_eq!(m.save_state(), now);
 
     // version 2: the first board, eight sprites in 37 bytes of registers
     let mut old = [0u8; 37];

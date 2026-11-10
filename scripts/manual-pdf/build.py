@@ -99,8 +99,11 @@ body{{margin:0;font:9.6pt/1.55 Baskerville,serif;color:#241c14;hyphens:auto}}
 .cover .covers{{position:absolute;left:22mm;top:170mm;font:15pt/1.4 VT323;letter-spacing:1px;color:#5a4a38;width:160mm}}
 .cover .foot{{position:absolute;left:22mm;bottom:20mm;font:12pt VT323;letter-spacing:2px;color:#5a4a38}}
 .front{{page:front}}
-.verso{{break-after:page;padding-top:150mm;font-size:8.6pt;color:#5a4a38}}
+.verso{{break-after:page;height:236mm;display:flex;flex-direction:column;justify-content:space-between;font-size:8.6pt;color:#5a4a38}}
 .verso p{{margin:0 0 8pt}}
+.verso .notices{{width:128mm}}
+.verso .notices h5{{margin:13pt 0 3pt;font:11pt VT323;letter-spacing:2px;color:#241c14}}
+.verso .notices .part{{font:11pt VT323;letter-spacing:2px;color:#8a7a62;margin-bottom:16pt}}
 .toc{{break-after:page}}
 .toc h2{{break-before:auto}}
 .toc ol{{list-style:none;padding:0;margin:0}}
@@ -146,10 +149,23 @@ h2#1-getting-started{{position:relative}}
   <div class="foot">UNC64.COM</div>
 </section>
 <section class="front verso">
+  <div class="notices">
+  <p class="part">PART No. UNC-64-PRG-A · FIRST PRINTING, 1983</p>
+  <h5>RADIO AND TELEVISION INTERFERENCE</h5>
+  <p>Like every computer, the UNC 64 generates radio frequency energy. If the picture on a nearby television set crawls while the computer is on, and stops when you switch it off, move one of them. A metre is usually enough.</p>
+  <h5>LOOKING AFTER YOUR COMPUTER</h5>
+  <p>Keep it out of direct sunlight, away from radiators, and away from drinks. Do not cover the ventilation slots. Wipe the case with a slightly damp cloth, never with solvents. Switch off before you plug anything in or pull anything out.</p>
+  <h5>LOOKING AFTER YOUR CASSETTES</h5>
+  <p>Keep them in their boxes, and away from the monitor, loudspeakers, telephones and anything else with a magnet in it. Wind a tape back to the start before you put it away. Make a copy of anything you would be sorry to lose, and keep the copy somewhere else.</p>
+  <h5>THIS BOOK</h5>
+  <p>Describes System Rev A. Later revisions only add. Write in the margins: that is what they are for.</p>
+  </div>
+  <div>
   <p><b>UNC 64 Programmer's Reference Guide.</b> Rev A.</p>
   <p>United Northern Computers is fictional. The UNC 64 is a fantasy 8-bit computer, emulated for real, and the computer in <i>UNC 64</i>, a game in development for Mac, PC and Linux by Viljami Kuosmanen.</p>
   <p>This book is the machine's specification: every program listing in it is assembled and run by the emulator's tests. It is free to download, print and share.</p>
   <p>unc64.com</p>
+  </div>
 </section>
 <section class="front toc"><h2>Contents</h2><ol>{''.join(rows)}</ol></section>
 <main>{body}</main>

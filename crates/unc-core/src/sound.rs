@@ -253,7 +253,7 @@ impl AudioLog {
 }
 
 impl Machine {
-    /// Renders the speaker over the last whole frame into `out`, one sample per element, at
+    /// Renders the speaker, and the sound chip if it's in, over the last whole frame into `out`, one sample per element, at
     /// `sample_rate` samples a second (it sets the smoothing filters). Call it once after
     /// each `run_frame`. For real-time playback, `out` holds about `samples_per_frame`
     /// samples (880.6 at 44.1 kHz); the frame is spread over however many there are, so a
@@ -261,6 +261,9 @@ impl Machine {
     /// Rev A. Hosts only: nothing a program can see changes.
     pub fn audio_frame(&mut self, sample_rate: u32, out: &mut [f32]) {
         self.mem.io.audio.render(sample_rate, out);
+        if let Some(c) = &mut self.mem.sound {
+            c.mix(out);
+        }
     }
 
     /// Samples in one frame of emulated time at `sample_rate`: 19,968 cycles at 1 MHz.

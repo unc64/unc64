@@ -2,6 +2,7 @@
 
 pub mod board;
 pub mod charset;
+pub mod chip;
 pub mod cpu;
 pub mod isa;
 pub mod keys;

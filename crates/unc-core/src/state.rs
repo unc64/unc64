@@ -12,14 +12,17 @@
 //! | 18 | The processor: A, X, Y, SP, PC, P, the cycle count, its state and the IRQ line |
 //! | 65 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, the timer and speaker, the shifter |
 //! | 1, or 16 with the board | The video board (version 2 on): 0 if it isn't in; 1 and its 15 bytes of registers (`VideoBoard::save`) if it is |
+//! | 122 | The sound chip (version 4 on): 1 and its 121 bytes (`Chip::save`); or one byte, 0, if a host took it out |
 //! | 4 | The computer's side of the tape interface: motor, data latch, byte ready, overrun |
 //! | 4 | Cycles into the current frame |
 //! | 312 | The border on each raster line of the last frame (for the picture) |
 //! | 16K or 48K | RAM, from `$0000` to the top of memory |
 //!
-//! So a UNC 16 with no key down saves to 16,794 bytes, and one with the 64K expansion to
-//! 49,562; the video board adds 15 more. (The sprite table and images are in RAM.)
+//! So a UNC 16 with no key down saves to 16,916 bytes, and one with the 64K expansion to
+//! 49,684; the video board adds 15 more. (The sprite table and images are in RAM.)
 //!
+//! **Version 3** is the same without the sound chip's bytes: it loads with the chip as it
+//! is at switch-on, silent.
 //! **Version 2** had the first Rev A board: 37 bytes of registers, eight sprites in them.
 //! That board is gone, so a version 2 state loads with the board in, its bank, scroll and
 //! layer kept and its sprites dropped (the table and the colours as at reset).
@@ -47,7 +50,7 @@ use crate::sound::{AudioLog, Timer};
 pub const MAGIC: &[u8; 4] = b"UNCS";
 /// Bumped whenever the layout changes. Older versions this build knows the layout of load;
 /// anything else is refused, never guessed at.
-pub const VERSION: u8 = 3;
+pub const VERSION: u8 = 4;
 /// The oldest version `load_state` reads: version 1, from before the video board.
 pub const OLDEST: u8 = 1;
 
@@ -154,6 +157,16 @@ impl Machine {
                 b.save(&mut w);
             }
         }
+        match &self.mem.sound {
+            None => w.u8(0),
+            Some(c) => {
+                // as it stands now: run up to this cycle
+                let mut c = c.clone();
+                c.catch_up(self.cpu.cycles + self.idle_cycles);
+                w.u8(1);
+                c.chip.save(&mut w);
+            }
+        }
         let d = &self.mem.deck;
         w.bool(d.motor);
         w.u8(d.data);
@@ -223,6 +236,15 @@ impl Machine {
                 v => return Err(format!("save state: video board {v}")),
             },
         };
+        let sound = match version {
+            // from before the chip: the machine has one now, as at switch-on
+            1..=3 => Some(crate::chip::Chip::default()),
+            _ => match r.u8()? {
+                0 => None,
+                1 => Some(crate::chip::Chip::restore(&mut r)?),
+                v => return Err(format!("save state: sound chip {v}")),
+            },
+        };
         let (motor, data, ready, overrun) = (r.bool()?, r.u8()?, r.bool()?, r.bool()?);
         let frame_cycle = r.u32()?;
         if frame_cycle >= CYCLES_PER_FRAME {
@@ -243,6 +265,14 @@ impl Machine {
         m.ram[..ram_end].copy_from_slice(ram);
         m.io = io;
         m.board = board;
+        m.sound = sound.map(|mut c| {
+            if version < 4 {
+                // as if it had been in, at rest, since switch-on: its sample clock where it would be
+                c.clock(cycles % crate::chip::CYCLES_PER_SAMPLE as u64);
+                c.samples.clear();
+            }
+            Box::new(crate::chip::Card::at(c, cycles))
+        });
         m.deck.motor = motor;
         m.deck.data = data;
         m.deck.ready = ready;

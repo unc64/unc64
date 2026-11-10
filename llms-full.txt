@@ -40,7 +40,7 @@ This book is the specification of the machine: System Rev A. The emulator in `cr
 - [9. Timing and the raster](#9-timing-and-the-raster)
 - [10. Interrupts](#10-interrupts)
 - [11. The keyboard](#11-the-keyboard)
-- [12. The beeper](#12-the-beeper)
+- [12. Sound](#12-sound)
 - [13. The system ROM](#13-the-system-rom)
 - [14. Tape](#14-tape)
 - [15. The video board](#15-the-video-board)
@@ -167,7 +167,7 @@ Everything the UNC 64 can do, it does through places like that one. Chapter 2, n
 
 ### The UNC 16 and the UNC 64
 
-The UNC 16 and the UNC 64 are the same computer. The UNC 16 has 16K of memory (16,384 bytes), the text screen, the bitmap, the beeper and the tape deck: everything in chapters 1 to 14. The UNC 64 is the UNC 16 fully expanded: the 64K memory expansion, with 48K of memory below the I/O and ROM areas; the video board, with sprites, smooth scrolling, a background layer and four colours (chapter 15). The sound chip, with three voices and a speech synthesizer, comes later, and so does its chapter: this edition covers the beeper (chapter 12). The upgrades arrive one at a time. The start-up message tells you which you have: the ROM checks for the expansion and the video board every time you switch on.
+The UNC 16 and the UNC 64 are the same computer. The UNC 16 has 16K of memory (16,384 bytes), the text screen, the bitmap, the beeper, the AUNT with its three voices, and the tape deck: everything in chapters 1 to 14. The UNC 64 is the UNC 16 fully expanded: the 64K memory expansion, with 48K of memory below the I/O and ROM areas; the video board, with sprites, smooth scrolling, a background layer and four colours (chapter 15); and a speech synthesizer. They arrive one at a time. The start-up message tells you which you have: the ROM checks for the expansion and the video board every time you switch on.
 
 | | UNC 16 | UNC 64 |
 |---|---|---|
@@ -1883,7 +1883,9 @@ start:  JSR GETKEY
 
 ---
 
-## 12. The beeper
+## 12. Sound
+
+The UNC makes sound two ways. The **speaker**, the beeper, is one bit: in or out. The **AUNT**, the Audio Unit, is three voices with a shape, a loudness and a filter: an instrument. The beeper comes first here, as it does for most people; the AUNT has the second half of the chapter.
 
 The UNC 64's speaker has two positions, in and out. Move it in and out at a steady rate and you hear a tone. There are two ways to move it: let the **timer** do it, which costs the processor nothing, or flip it yourself, from a loop with every cycle counted.
 
@@ -2083,6 +2085,125 @@ hiss:   LDA NOISE
 **Which cycle?** As far as the UNC 64's registers are concerned, a read or a write happens on the first cycle of the instruction that does it. The timer, SPEAKER bit 5 and NOISE all go by that cycle, so a program does exactly the same thing every time it runs.
 
 The emulator plays the speaker through the computer it runs on: the Machine Room, the showcase and the game take each frame's speaker positions and make sound of them, averaged over each sample and gently filtered so that a speaker at rest, in or out, is silent, at a modest volume. The browser pages have a Mute switch, and start their sound at the first click or key, as browsers require.
+
+### The AUNT
+
+The AUNT is the UNC's Audio Unit: a chip of its own beside the speaker, in every UNC from the 16 up. It has **three voices**. Each one has a pitch, a waveform, and an envelope that brings the note up and lets it die away. One **filter** takes the top or the bottom off any of them. They all come out of the same loudspeaker as the beeper, together.
+
+It lives at `$C0C0-$C0FF`. Each voice is eight registers; voice 1 starts at `$C0C0` (49344), voice 2 at `$C0C8` (49352), voice 3 at `$C0D0` (49360).
+
+| Offset | Register | Write |
+|---|---|---|
+| +0 | FREQ_LO | The pitch, low byte. |
+| +1 | FREQ_HI | The pitch, high byte. FREQ is the pitch in Hz × 16.777: A at 440 Hz is 7,382. |
+| +2 | WIDTH | The pulse wave's high part, in 256ths. 128 is a square. |
+| +3 | WAVE | Bit 0 triangle, bit 1 sawtooth, bit 2 pulse, bit 3 noise, bit 4 the wave table. Bit 7: short noise. |
+| +4 | CONTROL | Bit 0: the **gate**. Bit 1: sync. Bit 2: ring. |
+| +5 | ATTACK_DECAY | The attack's rate in the high four bits, the decay's in the low four. |
+| +6 | SUSTAIN_RELEASE | The level held in the high four bits, the release's rate in the low four. |
+| +7 | TRIM | Bits 0-3: sixteenths taken off the voice's level. |
+
+And the chip's own:
+
+| Address | Register | Read | Write |
+|---|---|---|---|
+| `$C0D8` | CUTOFF | As written. | The filter's corner, 0-255: 30 Hz at 0, an octave higher every 32, about 7,500 Hz at 255. |
+| `$C0D9` | FILTER | As written. | Bits 0-2: voice 1, 2, 3 goes through the filter. Bits 4-7: resonance. |
+| `$C0DA` | VOLUME | As written. | Bits 0-3: volume. Bit 4 low-pass, bit 5 band-pass, bit 6 high-pass. Bit 7: voice 3 silent. |
+| `$C0DC` | VOICE3 | Voice 3's waveform at this moment, its top 8 bits. | |
+| `$C0DD` | ENV3 | Voice 3's envelope at this moment, 0-255. | |
+| `$C0DF` | SOUND | `$16`. | |
+| `$C0E0-$C0FF` | WAVETABLE | As written. | A waveform of your own: 32 steps, each 0-255. |
+
+The voices' registers read back what was written. At switch-on every register is 0, and the AUNT is silent.
+
+**A first note.** Nothing sounds until the volume is up, a waveform is chosen and the gate is on. From `READY.`:
+
+```text
+POKE 49370,15
+POKE 49347,2
+POKE 49350,240
+POKE 49344,214
+POKE 49345,28
+POKE 49348,1
+```
+
+Volume 15; a sawtooth; hold at full level; A (7,382 is 28 × 256 + 214); and the gate. It sounds until `POKE 49348,0` lets it go.
+
+**The gate and the envelope.** A note isn't on or off: it has a shape. While the gate is 1 the voice's level climbs to full at the **attack** rate, falls to the **sustain** level at the **decay** rate, and stays. When the gate goes to 0 it falls to nothing at the **release** rate. The rates run from 0, the fastest, to 15:
+
+| Rate | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Attack | 2 ms | 8 | 16 | 24 | 38 | 56 | 68 | 80 | 100 | 250 | 500 | 800 | 1 s | 3 | 5 | 8 |
+
+A decay or a release at the same rate takes three times as long, and slows as it nears the bottom, as a struck string does. Sustain is a level, not a time: 15 is full, 0 is nothing. With sustain 0 a note dies by itself, gate or no gate: a pluck, a drum. To strike the same voice again, take the gate off and put it on.
+
+**The waveforms.** Triangle is soft and hollow, a flute. Sawtooth is bright and buzzing, strings and brass. Pulse depends on WIDTH: at 128 a hollow square, and thinner and more nasal as WIDTH moves away from it; change WIDTH a little every frame and the sound moves. Noise is a hiss, and it has a pitch like the others: FREQ sets how fast it hisses, and with FREQ 0 it doesn't hiss at all. Short noise repeats after 127 steps: a metallic buzz. The wave table is a shape you draw yourself, 32 levels in WAVETABLE, played round once for each cycle of the note.
+
+**The filter.** A voice goes through the filter if its bit in FILTER is set; the others go round it. VOLUME says what comes out of it: the low-pass lets through what's below CUTOFF, the high-pass what's above, the band-pass what's near it. Resonance makes the filter ring at its corner. With the first note still sounding:
+
+```text
+POKE 49369,1
+POKE 49370,31
+POKE 49368,128
+```
+
+Voice 1 through the filter; volume 15 with the low-pass (16 more); the corner at 480 Hz. The buzz goes and the note stays. Move CUTOFF while a note sounds and the sound opens and closes.
+
+**A drum** is noise that dies by itself:
+
+```text
+POKE 49347,8
+POKE 49345,60
+POKE 49349,8
+POKE 49350,0
+POKE 49348,0
+POKE 49348,1
+```
+
+**Sync and ring** tie a voice to the one before it (voice 1 to voice 3). With sync, the voice starts its wave again each time the other finishes one. With ring, the other voice turns this one's triangle upside down as it goes, which makes bells and gongs. Neither needs the other voice to be heard: give it a pitch and no waveform.
+
+**Voice 3 read back.** VOICE3 and ENV3 show voice 3's waveform and envelope as they are at the cycle of the read. Run voice 3 slowly with a triangle, silence it with VOLUME bit 7, and VOICE3 is a number rising and falling by itself: add it to another voice's FREQ once a frame and that voice has a vibrato. With noise it is a second source of random bytes.
+
+**From machine language** the AUNT is ordinary stores. This plays a note and lets it go half a second later:
+
+```asm
+; A for half a second on voice 1 of the AUNT.
+AUNT    = $C0C0
+FREQ_LO = 0
+FREQ_HI = 1
+WAVE    = 3
+CONTROL = 4
+SUSTAIN_RELEASE = 6
+VOLUME  = $C0DA
+FRAME   = $C006
+A440    = 7382
+
+        .org $0800
+start:  LDA #15
+        STA VOLUME
+        LDA #2                  ; sawtooth
+        STA AUNT+WAVE
+        LDA #$F8                ; hold at full level; release at rate 8
+        STA AUNT+SUSTAIN_RELEASE
+        LDA #<A440
+        STA AUNT+FREQ_LO
+        LDA #>A440
+        STA AUNT+FREQ_HI
+        LDA #1
+        STA AUNT+CONTROL        ; the gate on
+        LDX #25                 ; 25 frames: half a second
+@frame: LDA FRAME
+@wait:  CMP FRAME
+        BEQ @wait
+        DEX
+        BNE @frame
+        LDA #0
+        STA AUNT+CONTROL        ; and off: the note dies away
+        HLT
+```
+
+A tune is this once a frame for each voice: a routine on the vertical blank (chapter 10) that counts frames, and at each new note writes FREQ, takes the gate off and puts it on. The AUNT makes a new sample of sound every 16 cycles, and a write takes effect on the cycle it is made.
 
 ---
 
@@ -3211,6 +3332,16 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$C0B2` | COLOUR2 | The colour of colour number 2. 15 at reset | Colour, 0-15 | 15 |
 | `$C0B3` | COLOUR3 | The colour of colour number 3: text and 1-bit ink. 1 at reset | Colour, 0-15 | 15 |
 | `$C0BF` | BOARD | `$15`: the video board is in | | 15 |
+| `$C0C0-$C0C7` | | Voice 1 of the AUNT: FREQ_LO, FREQ_HI, WIDTH, WAVE, CONTROL, ATTACK_DECAY, SUSTAIN_RELEASE, TRIM. As written | As read | 12 |
+| `$C0C8-$C0CF` | | Voice 2, the same | | 12 |
+| `$C0D0-$C0D7` | | Voice 3, the same | | 12 |
+| `$C0D8` | CUTOFF | The filter's corner | 0-255 | 12 |
+| `$C0D9` | FILTER | As written | Bits 0-2: voice 1, 2, 3 through the filter. Bits 4-7: resonance | 12 |
+| `$C0DA` | VOLUME | As written | Bits 0-3: volume. Bit 4 low-pass, bit 5 band-pass, bit 6 high-pass. Bit 7: voice 3 silent | 12 |
+| `$C0DC` | VOICE3 | Voice 3's waveform now, top 8 bits | | 12 |
+| `$C0DD` | ENV3 | Voice 3's envelope now | | 12 |
+| `$C0DF` | SOUND | `$16`: the AUNT | | 12 |
+| `$C0E0-$C0FF` | WAVETABLE | As written | The wave table: 32 steps | 12 |
 | `$C3F0-$C3FF` | | Reserved | Reserved | |
 
 Without the video board, every address in `$C080-$C0BF` reads `$FF` and ignores writes, BOARD included. With it, the ones not listed here do the same. Every other address in `$C000-$CFFF` reads `$FF` and ignores writes. Blank cells: reads give `$FF`, writes are ignored.

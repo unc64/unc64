@@ -71,7 +71,21 @@ fn the_reserved_range_answers() {
     let m = Machine::new(RamSize::K16);
     assert_eq!((m.peek(0xC3F0), m.peek(0xC3F1)), (19, 86));
     assert_eq!(m.peek(0xC3F2), 0);
-    assert_eq!(m.peek(0xC0FF), 0xFF, "unmapped I/O reads $FF");
+    assert_eq!(m.peek(0xC070), 0xFF, "unmapped I/O reads $FF");
+}
+
+/// A write to the reserved range changes nothing in the machine, and the host hears of it.
+#[test]
+fn the_host_hears_writes_to_the_reserved_range() {
+    let mut m = Machine::new(RamSize::K16);
+    assert_eq!(m.observe().reserved_write, None);
+    m.mem.write(0xC3FF, 3);
+    m.mem.write(0xC3F4, 9);
+    assert_eq!(m.peek(0xC3FF), 0, "nothing changed");
+    assert_eq!(m.observe().reserved_write, Some((4, 9)), "the last one");
+    assert_eq!(m.observe().reserved_write, None, "and once");
+    m.poke(0xC3FF, 3);
+    assert_eq!(m.observe().reserved_write, None, "the host's own pokes don't count");
 }
 
 /// The host can make the reserved range answer more (part one, chapter 8): kept by a reset,

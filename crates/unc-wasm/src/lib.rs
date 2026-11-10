@@ -15,6 +15,8 @@ thread_local! {
     static AUDIO: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };
     /// Whether the next `power_on` puts the video board in (`set_video_board`).
     static BOARD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// And the AUNT, the sound chip: in, unless `set_sound_chip(0)` takes it out.
+    static SOUND: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
     /// The last program `assemble_project_input` assembled, for `make_tape_input`.
     static LAST: RefCell<Option<unc_asm::Assembly>> = const { RefCell::new(None) };
 }
@@ -72,7 +74,25 @@ pub extern "C" fn output_ptr() -> *const u8 {
 #[unsafe(no_mangle)]
 pub extern "C" fn power_on(ram_kb: u32) {
     let board = BOARD.with(|b| b.get());
-    m(|m| *m = Machine::boot_with_board(if ram_kb >= 64 { RamSize::K64 } else { RamSize::K16 }, board));
+    let sound = SOUND.with(|s| s.get());
+    m(|m| {
+        *m = Machine::boot_with_board(if ram_kb >= 64 { RamSize::K64 } else { RamSize::K16 }, board);
+        m.set_sound(sound);
+    });
+}
+
+/// Takes the AUNT, the sound chip, out (0) or puts it back (1) at the next `power_on`
+/// (manual ch. 12). Every machine has it unless this says otherwise. The machine
+/// running now doesn't change.
+#[unsafe(no_mangle)]
+pub extern "C" fn set_sound_chip(on: u32) {
+    SOUND.with(|s| s.set(on != 0));
+}
+
+/// 1 if the machine running now has the sound chip in.
+#[unsafe(no_mangle)]
+pub extern "C" fn has_sound_chip() -> u32 {
+    m(|m| m.has_sound() as u32)
 }
 
 /// Puts the video board in (1) or takes it out (0) at the next `power_on` (manual chapter

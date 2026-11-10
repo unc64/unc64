@@ -2,6 +2,7 @@
 //! The spec for everything here is docs/prg/programmers-reference-guide.md (chapters 8-13, Appendix B).
 
 use crate::board::{self, VideoBoard};
+use crate::chip;
 use crate::charset::CHAR_ROM;
 use crate::cpu::{Bus, Cpu, CpuState};
 use crate::keys::KEY_ROWS;
@@ -140,6 +141,19 @@ pub mod io {
     pub const COLOUR1: u16 = 0xC0B1;
     pub const COLOUR2: u16 = 0xC0B2;
     pub const COLOUR3: u16 = 0xC0B3;
+    /// The sound chip (manual ch. 12): `$C0C0-$C0FF`. Without it every one of them
+    /// reads $FF and ignores writes. Voice 1 is eight registers from AUNT, voice 2 from
+    /// AUNT + 8, voice 3 from AUNT + 16 (`chip::FREQ_LO` and the rest are the offsets).
+    pub const AUNT: u16 = 0xC0C0;
+    pub const CUTOFF: u16 = 0xC0D8;
+    pub const FILTER: u16 = 0xC0D9;
+    pub const VOLUME: u16 = 0xC0DA;
+    pub const VOICE3: u16 = 0xC0DC;
+    pub const ENV3: u16 = 0xC0DD;
+    /// SOUND: $16 with the chip in.
+    pub const SOUND: u16 = 0xC0DF;
+    /// WAVETABLE to WAVETABLE + 31: the drawn waveform.
+    pub const WAVETABLE: u16 = 0xC0E0;
     /// BOARD: $15 with the board in, $FF without.
     pub const BOARD: u16 = 0xC0BF;
 }
@@ -393,6 +407,9 @@ pub struct Observation {
     pub writes: [u32; 256],
     /// Something read the reserved range, `$C3F0-$C3FF`.
     pub reserved_read: bool,
+    /// The last write the processor made to the reserved range: (offset 0-15, value). The
+    /// write changes nothing in the machine; the host may make something of it.
+    pub reserved_write: Option<(u8, u8)>,
     /// Frames that ended.
     pub frames: u32,
     /// Processor writes to screen memory, `$0400-$07E7`.
@@ -407,7 +424,7 @@ pub struct Observation {
 
 impl Default for Observation {
     fn default() -> Self {
-        Observation { reads: [0; 256], writes: [0; 256], reserved_read: false, frames: 0, screen_writes: 0, bitmap_writes: 0, line_writes: 0 }
+        Observation { reads: [0; 256], writes: [0; 256], reserved_read: false, reserved_write: None, frames: 0, screen_writes: 0, bitmap_writes: 0, line_writes: 0 }
     }
 }
 
@@ -441,6 +458,9 @@ pub struct Memory {
     pub reserved: [u8; 16],
     /// The video board (chapter 15), if it's in.
     pub board: Option<VideoBoard>,
+    /// The AUNT, the sound chip (manual ch. 12). In every machine from the UNC 16 up;
+    /// `Machine::set_sound(false)` takes it out, for a host that wants a machine without.
+    pub sound: Option<Box<chip::Card>>,
     /// The host's frame meter (`Machine::frame_work`): where this frame's work ended.
     pub meter: FrameMeter,
     /// The HOLD box's memory view, when the host watches (`Machine::watch`): when each
@@ -474,6 +494,7 @@ impl Memory {
             obs: Box::default(),
             reserved: RESERVED_AT_START,
             board: None,
+            sound: Some(Box::default()),
             meter: FrameMeter::default(),
             trace: None,
         }
@@ -514,6 +535,7 @@ impl Memory {
             0xC3F0..=0xC3FF => self.reserved[(addr - io::RESERVED) as usize],
             0xC031..=0xC03F | 0xC050..=0xC06F => self.io_peek_rev_a(addr),
             0xC080..=0xC0BF => self.board.as_ref().map_or(0xFF, |b| b.peek(addr)),
+            0xC0C0..=0xC0FF => self.sound.as_ref().map_or(0xFF, |c| c.chip.peek(addr as u8 - 0xC0)),
             0xD000..=0xD3FF => CHAR_ROM[(addr - CHAR_ROM_START) as usize],
             _ => 0xFF,
         }
@@ -522,11 +544,18 @@ impl Memory {
 
 impl Bus for Memory {
     fn read(&mut self, addr: u16) -> u8 {
-        let v = self.peek(addr);
         // One test on the hot path: everything else is RAM and ROM, which nothing watches.
-        if addr & 0xF000 == 0xC000 {
-            self.io_read(addr);
+        if addr & 0xF000 != 0xC000 {
+            return self.peek(addr);
         }
+        // the sound chip's voice 3 is read as it stands at this cycle
+        if addr & 0xFFC0 == 0xC0C0
+            && let Some(c) = &mut self.sound
+        {
+            c.catch_up(self.io.cycle);
+        }
+        let v = self.peek(addr);
+        self.io_read(addr);
         v
     }
 
@@ -547,6 +576,8 @@ impl Bus for Memory {
         } else if addr >> 8 == 0xC0 {
             let w = &mut self.obs.writes[addr as u8 as usize];
             *w = w.wrapping_add(1);
+        } else if addr & 0xFFF0 == io::RESERVED {
+            self.obs.reserved_write = Some(((addr & 15) as u8, value));
         }
         self.store(addr, value);
     }
@@ -625,6 +656,12 @@ impl Memory {
                 0xC080..=0xC0BF => {
                     if let Some(b) = &mut self.board {
                         b.store(addr, value);
+                    }
+                }
+                0xC0C0..=0xC0FF => {
+                    if let Some(c) = &mut self.sound {
+                        c.catch_up(self.io.cycle);
+                        c.chip.store(addr as u8 - 0xC0, value);
                     }
                 }
                 _ => {}
@@ -856,8 +893,11 @@ impl Machine {
         let obs = std::mem::take(&mut self.mem.obs);
         let reserved = self.mem.reserved;
         let board = self.mem.board.is_some();
+        let sound = self.mem.sound.is_some();
         self.mem = Memory::new(size);
         self.mem.board = board.then(VideoBoard::default);
+        // the clock starts again at 0 with the processor's
+        self.mem.sound = sound.then(Box::default);
         self.mem.rom = rom;
         self.mem.obs = obs;
         self.mem.reserved = reserved;
@@ -917,6 +957,21 @@ impl Machine {
             m.run_frame();
         }
         m
+    }
+
+    /// Takes the sound chip out, or puts it back (manual ch. 12). Every machine has
+    /// it from the start; a chip put back is silent, every register 0. The machine carries
+    /// on: no reset.
+    pub fn set_sound(&mut self, on: bool) {
+        if on != self.mem.sound.is_some() {
+            let now = self.cpu.cycles + self.idle_cycles;
+            self.mem.sound = on.then(|| Box::new(chip::Card::at(chip::Chip::default(), now)));
+        }
+    }
+
+    /// Whether the sound chip is in. SOUND (`$C0DF`) reads $16 if it is.
+    pub fn has_sound(&self) -> bool {
+        self.mem.sound.is_some()
     }
 
     /// Whether the video board is in (chapter 15). BOARD (`$C0BF`) reads $15 if it is.
@@ -1101,7 +1156,11 @@ impl Machine {
         }
         if wrapped {
             self.mem.obs.frames = self.mem.obs.frames.wrapping_add(1);
-            self.mem.io.audio.end_frame(now.saturating_sub(self.mem.frame_cycle as u64));
+            let end = now.saturating_sub(self.mem.frame_cycle as u64);
+            self.mem.io.audio.end_frame(end);
+            if let Some(c) = &mut self.mem.sound {
+                c.end_frame(end);
+            }
         }
         if line != before && line < 256 && line as u8 == self.mem.io.raster_cmp {
             self.mem.io.irq_status |= io::IRQ_RASTER;

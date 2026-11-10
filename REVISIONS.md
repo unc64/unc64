@@ -12,6 +12,7 @@ A program that runs on a **System Rev A** machine runs the same, cycle for cycle
 | The screen: text, the character set, the bitmap, the modes | Chapter 8 |
 | The video board Rev A: its registers, the sprite table, eight sprites a line, and its id (BOARD reads `$15`) | Chapter 15 |
 | The beeper's timer, NOISE, the shifter and the keyboard matrix | Chapters 8, 11, 12 |
+| The AUNT, the sound chip: its registers at `$C0C0-$C0FF`, its id (SOUND reads `$16`), a sample every 16 cycles, and the envelope's and the filter's tables | Chapter 12, `crates/unc-core/src/chip.rs` |
 | The ROM's jump table, `$FF00-$FF21`: the addresses and what each call does | Chapter 13, Appendix D |
 | UNC BASIC: keywords, tokens `$80-$A6`, the program's format in memory, the error messages | Chapter 2 |
 | The tape format, `UNCT` version 1, and the cassette, version 1 | Chapter 14, `docs/cassettes.md` |
