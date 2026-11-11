@@ -201,8 +201,9 @@ fn title_screen() {
     let g = Game::boot();
     assert_eq!(g.get("STATE"), 0);
     let t = g.text();
-    assert!(t.contains("SNAKE ? PRESS SPACE"), "{t}"); // ? is the custom middle dot
-    assert!(t.contains("W A S D OR ???? TO STEER"), "{t}"); // the cursor keys' arrows
+    // its own glyphs sit on lowercase's codes: the middle dot is $65 (e), the arrows $76-$79
+    assert!(t.contains("SNAKE e PRESS SPACE"), "{t}");
+    assert!(t.contains("W A S D OR wvyx TO STEER"), "{t}");
     assert_eq!(g.cell(19, 13), 0x77, "an up arrow");
     assert!(t.contains("HI SCORE 000000"), "{t}");
     // The frame is drawn with UNSCII box glyphs.
@@ -247,7 +248,7 @@ fn custom_character_set_is_in_ram_and_used() {
 #[test]
 fn the_heart_beats() {
     let mut g = Game::boot();
-    let rom: Vec<u8> = (0..8).map(|i| g.m.peek(0xD000 + 0x71 * 8 + i)).collect();
+    let rom: Vec<u8> = (0..8).map(|i| g.m.peek(0xD000 + 0x91 * 8 + i)).collect();
     let mut seen_big = false;
     let mut seen_small = false;
     for _ in 0..40 {

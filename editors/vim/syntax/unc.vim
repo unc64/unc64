@@ -35,16 +35,17 @@ syn match uncPaste "\\\h\w*"
 
 " The names the manual gives addresses (I/O registers, ROM routines, system variables).
 " The UNC has no built-in symbol table: a program defines the ones it uses.
-syn match uncSystem "\<\%(BACKGROUND\|BEEPER\|BITMAP\|BOARD\|BORDER\|CHARSET\|CHROUT\|CLS\|COLOUR1\|COLOUR2\)\>"
-syn match uncSystem "\<\%(COLOUR3\|COLOURMODE\|CURLIN\|CURSAV\|CURX\|CURY\|CUTOFF\|DATAL\|DATAP\|DST\)\>"
-syn match uncSystem "\<\%(ENV3\|FILTER\|FORSP\|FORSTK\|FRAME\|GETKEY\|GFXS\|GOSP\|GOSTK\|HELD\)\>"
-syn match uncSystem "\<\%(IBUF\|INBUF\|INKM\|IRQVEC\|IRQ_ENABLE\|IRQ_STATUS\|KBD\|KBD_STROBE\|KEYS\|LAYER\)\>"
-syn match uncSystem "\<\%(LAYERPAGE\|LAYERSX\|LAYERSY\|LINK\|LOAD\|NMIVEC\|NOISE\|NUMBUF\|NUMSTR\|PRDEC\)\>"
-syn match uncSystem "\<\%(PRGEND\|PRHEX\|PRNUM\|PRSTR\|PTR\|RAMTOP\|RASTER\|RASTER_CMP\|RASTER_HI\|READY\)\>"
-syn match uncSystem "\<\%(RLCOL\|RLMOV\|RLROW\|RND\|RNDSEED\|RUNFLG\|SCROLLX\|SCROLLY\|SEED\|SHIFT_AMOUNT\)\>"
-syn match uncSystem "\<\%(SHIFT_FLIP\|SHIFT_IN\|SHIFT_OUT\|SOUND\|SPEAKER\|SPRBANK\|SPRHIT\|SPRHITBG\|SPRLINE\|SPRTAB\)\>"
-syn match uncSystem "\<\%(SRC\|STRP\|TAPE\|TAPEDATA\|TBORD\|TCHK\|TEXTROWS\|THDR\|TIMER_HI\|TIMER_LO\)\>"
-syn match uncSystem "\<\%(TMPA\|TNAME\|TNAMED\|TOVR\|VARS\|VMODE\|VOICE3\|VOLUME\|WARMMK\|WAVETABLE\)\>"
+syn match uncSystem "\<\%(BACKGROUND\|BEEPER\|BITMAP\|BOARD\|BORDER\|CASE\|CHARSET\|CHROUT\|CLS\|COLOUR1\)\>"
+syn match uncSystem "\<\%(COLOUR2\|COLOUR3\|COLOURMODE\|CURLIN\|CURSAV\|CURX\|CURY\|CUTOFF\|DATAL\|DATAP\)\>"
+syn match uncSystem "\<\%(DST\|ENV3\|FILTER\|FORSP\|FORSTK\|FRAME\|GETKEY\|GFXS\|GOSP\|GOSTK\)\>"
+syn match uncSystem "\<\%(HELD\|IBUF\|INBUF\|INKM\|IRQVEC\|IRQ_ENABLE\|IRQ_STATUS\|KBD\|KBD_STROBE\|KEYS\)\>"
+syn match uncSystem "\<\%(LAYER\|LAYERPAGE\|LAYERSX\|LAYERSY\|LINK\|LOAD\|MON\|NMIVEC\|NOISE\|NUMBUF\)\>"
+syn match uncSystem "\<\%(NUMSTR\|PRDEC\|PRGEND\|PRHEX\|PRNUM\|PRSTR\|PTR\|RAMTOP\|RASTER\|RASTER_CMP\)\>"
+syn match uncSystem "\<\%(RASTER_HI\|READY\|RLCOL\|RLMOV\|RLROW\|RND\|RNDSEED\|RUNFLG\|SCROLLX\|SCROLLY\)\>"
+syn match uncSystem "\<\%(SEED\|SHIFT_AMOUNT\|SHIFT_FLIP\|SHIFT_IN\|SHIFT_OUT\|SOUND\|SPEAKER\|SPRBANK\|SPRHIT\|SPRHITBG\)\>"
+syn match uncSystem "\<\%(SPRLINE\|SPRTAB\|SRC\|STRP\|TAPE\|TAPEDATA\|TBORD\|TCHK\|TEXTROWS\|THDR\)\>"
+syn match uncSystem "\<\%(TIMER_HI\|TIMER_LO\|TMPA\|TNAME\|TNAMED\|TOVR\|VARS\|VMODE\|VOICE3\|VOLUME\)\>"
+syn match uncSystem "\<\%(WARMMK\|WAVETABLE\)\>"
 
 " Definitions: `name:` and `@name:` at the start of a line, `NAME = value` on its own.
 syn match uncLabel "^\s*\zs\h\w*\%(\\\h\w*\)*\ze\s*:"

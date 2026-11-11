@@ -24,7 +24,7 @@
 ;   NOISE and RNDSEED, for a different game every time (11, 12)
 ;   a score kept as decimal digits, and NUMSTR and PRNUM for the rest (12)
 ;
-; Screen: VMODE = 6, bitmap + mixed. The playfield is bitmap lines 0-167,
+; Screen: VMODE = 7, bitmap + mixed, 256 glyphs. The playfield is bitmap lines 0-167,
 ; the HUD is text rows 21-24 underneath. The bitmap stays at $2000.
 ;
 ; Memory map (UNC 16):
@@ -112,8 +112,8 @@ DBLT    = 200           ; double shot: 200 x 2 frames = 8 s
 LIVES0  = 3             ; lives at the start
 KLEFT   = 28            ; cursor keys
 KRIGHT  = 29
-ARROWL  = $76           ; screen codes: arrows
-ARROWR  = $78
+ARROWL  = $96           ; screen codes: arrows (UNSCII's second half: 256-glyph mode)
+ARROWR  = $98
 PROFCOL = 5             ; the profiler's colours: green for the game,
 SNDCOL  = 7             ; yellow for the sound
 
@@ -239,7 +239,7 @@ start:  LDX #VEND-VARS
         BNE @line
         LDA #>BM
         STA BITMAP
-        LDA #6          ; bitmap + mixed
+        LDA #7          ; bitmap + mixed, 256 glyphs (for the arrows)
         STA VMODE
         JSR title
         LDA FRAME

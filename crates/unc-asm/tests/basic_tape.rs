@@ -435,13 +435,13 @@ fn save_lists_as_save_and_help_knows_it() {
 fn the_jump_table_vectors_and_banner_are_unchanged() {
     let rom = unc_asm::assemble(include_str!("../../../rom/system.s")).unwrap();
     let m = Machine::boot(RamSize::K16);
-    let routines = ["CLS", "CHROUT", "GETKEY", "PRSTR", "PRHEX", "PRDEC", "RNDSTEP", "JLOAD", "NUMSTR", "PRNUM", "RNDSEED", "WARM"];
+    let routines = ["CLS", "CHROUT", "GETKEY", "PRSTR", "PRHEX", "PRDEC", "RNDSTEP", "JLOAD", "NUMSTR", "PRNUM", "RNDSEED", "WARM", "MON"];
     for (i, name) in routines.iter().enumerate() {
         let at = 0xFF00 + 3 * i as u16;
         let target = u16::from_le_bytes([m.peek(at + 1), m.peek(at + 2)]);
         assert_eq!((m.peek(at), target), (0x06, rom.symbol(name).unwrap()), "${at:04X}: JMP {name}");
     }
-    assert!((0xFF24..0xFFE0).all(|a| m.peek(a) == 0xFF), "$FF24 to the RESET button's check at $FFE0: still free for the jump table");
+    assert!((0xFF27..0xFFE0).all(|a| m.peek(a) == 0xFF), "$FF27 to the RESET button's check at $FFE0: still free for the jump table");
     let word = |a: u16| u16::from_le_bytes([m.peek(a), m.peek(a + 1)]);
     assert_eq!([word(0xFFFC), word(0xFFFE)], [rom.symbol("POWER").unwrap(), rom.symbol("IRQ").unwrap()]);
     assert_eq!(
@@ -458,7 +458,10 @@ fn a_listing_tokenizes_on_the_host_as_the_machine_does() {
     let p = unc_asm::basic::tokenize("20 print \"b\"\n\n10 PRINT \"A\"\n20 PRINT \"C\"\n30 REM GONE\n30\n").unwrap();
     assert_eq!(p, unc_asm::basic::tokenize("10 PRINT \"A\"\n20 PRINT \"C\"").unwrap());
     assert!(unc_asm::basic::tokenize("PRINT 1").unwrap_err().contains("line number"));
-    assert!(unc_asm::basic::tokenize("10 PRINT \"{}\"").unwrap_err().contains("the UNC can type"));
+    assert!(unc_asm::basic::tokenize("10 PRINT \"\u{e9}\"").unwrap_err().contains("the UNC can type"));
+    // small letters are capitals to BASIC, except inside quotes and after REM, where they stay
+    let mixed = unc_asm::basic::tokenize("10 print \"Hi {there}\":rem Kept").unwrap();
+    assert_eq!(&mixed[3..], b"\x80 \"Hi {there}\":\x8a Kept\0\0");
     assert!(unc_asm::basic::tokenize(&format!("10 REM {}", "X".repeat(120))).unwrap_err().contains("120"));
     let huge: Vec<String> = (1..=500).map(|n| format!("{n} REM {}", "X".repeat(100))).collect();
     assert!(unc_asm::basic::tokenize(&huge.join("\n")).unwrap_err().contains("doesn't fit"));

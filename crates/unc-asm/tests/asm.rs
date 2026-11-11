@@ -134,8 +134,13 @@ fn the_system_rom_binary_matches_its_source() {
     let src = std::fs::read_to_string(format!("{root}/rom/system.s")).unwrap();
     let bin = std::fs::read(format!("{root}/rom/system.bin")).unwrap();
     let a = assemble(&src).unwrap_or_else(|e| panic!("{e:?}"));
-    assert_eq!(a.image(0xE000, 0xFFFF, 0xFF), bin, "rom/system.bin is stale: run `cargo run -p unc-asm -- rom/system.s -o rom/system.bin --range E000-FFFF`");
+    assert_eq!(a.image(0xE000, 0xFFFF, 0xFF), bin, "rom/system.bin is stale: run `scripts/build-rom.sh`");
     assert_eq!(&bin[..], &unc_core::machine::SYSTEM_ROM[..], "rebuild unc-core after changing the ROM");
+    // the second half of the 4K ROM, from the same source
+    let low = std::fs::read(format!("{root}/rom/system-d800.bin")).unwrap();
+    assert_eq!(a.image(0xD800, 0xDFFF, 0xFF), low, "rom/system-d800.bin is stale: run `scripts/build-rom.sh`");
+    assert_eq!(&low[..], &unc_core::machine::LOW_ROM[..], "rebuild unc-core after changing the ROM");
+    assert!(a.segments.iter().all(|s| s.start >= 0xD800), "nothing assembles below the 4K ROM's second half");
 }
 
 #[test]

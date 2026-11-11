@@ -1,10 +1,12 @@
-//! UNSCII, the character ROM: 128 glyphs of 8 x 8 pixels, 8 bytes each.
+//! UNSCII, the character ROM: 256 glyphs of 8 x 8 pixels, 8 bytes each. The first 128 are
+//! the set the screen shows as it is switched on (graphics and ASCII, lowercase included);
+//! the second 128 are for 256-glyph mode.
 //!
 //! The source is the "graph paper" file rom/unscii.txt, parsed here at compile time, so
 //! editing a glyph is editing a text file. A malformed file is a compile error.
 
-/// Glyphs `$00-$7F`, row by row; bit 7 of each byte is the leftmost pixel.
-pub static CHAR_ROM: [u8; 1024] = parse(include_str!("../../../rom/unscii.txt"));
+/// Glyphs `$00-$FF`, row by row; bit 7 of each byte is the leftmost pixel.
+pub static CHAR_ROM: [u8; 2048] = parse(include_str!("../../../rom/unscii.txt"));
 
 const fn hex(c: u8) -> u8 {
     match c {
@@ -15,10 +17,10 @@ const fn hex(c: u8) -> u8 {
     }
 }
 
-const fn parse(src: &str) -> [u8; 1024] {
+const fn parse(src: &str) -> [u8; 2048] {
     let s = src.as_bytes();
-    let mut out = [0u8; 1024];
-    let mut seen = [false; 128];
+    let mut out = [0u8; 2048];
+    let mut seen = [false; 256];
     let mut code: usize = 0;
     let mut row: usize = 8;
     let mut i = 0;
@@ -43,9 +45,6 @@ const fn parse(src: &str) -> [u8; 1024] {
                 panic!("unscii.txt: glyph header needs two hex digits");
             }
             code = (hex(s[start + 1]) * 16 + hex(s[start + 2])) as usize;
-            if code >= 128 {
-                panic!("unscii.txt: glyph codes run from $00 to $7F");
-            }
             if seen[code] {
                 panic!("unscii.txt: a glyph is defined twice");
             }
@@ -77,9 +76,9 @@ const fn parse(src: &str) -> [u8; 1024] {
         panic!("unscii.txt: the last glyph has fewer than 8 rows");
     }
     let mut k = 0;
-    while k < 128 {
+    while k < 256 {
         if !seen[k] {
-            panic!("unscii.txt: every glyph $00-$7F must be defined");
+            panic!("unscii.txt: every glyph $00-$FF must be defined");
         }
         k += 1;
     }

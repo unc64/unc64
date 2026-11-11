@@ -84,6 +84,7 @@ STRP    = $FD
 
 KBD     = $C010
 KBDSTRB = $C011
+CASE    = $C013         ; bit 0: letters arrive as typed (lowercase unless shifted); 0 at reset
 KEYS8   = $C068         ; the keyboard matrix's row 8: the cursor keys in bits 0-3
 BORDER  = $C020
 BG      = $C021
@@ -130,6 +131,7 @@ T_DATA  = $A3           ; DATA, READ, RESTORE and GET: after SAVE, for the same 
 T_READ  = $A4
 T_RESTORE = $A5
 T_GET   = $A6
+T_MON   = $A7           ; MON: after GET, for the same reason
 
 E_SYN   = 0
 E_UNDEF = 1
@@ -417,6 +419,7 @@ RESTORE: JSR VECS
         STA COLMODE
         STA SCROLLX
         STA SCROLLY
+        STA CASE
         LDA #$FF
         STA IRQST
         LDA #$D0
@@ -470,7 +473,7 @@ RLK2:   CMP #K_INS
 RLK3:   CMP #$20
         BCS RLK4
         JMP RLCUR
-RLK4:   CMP #$60
+RLK4:   CMP #$7F
         BCS RLKEY
         PHA             ; a character
         LDX CURY
@@ -782,7 +785,12 @@ CRLOOP: LDA IBUF,X
         BEQ CRQUOT
         CMP #'?'
         BEQ CRQMARK
-        CMP #'A'
+        CMP #'a'        ; small letters count as capitals, outside quotes and remarks
+        BCC CRL1
+        CMP #'z'+1
+        BCS CRCOPY
+        AND #$DF
+CRL1:   CMP #'A'
         BCC CRCOPY
         CMP #'Z'+1
         BCS CRCOPY
@@ -800,7 +808,8 @@ CRQMARK: LDA #T_PRINT   ; ? is short for PRINT
         INX
         INY
         JMP CRLOOP
-CRCHR:  LDA IBUF,X
+CRCHR:  LDA IBUF,X      ; a letter that isn't a keyword's: stored as a capital
+        AND #$DF
 CRCOPY: STA IBUF,Y
         INX
         INY
@@ -844,9 +853,14 @@ KWMATCH: STX T2
 KWNEXT: LDY #0
         LDA (TMP),Y
         BEQ KWFAIL      ; end of the table
-KWCMP:  LDA (TMP),Y
+KWCMP:  LDA (T3),Y      ; the line's letter, as a capital
+        CMP #'a'
+        BCC KWC1
+        AND #$DF
+KWC1:   STA TMPA
+        LDA (TMP),Y
         AND #$7F
-        CMP (T3),Y
+        CMP TMPA
         BNE KWSKIP
         LDA (TMP),Y
         BMI KWHIT       ; the last letter matched too
@@ -1266,9 +1280,12 @@ STREAD: CMP #T_READ
         JSR DOREAD
         JMP STMTEND
 STREST: CMP #T_RESTORE
-        BNE STSYN
+        BNE STMON
         JSR DORESTORE
         JMP STMTEND
+STMON:  CMP #T_MON
+        BNE STSYN
+        JMP MON         ; the monitor (the 4K ROM); Q comes back to READY.
 
 ; ENDLINE: the line is done. In a program, go on to the next line.
 ENDLINE: LDA RUNFLG
@@ -1746,7 +1763,7 @@ HLP1:   LDY #0
         BNE HLP4
 HLP2:   CMP #$81        ; a keyword's token
         BCC HLP3
-        CMP #T_GET+1
+        CMP #T_MON+1
         BCS HLP3
         JSR KWPRINT
         JMP HLP4
@@ -3623,6 +3640,8 @@ KWTAB:  .text "PRIN"
         .byte 'E'+$80
         .text "GE"
         .byte 'T'+$80
+        .text "MO"
+        .byte 'N'+$80
         .byte 0
 
 ERRLO:  .byte <ESYN, <EUNDEF, <ENEXT, <ERET, <EDIV, <EOOM, <ELOAD, <EDATA
@@ -3666,75 +3685,6 @@ MSGFREE: .text " BYTES FREE"
         .byte 13
         .text " TYPE HELP FOR HELP"
         .byte 13, 13, 0
-
-; The HELP screen: rows 0-22, READY. under it. [Brackets] in the comments are reverse video
-; (the bar on top and the headings): bit 7 set. The bar's gaps are $80, glyph $00 (blank)
-; reversed, not $A0, which the video chip blinks as the cursor. A full row wraps by itself.
-; To fit, DOHELP reads two codes of its own: $81-$A6 is a keyword's token, spelled out as
-; LIST does (PRINT, $80, is the bar's gap, so it's written in letters), and 9 moves to
-; column 17, where each row's second half begins.
-MHELP:
-        ; [ UNC BASIC REV A      MORE: MANUAL CH. 2]
-        .byte $80, $D5, $CE, $C3, $80, $C2, $C1, $D3, $C9, $C3, $80, $D2, $C5, $D6, $80, $C1
-        .byte $80, $80, $80, $80, $80, $80, $CD, $CF, $D2, $C5, $BA, $80, $CD, $C1, $CE, $D5
-        .byte $C1, $CC, $80, $C3, $C8, $AE, $80, $B2, $0D
-        ; [PROGRAMS]
-        .byte $D0, $D2, $CF, $C7, $D2, $C1, $CD, $D3, $0D
-        ;  10 PRINT "HI"   STORES THE LINE
-        .byte $20, $31, $30, $20, $50, $52, $49, $4E, $54, $20, $22, $48, $49, $22, $09, $53
-        .byte $54, $4F, $52, $45, $53, $20, $54, $48, $45, $20, $95, $0D
-        ;  RUN LIST NEW    RUN, SHOW, FORGET IT
-        .byte $20, $8E, $20, $8F, $20, $90, $09, $8E, $2C, $20, $53, $48, $4F, $57, $2C, $20
-        .byte $46, $4F, $52, $47, $45, $54, $20, $49, $54, $0D
-        ;  LOAD "NAME"     FROM TAPE
-        .byte $20, $A1, $20, $22, $4E, $41, $4D, $45, $22, $09, $46, $52, $4F, $4D, $20, $54
-        .byte $41, $50, $45, $0D
-        ;  SAVE "NAME"     ONTO TAPE
-        .byte $20, $A2, $20, $22, $4E, $41, $4D, $45, $22, $09, $4F, $4E, $54, $4F, $20, $54
-        .byte $41, $50, $45, $0D
-        ;  STOP (CTRL+C)   STOPS A PROGRAM
-        .byte $20, $53, $54, $4F, $50, $20, $28, $43, $54, $52, $4C, $2B, $43, $29, $09, $53
-        .byte $54, $4F, $50, $53, $20, $41, $20, $50, $52, $4F, $47, $52, $41, $4D, $0D
-        ; 
-        .byte $0D
-        ; [STATEMENTS]
-        .byte $D3, $D4, $C1, $D4, $C5, $CD, $C5, $CE, $D4, $D3, $0D
-        ;  PRINT INPUT LET IF..THEN REM END CLS
-        .byte $20, $50, $52, $49, $4E, $54, $20, $82, $20, $81, $20, $83, $2E, $2E, $98, $20
-        .byte $8A, $20, $8B, $20, $8C, $0D
-        ;  GOTO GOSUB RETURN  DATA READ RESTORE
-        .byte $20, $84, $20, $85, $20, $86, $20, $20, $A3, $20, $A4, $20, $A5, $0D
-        ;  FOR I=1 TO 9 STEP 2 ... NEXT I
-        .byte $20, $87, $20, $49, $3D, $31, $20, $99, $20, $39, $20, $9A, $20, $32, $20, $2E
-        .byte $2E, $2E, $20, $88, $20, $49, $0D
-        ;  POKE A,V        SYS A (MACHINE CODE)
-        .byte $20, $89, $20, $41, $2C, $56, $09, $8D, $20, $41, $20, $28, $4D, $41, $43, $48
-        .byte $49, $4E, $45, $20, $43, $4F, $44, $45, $29, $0D
-        ; 
-        .byte $0D
-        ; [GRAPHICS]
-        .byte $C7, $D2, $C1, $D0, $C8, $C9, $C3, $D3, $0D
-        ;  GR / TEXT       PICTURE ON / OFF
-        .byte $20, $92, $20, $2F, $20, $93, $09, $50, $49, $43, $54, $55, $52, $45, $20, $4F
-        .byte $4E, $20, $2F, $20, $4F, $46, $46, $0D
-        ;  PLOT X,Y        LINE X1,Y1,X2,Y2
-        .byte $20, $94, $20, $58, $2C, $59, $09, $95, $20, $58, $31, $2C, $59, $31, $2C, $58
-        .byte $32, $2C, $59, $32, $0D
-        ;  CIRCLE X,Y,R    INK 0 ERASES, 2 FLIPS
-        .byte $20, $96, $20, $58, $2C, $59, $2C, $52, $09, $97, $20, $30, $20, $45, $52, $41
-        .byte $53, $45, $53, $2C, $20, $32, $20, $46, $4C, $49, $50, $53, $0D
-        ; 
-        .byte $0D
-        ; [NUMBERS]
-        .byte $CE, $D5, $CD, $C2, $C5, $D2, $D3, $0D
-        ;  A-Z  + - * /  = <> < > <= >=  AND OR
-        .byte $20, $41, $2D, $5A, $20, $20, $2B, $20, $2D, $20, $2A, $20, $2F, $20, $20, $3D
-        .byte $20, $3C, $3E, $20, $3C, $20, $3E, $20, $3C, $3D, $20, $3E, $3D, $20, $20, $9E
-        .byte $20, $9F, $0D
-        ;  RND(N) ABS(N) PEEK(A) POINT(X,Y) GET
-        .byte $20, $9C, $28, $4E, $29, $20, $9D, $28, $4E, $29, $20, $9B, $28, $41, $29, $20
-        .byte $A0, $28, $58, $2C, $59, $29, $20, $A6, $0D
-        .byte 0
 
 ; ---------------------------------------------------------------- DATA, READ, RESTORE, GET
 
@@ -3868,6 +3818,465 @@ GT0:    LDA #0
         STA ACC
         RTS
 
+; ================================================================ the 4K ROM, $D000-$DFFF
+; Its first half is the character set (rom/unscii.txt). The second half, from $D800, is
+; more of the system: HELP's screen, and the monitor.
+
+        .org $D800
+
+; The HELP screen: rows 0-22, READY. under it. [Brackets] in the comments are reverse video
+; (the bar on top and the headings): bit 7 set. The bar's gaps are $80, glyph $00 (blank)
+; reversed, not $A0, which the video chip blinks as the cursor. A full row wraps by itself.
+; To fit, DOHELP reads two codes of its own: $81-$A7 is a keyword's token, spelled out as
+; LIST does (PRINT, $80, is the bar's gap, so it's written in letters), and 9 moves to
+; column 17, where each row's second half begins.
+MHELP:
+        ; [ UNC BASIC REV A      MORE: MANUAL CH. 2]
+        .byte $80, $D5, $CE, $C3, $80, $C2, $C1, $D3, $C9, $C3, $80, $D2, $C5, $D6, $80, $C1
+        .byte $80, $80, $80, $80, $80, $80, $CD, $CF, $D2, $C5, $BA, $80, $CD, $C1, $CE, $D5
+        .byte $C1, $CC, $80, $C3, $C8, $AE, $80, $B2, $0D
+        ; [PROGRAMS]
+        .byte $D0, $D2, $CF, $C7, $D2, $C1, $CD, $D3, $0D
+        ;  10 PRINT "HI"   STORES THE LINE
+        .byte $20, $31, $30, $20, $50, $52, $49, $4E, $54, $20, $22, $48, $49, $22, $09, $53
+        .byte $54, $4F, $52, $45, $53, $20, $54, $48, $45, $20, $95, $0D
+        ;  RUN LIST NEW    RUN, SHOW, FORGET IT
+        .byte $20, $8E, $20, $8F, $20, $90, $09, $8E, $2C, $20, $53, $48, $4F, $57, $2C, $20
+        .byte $46, $4F, $52, $47, $45, $54, $20, $49, $54, $0D
+        ;  LOAD "NAME"     FROM TAPE
+        .byte $20, $A1, $20, $22, $4E, $41, $4D, $45, $22, $09, $46, $52, $4F, $4D, $20, $54
+        .byte $41, $50, $45, $0D
+        ;  SAVE "NAME"     ONTO TAPE
+        .byte $20, $A2, $20, $22, $4E, $41, $4D, $45, $22, $09, $4F, $4E, $54, $4F, $20, $54
+        .byte $41, $50, $45, $0D
+        ;  STOP (CTRL+C)   STOPS A PROGRAM
+        .byte $20, $53, $54, $4F, $50, $20, $28, $43, $54, $52, $4C, $2B, $43, $29, $09, $53
+        .byte $54, $4F, $50, $53, $20, $41, $20, $50, $52, $4F, $47, $52, $41, $4D, $0D
+        ; 
+        .byte $0D
+        ; [STATEMENTS]
+        .byte $D3, $D4, $C1, $D4, $C5, $CD, $C5, $CE, $D4, $D3, $0D
+        ;  PRINT INPUT LET IF..THEN REM END CLS
+        .byte $20, $50, $52, $49, $4E, $54, $20, $82, $20, $81, $20, $83, $2E, $2E, $98, $20
+        .byte $8A, $20, $8B, $20, $8C, $0D
+        ;  GOTO GOSUB RETURN  DATA READ RESTORE
+        .byte $20, $84, $20, $85, $20, $86, $20, $20, $A3, $20, $A4, $20, $A5, $0D
+        ;  FOR I=1 TO 9 STEP 2 ... NEXT I
+        .byte $20, $87, $20, $49, $3D, $31, $20, $99, $20, $39, $20, $9A, $20, $32, $20, $2E
+        .byte $2E, $2E, $20, $88, $20, $49, $0D
+        ;  POKE A,V  SYS A  MON  (MACHINE CODE)
+        .byte $20, $89, $20, $41, $2C, $56, $20, $20, $8D, $20, $41, $20, $20, $A7, $20, $20
+        .byte $28, $4D, $41, $43, $48, $49, $4E, $45, $20, $43, $4F, $44, $45, $29, $0D
+        ; 
+        .byte $0D
+        ; [GRAPHICS]
+        .byte $C7, $D2, $C1, $D0, $C8, $C9, $C3, $D3, $0D
+        ;  GR / TEXT       PICTURE ON / OFF
+        .byte $20, $92, $20, $2F, $20, $93, $09, $50, $49, $43, $54, $55, $52, $45, $20, $4F
+        .byte $4E, $20, $2F, $20, $4F, $46, $46, $0D
+        ;  PLOT X,Y        LINE X1,Y1,X2,Y2
+        .byte $20, $94, $20, $58, $2C, $59, $09, $95, $20, $58, $31, $2C, $59, $31, $2C, $58
+        .byte $32, $2C, $59, $32, $0D
+        ;  CIRCLE X,Y,R    INK 0 ERASES, 2 FLIPS
+        .byte $20, $96, $20, $58, $2C, $59, $2C, $52, $09, $97, $20, $30, $20, $45, $52, $41
+        .byte $53, $45, $53, $2C, $20, $32, $20, $46, $4C, $49, $50, $53, $0D
+        ; 
+        .byte $0D
+        ; [NUMBERS]
+        .byte $CE, $D5, $CD, $C2, $C5, $D2, $D3, $0D
+        ;  A-Z  + - * /  = <> < > <= >=  AND OR
+        .byte $20, $41, $2D, $5A, $20, $20, $2B, $20, $2D, $20, $2A, $20, $2F, $20, $20, $3D
+        .byte $20, $3C, $3E, $20, $3C, $20, $3E, $20, $3C, $3D, $20, $3E, $3D, $20, $20, $9E
+        .byte $20, $9F, $0D
+        ;  RND(N) ABS(N) PEEK(A) POINT(X,Y) GET
+        .byte $20, $9C, $28, $4E, $29, $20, $9D, $28, $4E, $29, $20, $9B, $28, $41, $29, $20
+        .byte $A0, $28, $58, $2C, $59, $29, $20, $A6, $0D
+        .byte 0
+
+; ---------------------------------------------------------------- the monitor
+; MON. A line at the * prompt is read left to right:
+;
+;   1000            show the byte at $1000
+;   1000.101F       show $1000 to $101F, eight to a row
+;   (RETURN alone)  the next eight
+;   1000: A9 01 60  store bytes from $1000 (and ": 03" carries on from where that stopped)
+;   1000L           list twenty instructions from $1000; L alone, the next twenty
+;   1000G           call the routine at $1000; its RTS comes back here
+;   Q               back to BASIC
+;
+; Numbers are hex, small letters or capitals. STOP ends a long list. It keeps its place in
+; BASIC's part of the fast page, free while BASIC isn't running a line.
+MA      = $D0           ; the next address to show or list
+MS      = $D2           ; the address last given: where : stores and G goes
+MB      = $D4           ; a range's end
+MN      = $D6           ; the number being read
+MMODE   = $D8           ; 0, or '.' or ':' after one
+MGOT    = $D9           ; not 0: a number has digits
+MPEND   = $DA           ; not 0: an address was given and nothing has used it yet
+MIX     = $DB           ; where in the line
+MOP     = $DC           ; disassembling: the opcode,
+MMN     = $DD           ;   its mnemonic's number,
+MMD     = $DE           ;   its addressing mode,
+MLEN    = $DF           ;   its length in bytes
+MCNT    = MB            ;   and the instructions still to list
+
+MON:    LDA #0
+        STA RUNFLG
+MONL:   LDX #$FF
+        TXS
+        JSR CRIF
+        LDA #'*'
+        JSR CHROUT
+        LDA #<IBUF
+        STA BUFP
+        LDA #>IBUF
+        STA BUFP+1
+        LDA #120
+        STA BUFN
+        JSR READLN
+        BCS MONL        ; STOP: the line again
+        LDX #0
+        STX MMODE
+        STX MPEND
+        LDA IBUF
+        BNE MITEM
+        LDA MA          ; an empty line: on to the end of this row of eight
+        ORA #7
+        STA MB
+        LDA MA+1
+        STA MB+1
+        JSR MDUMP
+        JMP MONL
+
+MITEM:  LDA #0          ; a number, if there's one here
+        STA MGOT
+        STA MN
+        STA MN+1
+MDIG:   LDA IBUF,X
+        JSR HEXVAL
+        BCS MNUM
+        LDY #4
+MDIG1:  ASL MN
+        ROL MN+1
+        DEY
+        BNE MDIG1
+        ORA MN
+        STA MN
+        INC MGOT
+        INX
+        BNE MDIG
+MNUM:   LDA MGOT
+        BEQ MCMD
+        LDA MMODE
+        BEQ MOPEN
+        CMP #':'
+        BEQ MSTORE
+        LDA MN          ; after a dot: the range's end
+        STA MB
+        LDA MN+1
+        STA MB+1
+        LDA #0
+        STA MMODE
+        JSR MDUMPX
+        JMP MCMD
+MSTORE: LDA MN
+        LDY #0
+        STA (MS),Y
+        INC MS
+        BNE MCMD
+        INC MS+1
+        BNE MCMD
+MOPEN:  LDA MN
+        STA MA
+        STA MS
+        LDA MN+1
+        STA MA+1
+        STA MS+1
+        INC MPEND
+MCMD:   LDA IBUF,X      ; what comes after it
+        BEQ MEOL
+        INX
+        CMP #'a'
+        BCC MCMD1
+        AND #$DF
+MCMD1:  CMP #' '
+        BEQ MSPACE
+        LDY #0
+        CMP #'.'
+        BEQ MSETM
+        CMP #':'
+        BEQ MSETM
+        STY MPEND
+        CMP #'L'
+        BEQ MLIST
+        CMP #'G'
+        BEQ MGO
+        CMP #'Q'
+        BNE MERR
+        JMP WARM
+MERR:   JSR CRIF
+        LDA #'?'
+        JSR CHROUT
+        JMP MONL
+MSETM:  STA MMODE
+        STY MPEND
+        JMP MITEM
+MSPACE: JSR MSHOW
+        JMP MITEM
+MEOL:   JSR MSHOW
+        JMP MONL
+MGO:    JSR MGO1
+        JMP MONL
+MGO1:   JMP (MS)
+
+MLIST:  LDA #20
+        STA MCNT
+MLIST1: JSR MDIS
+        JSR MSTOP
+        DEC MCNT
+        BNE MLIST1
+        JMP MONL
+
+; MSHOW: an address nothing else took is shown: its one byte.
+MSHOW:  LDA MPEND
+        BEQ MSHOWX
+        LDA #0
+        STA MPEND
+        LDA MA
+        STA MB
+        LDA MA+1
+        STA MB+1
+MDUMPX: STX MIX
+        JSR MDUMP
+        LDX MIX
+MSHOWX: RTS
+
+; MDUMP: the bytes from MA to MB, eight to a row, each row its address first. MA ends one
+; past MB.
+MDUMP:  JSR MADDR
+        LDA #'-'
+        JSR CHROUT
+MDUMP1: LDA #' '
+        JSR CHROUT
+        LDY #0
+        LDA (MA),Y
+        JSR PRHEX
+        LDA MA          ; the last one?
+        CMP MB
+        LDA MA+1
+        SBC MB+1
+        INC MA          ; (INC leaves the carry alone)
+        BNE MDUMP2
+        INC MA+1
+MDUMP2: BCS MSHOWX
+        JSR MSTOP
+        LDA MA
+        AND #7
+        BNE MDUMP1
+        BEQ MDUMP
+
+; MADDR: a new line, and MA in hex.
+MADDR:  JSR CRIF
+        LDA MA+1
+        JSR PRHEX
+        LDA MA
+        JMP PRHEX
+
+; MSTOP: the STOP key ends whatever is being shown.
+MSTOP:  LDA KBD
+        CMP #$83
+        BNE MSHOWX
+        BIT KBDSTRB
+        JMP MONL
+
+; HEXVAL: carry clear and A = 0-15 if A is a hex digit, small letters too; carry set if not.
+HEXVAL: CMP #'a'
+        BCC HEXV1
+        AND #$DF
+HEXV1:  CMP #'0'
+        BCC HEXNO
+        CMP #'9'+1
+        BCC HEXDIG
+        CMP #'A'
+        BCC HEXNO
+        CMP #'F'+1
+        BCS HEXNO
+        SBC #'A'-11     ; (the carry is clear: one more comes off)
+        CLC
+        RTS
+HEXDIG: AND #$0F
+        RTS
+HEXNO:  SEC
+        RTS
+
+; MDIS: one instruction at MA on a line: its address, its bytes, and what they say. MA
+; moves on past it.
+MDIS:   JSR MADDR
+        JSR MSP2
+        LDY #0
+        LDA (MA),Y
+        STA MOP
+        JSR MDEC
+        LDY #0
+MDIS1:  CPY MLEN
+        BCS MDIS2
+        LDA (MA),Y
+        JSR PRHEX
+        JMP MDIS3
+MDIS2:  JSR MSP2
+MDIS3:  LDA #' '
+        JSR CHROUT
+        INY
+        CPY #3
+        BNE MDIS1
+        JSR CHROUT      ; (A is still a space)
+        LDA MMN         ; three letters each
+        ASL A
+        ADC MMN
+        TAX
+        LDY #3
+MDIS4:  LDA MNEM,X
+        JSR CHROUT
+        INX
+        DEY
+        BNE MDIS4
+        LDA #' '
+        JSR CHROUT
+        LDX MMD
+        LDA MPRE,X      ; # or ( before the number, or A alone
+        BEQ MDIS5
+        JSR CHROUT
+MDIS5:  LDA MLEN
+        CMP #1
+        BEQ MDIS9       ; no operand
+        LDA #'$'
+        JSR CHROUT
+        CPX #10
+        BEQ MDISR
+        LDA MLEN
+        CMP #3
+        BNE MDIS6
+        LDY #2
+        LDA (MA),Y
+        JSR PRHEX
+MDIS6:  LDY #1
+        LDA (MA),Y
+        JSR PRHEX
+        JMP MDIS8
+MDISR:  CLC             ; a branch: where it goes, the next instruction plus its byte
+        LDA MA
+        ADC #2
+        STA MN
+        LDA MA+1
+        ADC #0
+        STA MN+1
+        LDY #1
+        LDA (MA),Y
+        BPL MDISR1
+        DEC MN+1
+MDISR1: CLC
+        ADC MN
+        STA MN
+        BCC MDISR2
+        INC MN+1
+MDISR2: LDA MN+1
+        JSR PRHEX
+        LDA MN
+        JSR PRHEX
+MDIS8:  LDX MMD
+        LDY MSUF,X      ; ,X  ,Y  ),Y  ) after it
+MDIS7:  LDA MSUFT,Y
+        BEQ MDIS9
+        JSR CHROUT
+        INY
+        BNE MDIS7
+MDIS9:  CLC
+        LDA MA
+        ADC MLEN
+        STA MA
+        BCC MDISX
+        INC MA+1
+MDISX:  RTS
+MSP2:   LDA #' '
+        JSR CHROUT
+        JMP CHROUT
+
+; MDEC: MOP's mnemonic (MMN, 56 for none), mode (MMD) and length (MLEN). The opcode map
+; is regular (Appendix C): $00-$22 are one instruction each; from $28, rows of eight, an
+; instruction a row and an addressing mode a column.
+; Modes: 0 #  1 fp  2 fp,X  3 abs  4 abs,X  5 abs,Y  6 (fp),Y  7 fp,Y  8 A  9 none
+; 10 a branch  11 (abs).
+MDEC:   LDA MOP
+        CMP #$23
+        BCS MDECR
+        STA MMN
+        LDX #9
+        CMP #5
+        BCC MDECS       ; BRK to RTI
+        CMP #8
+        BCS MDECB
+        LDX #3          ; JSR and JMP
+        CMP #7
+        BNE MDECS
+        LDX #11         ; JMP ( )
+        BNE MDECS
+MDECB:  CMP #$10
+        BCS MDECS       ; the rest are one byte
+        LDX #10         ; the branches
+MDECS:  STX MMD
+        LDA MLENS,X
+        STA MLEN
+        RTS
+MDECR:  CMP #$28
+        BCC MDECN
+        CMP #$D0
+        BCS MDECN
+        SBC #$27        ; (the carry is clear: opcode - $28)
+        PHA
+        AND #7
+        TAY             ; the column
+        PLA
+        LSR A
+        LSR A
+        LSR A
+        TAX             ; the row
+        LDA MMASK,X
+        AND MBIT,Y
+        BEQ MDECN       ; an empty cell
+        TXA
+        CLC
+        ADC #35
+        STA MMN
+        CPY #7
+        BNE MDECC
+        CPX #16         ; column 7: fp,Y for LDX and STX, A for the shifts
+        BCC MDECC
+        INY
+MDECC:  TYA
+        TAX
+        BPL MDECS
+MDECN:  LDA #56
+        STA MMN
+        LDX #9
+        BNE MDECS
+
+MLENS:  .byte 2, 2, 2, 3, 3, 3, 2, 2, 1, 1, 2, 3
+MPRE:   .byte '#', 0, 0, 0, 0, 0, '(', 0, 'A', 0, 0, '('
+MSUF:   .byte 0, 0, 1, 0, 1, 4, 7, 4, 0, 0, 0, 11
+MSUFT:  .byte 0, ',', 'X', 0, ',', 'Y', 0, ')', ',', 'Y', 0, ')', 0
+MBIT:   .byte 1, 2, 4, 8, 16, 32, 64, 128
+; which columns each row from $28 has: LDA STA ADC SBC AND ORA EOR CMP LDX LDY STX STY
+; CPX CPY INC DEC ASL LSR ROL ROR BIT
+MMASK:  .byte %01111111, %01111110, %01111111, %01111111, %01111111, %01111111, %01111111
+        .byte %01111111, %10101011, %00011111, %10001010, %00001110, %00001011, %00001011
+        .byte %00001110, %00001110, %10001110, %10001110, %10001110, %10001110, %00001010
+MNEM:   .text "BRKNOPHLTRTSRTIJSRJMPJMPBEQBNEBCCBCSBMIBPLBVCBVS"
+        .text "TAXTAYTXATYATXSTSXINXINYDEXDEYPHAPLAPHPPLPCLCSEC"
+        .text "CLISEICLV"
+        .text "LDASTAADCSBCANDORAEORCMPLDXLDYSTXSTYCPXCPYINCDECASLLSRROLRORBIT"
+        .text "???"
+        .assert * <= $E000, "the 4K ROM is full"
+
 ; Jump table: the stable entry points.
         .org $FF00
         JMP CLS         ; $FF00
@@ -3882,6 +4291,7 @@ GT0:    LDA #0
         JMP PRNUM       ; $FF1B
         JMP RNDSEED     ; $FF1E
         JMP WARM        ; $FF21: READY, back to BASIC
+        JMP MON         ; $FF24: the monitor
 
 ; The processor starts here, at switch-on and when the RESET button is pressed. Switched
 ; on, memory is clear and it's a cold start (RESET). Pressed, the machine has been running

@@ -333,7 +333,7 @@ const theme = EditorView.theme({
 // strings, numbers, REM. `#` lines are notes, not typed. No assembler checks.
 const BASIC_WORDS = ['PRINT', 'LET', 'INPUT', 'IF', 'GOTO', 'GOSUB', 'RETURN', 'FOR', 'NEXT', 'POKE', 'REM', 'END', 'CLS', 'SYS',
   'RUN', 'LIST', 'NEW', 'HELP', 'GR', 'TEXT', 'PLOT', 'LINE', 'CIRCLE', 'INK', 'THEN', 'TO', 'STEP', 'PEEK', 'RND', 'ABS',
-  'AND', 'OR', 'POINT', 'LOAD', 'SAVE', 'DATA', 'READ', 'RESTORE', 'GET'].sort((a, b) => b.length - a.length);
+  'AND', 'OR', 'POINT', 'LOAD', 'SAVE', 'DATA', 'READ', 'RESTORE', 'GET', 'MON'].sort((a, b) => b.length - a.length);
 const BTYPES = { line: t.labelName, keyword: t.keyword, string: t.string, number: t.number, var: t.variableName, rem: t.lineComment, note: t.comment };
 const uncBasic = StreamLanguage.define({
   name: 'unc-basic',

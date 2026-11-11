@@ -109,9 +109,9 @@
   // (the magazine's .bas listings), never typed.
   const keysOf = (text) => {
     const out = [];
-    for (const ch of text.toUpperCase()) {
+    for (const ch of text) {
       const c = ch === '\n' || ch === '\r' ? 13 : ch === '\t' ? 32 : ch.charCodeAt(0);
-      if (c === 13 || (c >= 0x20 && c <= 0x5F)) out.push(c);
+      if (c === 13 || (c >= 0x20 && c <= 0x7E)) out.push(c);
     }
     return out;
   };
@@ -1262,8 +1262,8 @@ msg:    .text "HELLO, UNC 64!"
     if (e.key === 'Enter') code = 13;
     else if (e.key === 'Backspace' && e.shiftKey) code = 20; // INSERT: shift and DELETE (not the host's Insert key: not every keyboard has one)
     else if (e.key === 'Backspace') code = 8;
-    else if (e.key.length === 1) code = e.key.toUpperCase().charCodeAt(0);
-    if (code === null || code >= 96) return;
+    else if (e.key.length === 1) code = e.key.charCodeAt(0); // as typed: the machine makes capitals of letters unless CASE ($C013) is set
+    if (code === null || code >= 127) return;
     e.preventDefault();
     // behind anything still being typed (a phone's keyboard sends its text one way and its
     // RETURN another): the keys arrive in the order they were pressed

@@ -543,6 +543,40 @@ fn under_gr_the_cursor_stays_on_the_text_rows() {
     direct(&mut m, "TEXT");
 }
 
+// ---------- small letters ----------
+
+/// The keyboard sends capitals until CASE ($C013) says otherwise. With it set, small letters
+/// arrive as typed, and BASIC takes them for capitals everywhere but inside quotes and after
+/// REM: keywords, variables and hex digits are the same either way.
+#[test]
+fn basic_takes_small_letters_for_capitals_outside_quotes() {
+    let mut m = boot();
+    // as switched on: whatever the host sends, a letter is a capital
+    type_keys(&mut m, b"print \"hello\"\r");
+    wait_ready(&mut m);
+    assert_eq!(last_rows(&m, 3), ["PRINT \"HELLO\"", "HELLO", "READY."]);
+    assert_eq!(m.peek(io::CASE), 0);
+    // a deliberate POKE, and letters arrive as typed
+    direct(&mut m, "POKE 49171,1");
+    assert_eq!(m.peek(io::CASE), 1);
+    type_keys(&mut m, b"print \"Hello, World\"\r");
+    wait_ready(&mut m);
+    assert_eq!(last_rows(&m, 3), ["print \"Hello, World\"", "Hello, World", "READY."], "the line stays as typed; what runs is PRINT");
+    direct(&mut m, "new");
+    for l in ["10 rem Mixed Case stays", "20 a=$c020:poke a,2:b=Peek(a)", "30 Print \"b is\";b:if b=2 Then print \"ok\""] {
+        line(&mut m, l, 2);
+    }
+    assert_eq!(direct(&mut m, "list"), ["10 REM Mixed Case stays", "20 A=$C020:POKE A,2:B=PEEK(A)", "30 PRINT \"b is\";B:IF B=2 THEN PRINT \"ok\""]);
+    assert_eq!(direct(&mut m, "run"), ["b is2", "ok"]);
+    assert_eq!(m.peek(0x0260 + 2), 2, "b is B");
+    // STOP and RESTORE put the keyboard back to capitals
+    stop_restore(&mut m);
+    assert_eq!(m.peek(io::CASE), 0);
+    type_keys(&mut m, b"print 1\r");
+    wait_ready(&mut m);
+    assert_eq!(last_rows(&m, 3), ["PRINT 1", "1", "READY."]);
+}
+
 // ---------- STOP and RESTORE ----------
 
 /// STOP held, and RESTORE pressed: the NMI.
