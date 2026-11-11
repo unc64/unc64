@@ -3434,6 +3434,22 @@ This is how to read the ROM. `E000L` is where it starts, and `FF00L` is the jump
 
 The border turns red, and the `*` comes back. A routine that never returns never gives the prompt back either: STOP and RESTORE (chapter 10) get BASIC back, and `MON` again finds memory as the routine left it.
 
+### A first program
+
+Four instructions, eight bytes: every screen code there is, put straight into screen memory (chapter 8), round and round.
+
+```text
+*3000: 12 34 00 04 16 06 00 30
+*3000L
+3000  12        TXA
+3001  34 00 04  STA $0400,X
+3004  16        INX
+3005  06 00 30  JMP $3000
+*3000G
+```
+
+The top of the screen fills with the character set: all 256 codes, the second half as the first reversed. This routine never returns, so the prompt doesn't come back: STOP and RESTORE end it. Then `MON` again, `3002: 90 05`, and `3000G` puts them ten rows down.
+
 ### All of it
 
 | You type | The monitor |

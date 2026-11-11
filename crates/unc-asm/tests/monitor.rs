@@ -195,6 +195,23 @@ fn manual_chapter_16_examples() {
     assert_eq!(m.peek(io::BORDER), 2);
     line(&mut m, "C020: 5");
     assert_eq!(m.peek(io::BORDER), 5, "a store to I/O is a POKE");
+    // a first program: every screen code into screen memory, for ever, until STOP and RESTORE
+    line(&mut m, "3000: 12 34 00 04 16 06 00 30");
+    assert_eq!(said(&mut m, "3000L")[..4], ["3000  12        TXA", "3001  34 00 04  STA $0400,X", "3004  16        INX", "3005  06 00 30  JMP $3000"]);
+    for (poke, at) in [("3002: 00 04", 0x0400u16), ("3002: 90 05", 0x0400 + 10 * 40)] {
+        line(&mut m, poke);
+        type_keys(&mut m, b"3000G\r");
+        for _ in 0..10 {
+            m.run_frame();
+        }
+        assert!((0..256).all(|i| m.peek(at + i) == i as u8), "all 256 codes from ${at:04X}");
+        m.key(3);
+        m.restore();
+        settle(&mut m);
+        m.key_up(3);
+        assert_eq!(rows(&m).first().unwrap(), "READY.", "STOP and RESTORE: BASIC again");
+        line(&mut m, "MON");
+    }
     // from machine language: JMP $FF24
     line(&mut m, "Q");
     m.load(0x3100, &[0x06, 0x24, 0xFF]);
