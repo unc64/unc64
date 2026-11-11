@@ -3420,6 +3420,21 @@ This is how to read the ROM. `E000L` is where it starts, and `FF00L` is the jump
 
 The border turns red, and the `*` comes back. A routine that never returns never gives the prompt back either: STOP and RESTORE (chapter 10) get BASIC back, and `MON` again finds memory as the routine left it.
 
+### A first program
+
+Three instructions, eight bytes: print a star through the ROM's `CHROUT` (`$FF03`, chapter 13), and go round again.
+
+```text
+*3000: 28 2A 05 03 FF 06 00 30
+*3000L
+3000  28 2A     LDA #$2A
+3002  05 03 FF  JSR $FF03
+3005  06 00 30  JMP $3000
+*3000G
+```
+
+Stars fill the screen and scroll, for as long as you let them: this routine never returns. STOP and RESTORE end it. Then `MON` again, `3001: 55`, and `3000G` prints `U` instead.
+
 ### All of it
 
 | You type | The monitor |
