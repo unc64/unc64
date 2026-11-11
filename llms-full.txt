@@ -1143,14 +1143,15 @@ Each byte is a **screen code**. The video chip draws each code as an 8 × 8 **gl
 
 | Codes | Show |
 |---|---|
-| `$00-$0F` | Quarter blocks: bits 0-3 light the top-left, top-right, bottom-left and bottom-right quarter of the cell. |
+| `$00-$07`, `$0F` | Quarter blocks: bits 0-2 light the top-left, top-right and bottom-left quarter of the cell; `$0F` is all four. |
+| `$08-$0E` | A cell filled from the bottom: one to seven eighths of it, for bar graphs. |
 | `$10-$1F` | Lines, corners and joints for drawing boxes; diagonals; two shades. |
 | `$20-$7E` | ASCII: punctuation, digits, capital letters, small letters. A character's screen code is its ASCII code. |
 | `$7F` | A diamond. |
 | `$80-$FF` | The glyphs of `$00-$7F` in reverse video. (In 256-glyph mode, 128 more glyphs: see "256 glyphs".) |
 | `$A0` | A reversed space, which blinks (unless VMODE bit 3 is set; see below). BASIC's screen editor uses it as the cursor. |
 
-The quarter blocks are numbered so you can work them out: `$0F` is a solid block, `$03` the top half of a cell, `$0C` the bottom half. With them, the 40 × 25 screen becomes an 80 × 50 grid of dots.
+The quarter blocks are numbered so you can work them out: `$03` is the top half of a cell, `$05` its left half, `$0F` a solid block. The seven with the bottom-right quarter lit (and not all four) aren't in this half: each is one of `$01-$07` reversed, so for a pattern `n` from 8 to 14, by the same bits with bit 3 the bottom-right, the code is `n` exclusive-or `$8F`. With them, the 40 × 25 screen becomes an 80 × 50 grid of dots. The eighths do the same for heights: a column of cells is 200 levels tall, `$0B` is the bottom half of a cell, and reversed (`$88-$8E`) the same seven glyphs fill a cell from the top.
 
 ### The character set
 
@@ -1335,9 +1336,11 @@ In 256-glyph mode, the set is 2K long and glyph *n* starts at CHARSET × 256 + *
 
 | Codes | Show |
 |---|---|
-| `$80-$8F` | Eighth blocks, for bar graphs and smooth edges: `$80-$86` fill the bottom 1 to 7 eighths of the cell, `$87-$8D` the left 1 to 7 eighths; `$8E` is the top eighth and `$8F` the right. |
+| `$80-$86` | The quarter blocks the first half leaves out, the ones with the bottom-right quarter lit: quarter pattern `n` (8 to 14) is at `n + $78`. |
+| `$87-$8F` | More eighths, for bar graphs and smooth edges: `$87-$8D` fill the left 1 to 7 eighths of the cell; `$8E` is the top eighth and `$8F` the right. |
 | `$90-$9F` | Card suits, a ball, a ring, arrows left, up, right and down, four triangles, a face, a note. |
-| `$A0-$BF` | The same 32, reversed: the other eighths, and the pictures cut out of a solid cell. |
+| `$A0-$A6` | `$08-$0E` reversed: a cell filled from the top, all but its bottom 1 to 7 eighths. |
+| `$A7-$BF` | `$87-$9F` reversed: the other eighths, and the pictures cut out of a solid cell. |
 | `$C0-$CA` | Double lines, corners, joints and a cross, in the order of the single ones at `$10-$1A`. |
 | `$CB-$D6` | Round corners; squares, stripes across and down, and a dark shade; and a ball four cells big, in its four quarters. |
 | `$D7-$E6` | Letters with accents: Å Ä Ö å ä ö Ø ø Æ æ É é Ü ü ß ñ. |
@@ -1353,7 +1356,7 @@ Appendix A has the whole table. One store gets you all of them, at the price of 
         STA $0400       ; a heart, top left
 ```
 
-Reverse video is still there if you only want it for the pictures: `$A0-$BF` are `$80-$9F` reversed. The cursor's code, `$A0`, is one of them (the bottom eighth, reversed), so the screen editor's cursor is a steady block with a gap along its foot.
+Reverse video is still there if you only want it for the pictures: `$A7-$BF` are `$87-$9F` reversed, and `$A0-$A6` the eighths of `$08-$0E`. The cursor's code, `$A0`, is one of them (the bottom eighth, reversed), so the screen editor's cursor is a steady block with a gap along its foot.
 
 **A set of your own, 2K.** For 256 glyphs of your own, the set is 2K in RAM, and you fill both halves. This program builds one, UNSCII's first half in the bottom and its reversed copy in the top (which is what the screen shows without 256-glyph mode), and draws a box with the line glyphs `$10-$1A`:
 
@@ -3450,6 +3453,8 @@ Four instructions, eight bytes: every screen code there is, put straight into sc
 
 The top of the screen fills with the character set: all 256 codes, the second half as the first reversed. This routine never returns, so the prompt doesn't come back: STOP and RESTORE end it. Then `MON` again, `3002: 90 05`, and `3000G` puts them ten rows down.
 
+To see the second half as the pictures it holds in the ROM, switch the screen to 256 glyphs first (chapter 8): `C000: 1` before the `G`. STOP and RESTORE switch it back.
+
 ### All of it
 
 | You type | The monitor |
@@ -3480,7 +3485,7 @@ UNSCII, the character ROM. Rows give the high hex digit, columns the low one. Th
 
 |   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **0** | empty | ▘ | ▝ | ▀ | ▖ | ▌ | ▞ | ▛ | ▗ | ▚ | ▐ | ▜ | ▄ | ▙ | ▟ | █ |
+| **0** | empty | ▘ | ▝ | ▀ | ▖ | ▌ | ▞ | ▛ | ▁ | ▂ | ▃ | ▄ | ▅ | ▆ | ▇ | █ |
 | **1** | ─ | │ | ┌ | ┐ | └ | ┘ | ├ | ┤ | ┬ | ┴ | ┼ | ╱ | ╲ | ╳ | ▒ | ░ |
 | **2** | space | ! | " | # | $ | % | & | ' | ( | ) | * | + | , | - | . | / |
 | **3** | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | : | ; | < | = | > | ? |
@@ -3489,7 +3494,8 @@ UNSCII, the character ROM. Rows give the high hex digit, columns the low one. Th
 | **6** | \` | a | b | c | d | e | f | g | h | i | j | k | l | m | n | o |
 | **7** | p | q | r | s | t | u | v | w | x | y | z | { | ¦ | } | ~ | ◆ |
 
-- **`$00-$0F`**: bit 0 lights the top-left quarter of the cell, bit 1 the top-right, bit 2 the bottom-left and bit 3 the bottom-right.
+- **`$00-$07`**: bit 0 lights the top-left quarter of the cell, bit 1 the top-right and bit 2 the bottom-left. `$0F` is all four. The seven with the bottom-right quarter are these reversed (as the machine is switched on, pattern `n` from 8 to 14 is code `n` exclusive-or `$8F`), and are in the second half.
+- **`$08-$0E`** fill the bottom 1 to 7 eighths of the cell.
 - **`$10-$1A`**: the lines run through the middle of the cell, two pixels thick, and reach its edges, so neighbouring cells join into boxes.
 - **`$20-$7E`** are ASCII: a character's screen code is its ASCII code. `$7F` is a diamond.
 - **`$80-$FF`**, as the machine is switched on: the glyph of the code minus `$80`, in reverse video. `$C1` is a reversed A. `$A0`, the reversed space, blinks about once a second: it's the cursor. VMODE bit 3 holds it steady (chapter 8).
@@ -3498,16 +3504,16 @@ UNSCII, the character ROM. Rows give the high hex digit, columns the low one. Th
 
 |   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **8** | ▁ | ▂ | ▃ | ▄ | ▅ | ▆ | ▇ | ▏ | ▎ | ▍ | ▌ | ▋ | ▊ | ▉ | ▔ | ▕ |
+| **8** | ▗ | ▚ | ▐ | ▜ | ▄ | ▙ | ▟ | ▏ | ▎ | ▍ | ▌ | ▋ | ▊ | ▉ | ▔ | ▕ |
 | **9** | ♠ | ♥ | ♦ | ♣ | ● | ○ | ← | ↑ | → | ↓ | ◢ | ◣ | ◤ | ◥ | ☺ | ♪ |
-| **A** | row 8, reversed | | | | | | | | | | | | | | | |
+| **A** | `$08-$0E` reversed | | | | | | | row 8, reversed | | | | | | | | |
 | **B** | row 9, reversed | | | | | | | | | | | | | | | |
 | **C** | ═ | ║ | ╔ | ╗ | ╚ | ╝ | ╠ | ╣ | ╦ | ╩ | ╬ | ╭ | ╮ | ╰ | ╯ | squares |
 | **D** | stripes across | stripes down | dark shade | ◜ | ◝ | ◟ | ◞ | Å | Ä | Ö | å | ä | ö | Ø | ø | Æ |
 | **E** | æ | É | é | Ü | ü | ß | ñ | £ | ¥ | § | ° | ± | × | ÷ | π | µ |
 | **F** | ½ | ¼ | ¾ | ¿ | ¡ | « | » | ship | alien | man | tree | house | key | star | bomb | skull |
 
-- **`$80-$86`** fill the bottom 1 to 7 eighths of the cell; **`$87-$8D`** the left 1 to 7 eighths. `$8E` is the top eighth and `$8F` the right eighth. Reversed, at `$A0-$AF`, they're the other eighths: `$A0` is all but the bottom eighth.
+- **`$80-$86`** are the quarter blocks with the bottom-right quarter lit: pattern `n`, 8 to 14, is at `n + $78`. **`$87-$8D`** fill the left 1 to 7 eighths of the cell. `$8E` is the top eighth and `$8F` the right eighth. `$A0-$A6` are the bottom eighths of `$08-$0E` reversed, and `$A7-$AF` these eighths reversed: `$A0` is all but the bottom eighth.
 - **`$C0-$CA`**: double lines, in the order of the single ones at `$10-$1A`, thin and on the same two pixels in every cell, so they join.
 - **`$D3-$D6`**: the four quarters of a ball two cells across: top-left, top-right, bottom-left, bottom-right.
 

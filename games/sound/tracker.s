@@ -1275,7 +1275,7 @@ graph:  STA GROW
         BCC @part
         LDA #$0F                ; the whole cell
         BNE @put
-@part:  ADC #$5F                ; $60 to $66: one to seven eighths
+@part:  ADC #$07                ; $08 to $0E: one to seven eighths
         BNE @put
 @none:  LDA #' '
 @put:   STA (SCR),Y
