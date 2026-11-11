@@ -177,7 +177,7 @@ textarea#src{flex:1;width:100%;resize:none;background:var(--well);border:0;paddi
 .flags span{font:12px/18px var(--rom);width:20px;text-align:center;border:1px solid var(--line);border-radius:3px;color:#5a4d3c}
 .flags span.on{color:#06120a;background:var(--ph);border-color:var(--ph)}
 .meta{display:flex;flex-direction:column;gap:1px;margin-top:6px;font-size:12px;color:var(--muted)}
-.meta b{color:var(--fg);font:13px var(--rom)}
+.meta b{color:var(--fg);font:13px var(--rom);text-transform:uppercase}
 .scroll{overflow:auto}
 table.dis{border-collapse:collapse;width:100%;font:12px/1.4 var(--code)}
 table.dis td{padding:0 5px;white-space:nowrap}
@@ -205,7 +205,7 @@ table.dis td.sym{color:var(--yel)}
 .br-warn{background:#3a2a10;border:1px solid #6a4a1a;color:var(--yel);padding:8px 12px;border-radius:4px;margin-bottom:12px}
 .br-sec{margin:22px 0 8px}
 .br-sec h3{font-size:22px;color:var(--fg);display:flex;gap:10px;align-items:baseline}
-.br-sec h3 span{font:13px var(--rom);color:var(--muted)}
+.br-sec h3 span{font:13px var(--rom);color:var(--muted);text-transform:uppercase}
 .br-sec>p{margin:2px 0 10px;color:var(--muted);font-style:italic}
 .br-sec h4{font:13px var(--display);letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);margin:14px 0 8px;font-weight:400}
 .br-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px}
@@ -243,7 +243,7 @@ dialog::backdrop{background:rgba(8,6,4,.7)}
 .fields fieldset legend{color:var(--muted);padding:0 4px}
 .fields fieldset label,.fields>label:has(input[type=checkbox]){flex-direction:row;align-items:center;color:var(--fg)}
 .note{color:var(--muted);font-size:12px}
-.note b{font:13px var(--rom);color:var(--ph);font-weight:400}
+.note b{font:13px var(--rom);color:var(--ph);font-weight:400;text-transform:uppercase}
 .err{color:#ff9b85;min-height:1em}
 .dlg-acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
 .help{max-width:640px}
