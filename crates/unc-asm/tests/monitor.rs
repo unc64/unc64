@@ -200,16 +200,19 @@ fn manual_chapter_16_examples() {
     assert_eq!(said(&mut m, "3000L")[..4], ["3000  12        TXA", "3001  34 00 04  STA $0400,X", "3004  16        INX", "3005  06 00 30  JMP $3000"]);
     for (poke, at) in [("3002: 00 04", 0x0400u16), ("3002: 90 05", 0x0400 + 10 * 40)] {
         line(&mut m, poke);
+        line(&mut m, "C000: 1"); // 256 glyphs: the second half as the ROM's pictures
         type_keys(&mut m, b"3000G\r");
         for _ in 0..10 {
             m.run_frame();
         }
+        assert_eq!(m.peek(io::VMODE) & 1, 1, "256 glyphs while it runs");
         assert!((0..256).all(|i| m.peek(at + i) == i as u8), "all 256 codes from ${at:04X}");
         m.key(3);
         m.restore();
         settle(&mut m);
         m.key_up(3);
         assert_eq!(rows(&m).first().unwrap(), "READY.", "STOP and RESTORE: BASIC again");
+        assert_eq!(m.peek(io::VMODE) & 1, 0, "and the screen as it was");
         line(&mut m, "MON");
     }
     // from machine language: JMP $FF24

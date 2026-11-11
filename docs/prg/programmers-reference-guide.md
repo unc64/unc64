@@ -3436,6 +3436,8 @@ Four instructions, eight bytes: every screen code there is, put straight into sc
 
 The top of the screen fills with the character set: all 256 codes, the second half as the first reversed. This routine never returns, so the prompt doesn't come back: STOP and RESTORE end it. Then `MON` again, `3002: 90 05`, and `3000G` puts them ten rows down.
 
+To see the second half as the pictures it holds in the ROM, switch the screen to 256 glyphs first (chapter 8): `C000: 1` before the `G`. STOP and RESTORE switch it back.
+
 ### All of it
 
 | You type | The monitor |
