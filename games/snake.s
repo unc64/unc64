@@ -42,6 +42,8 @@ TIMER_HI = $C033
 NOISE   = $C034         ; a byte from the cycle it's read on
 KEYS    = $C060         ; the keyboard matrix, rows 0-8
 CHARROM = $D000
+ROMHEART = CHARROM+$91*8      ; UNSCII's heart
+ROMARROWS = CHARROM+$96*8     ; and its arrows: left, up, right, down
 
 ; the ROM (chapter 13)
 CLS     = $FF00
@@ -60,8 +62,8 @@ HEADU   = $60           ; + DIR
 HEADR   = $61
 BODY    = $64
 MIDDOT  = $65
-FOOD    = $71           ; UNSCII heart
-ARROWS  = $76           ; UNSCII arrows: left, up, right, down
+FOOD    = $71           ; UNSCII's heart, in our set
+ARROWS  = $76           ; UNSCII's arrows, in our set: left, up, right, down
 HLINE   = $10
 VLINE   = $11
 CTL     = $12
@@ -164,6 +166,16 @@ initchars:
         .endr
         INX
         BNE @copy
+        LDX #7          ; the heart and the four arrows are in the ROM's second half
+@heart: LDA ROMHEART,X  ; (256-glyph mode's $91 and $96-$99): into our set, where we draw
+        STA MYSET+FOOD*8,X
+        DEX
+        BPL @heart
+        LDX #31
+@arrow: LDA ROMARROWS,X
+        STA MYSET+ARROWS*8,X
+        DEX
+        BPL @arrow
         LDX #GLYPHN-1
 @glyph: LDA glyphs,X
         STA MYSET+HEADU*8,X
@@ -182,7 +194,7 @@ pulse:  LDA FRAME
         LDA FRAME
         AND #16
         BEQ @small
-@big:   LDA CHARROM+FOOD*8,X
+@big:   LDA ROMHEART,X
         STA MYSET+FOOD*8,X
         DEX
         BPL @big

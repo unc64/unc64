@@ -198,6 +198,7 @@ $A3 DATA
 $A4 READ
 $A5 RESTORE
 $A6 GET
+$A7 MON
 # The tape format
 UNCT version 1
 # The AUNT: id, cycles a sample, the envelope's cycles a step, the filter's corners and resonances

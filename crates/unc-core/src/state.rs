@@ -10,7 +10,7 @@
 //! | 1 | Format version: `VERSION` |
 //! | 1 | RAM: 16 or 64 (K) |
 //! | 18 | The processor: A, X, Y, SP, PC, P, the cycle count, its state and the IRQ line |
-//! | 66 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, TEXTROWS (version 5 on), the timer and speaker, the shifter |
+//! | 66 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, TEXTROWS with CASE in its bit 7 (version 5 on), the timer and speaker, the shifter |
 //! | 1, or 16 with the board | The video board (version 2 on): 0 if it isn't in; 1 and its 15 bytes of registers (`VideoBoard::save`) if it is |
 //! | 122 | The sound chip (version 4 on): 1 and its 121 bytes (`Chip::save`); or one byte, 0, if a host took it out |
 //! | 4 | The computer's side of the tape interface: motor, data latch, byte ready, overrun |
@@ -142,7 +142,8 @@ impl Machine {
         }
         w.u8(io.held.len() as u8);
         w.bytes(&io.held);
-        for v in [io.border, io.background, io.charset, io.bitmap, io.text_rows] {
+        // (CASE rides in bit 7 of TEXTROWS's byte)
+        for v in [io.border, io.background, io.charset, io.bitmap, io.text_rows | io.case << 7] {
             w.u8(v);
         }
         w.u64(io.cycle);
@@ -223,7 +224,9 @@ impl Machine {
         io.held = r.bytes(held)?.to_vec();
         let b = r.bytes(4)?;
         (io.border, io.background, io.charset, io.bitmap) = (b[0], b[1], b[2], b[3]);
-        io.text_rows = if version >= 5 { r.u8()?.min(25) } else { crate::machine::io::TEXTROWS_AT_RESET };
+        let rows = if version >= 5 { r.u8()? } else { crate::machine::io::TEXTROWS_AT_RESET };
+        io.text_rows = (rows & 0x7F).min(25);
+        io.case = rows >> 7;
         io.cycle = r.u64()?;
         io.timer = Timer::restore(&mut r)?;
         io.shifter = Shifter { window: r.u16()?, amount: r.u8()? & 7 };

@@ -12,6 +12,8 @@ pub const KEY_ROWS: usize = 9;
 /// down in bits 0-3, RETURN in bit 4, DELETE in bit 5, INSERT in bit 6 and STOP in bit 7. Other codes have
 /// no place in the matrix.
 pub fn key_position(code: u8) -> Option<(usize, u8)> {
+    // a letter is one key, small or capital
+    let code = code.to_ascii_uppercase();
     match code {
         0x20..=0x5F => Some(((code - 0x20) as usize >> 3, 1 << (code & 7))),
         KEY_LEFT..=KEY_DOWN => Some((8, 1 << (code - KEY_LEFT))),

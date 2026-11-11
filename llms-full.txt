@@ -44,6 +44,7 @@ This book is the specification of the machine: System Rev A. The emulator in `cr
 - [13. The system ROM](#13-the-system-rom)
 - [14. Tape](#14-tape)
 - [15. The video board](#15-the-video-board)
+- [16. The monitor](#16-the-monitor)
 - [Appendix A. Screen codes and colours](#appendix-a-screen-codes-and-colours)
 - [Appendix B. Memory map and I/O registers](#appendix-b-memory-map-and-io-registers)
 - [Appendix C. Instruction set](#appendix-c-instruction-set)
@@ -181,7 +182,7 @@ The UNC 16 ships with a green monochrome monitor. Plug in a colour monitor and t
 
 ### Typing
 
-The keyboard sends capital letters, digits, punctuation, RETURN, DELETE, INSERT (shift and DELETE), the four cursor keys and STOP. Letters always arrive as capitals. RESTORE, at the top right, sends nothing: it interrupts the processor (chapter 10), and with STOP held it brings BASIC back from anything (chapter 2).
+The keyboard sends letters, digits, punctuation, RETURN, DELETE, INSERT (shift and DELETE), the four cursor keys and STOP. As the machine is switched on, every letter arrives as a capital, whether you hold SHIFT or not: there is no lock key to forget. The machine has small letters too, and a program that wants them typed says so with one POKE (chapter 11). RESTORE, at the top right, sends nothing: it interrupts the processor (chapter 10), and with STOP held it brings BASIC back from anything (chapter 2).
 
 ---
 
@@ -189,7 +190,7 @@ The keyboard sends capital letters, digits, punctuation, RETURN, DELETE, INSERT 
 
 UNC BASIC is built into the system ROM. It's ready the moment you switch on, and it's small on purpose: whole numbers only, 26 variables, and a handful of statements you can learn in an evening. What it lacks in size it makes up for in reach: `PEEK`, `POKE` and `SYS` get at every part of the machine.
 
-This is UNC BASIC as System ROM Rev A has it. A later ROM may add keywords, after the last token (`$A6`); it won't change these, so a program stored by this ROM means the same to every later one.
+This is UNC BASIC as System ROM Rev A has it. A later ROM may add keywords, after the last token (`$A7`); it won't change these, so a program stored by this ROM means the same to every later one.
 
 ### Direct mode and programs
 
@@ -202,6 +203,8 @@ FOR I=1 TO 3:PRINT I:NEXT
 ```
 
 `READY.` means BASIC has finished and is waiting for you.
+
+**Small letters.** BASIC is written in capitals, and as the machine is switched on capitals are all the keyboard sends. A program can ask the keyboard for small letters (`POKE 49171,1`: CASE, chapter 11), and BASIC then takes them for capitals everywhere except inside quotes and after `REM`. So `print "Hello"` runs as `PRINT "Hello"`, and that's how it lists: the keyword in capitals, the words in the quotes as you typed them. Variables are the same in either case: `a` is `A`. STOP and RESTORE put the keyboard back to capitals.
 
 ### Lines and programs
 
@@ -262,6 +265,7 @@ BASIC stores each keyword as a single byte, a **token**, so programs take less m
 | `LIST 100` | Lists line 100. |
 | `LIST 100-200` | Lists lines 100 to 200. `LIST -200` and `LIST 100-` work too. |
 | `NEW` | Forgets the program and the variables. |
+| `MON` | The monitor: memory in hex, and machine language listed back (chapter 16). `Q` there comes back to `READY.`, with the program as it was. |
 | `HELP` | A screen of help: every keyword, in groups, with what it does. It takes the whole screen, so it leaves graphics first, as `TEXT` does. |
 | `LOAD` | Loads the first program on the tape (chapter 14). A BASIC program replaces yours, with its variables cleared, and BASIC says `READY.`; machine language starts. |
 | `LOAD "`*name*`"` | The same, for the first program called *name*. |
@@ -461,8 +465,9 @@ Machine-language programs also load at `$0800` unless they say otherwise, on top
 | | | | | `$A4` | READ |
 | | | | | `$A5` | RESTORE |
 | | | | | `$A6` | GET |
+| | | | | `$A7` | MON |
 
-`LOAD` and `SAVE` came after the functions, and `DATA`, `READ`, `RESTORE` and `GET` after them, so the tokens before each kept their numbers. A later ROM adds keywords after `$A6` the same way: a program stored by this ROM means the same to every later one.
+`LOAD` and `SAVE` came after the functions, `DATA`, `READ`, `RESTORE` and `GET` after them, and `MON` last, so the tokens before each kept their numbers. A later ROM adds keywords after `$A7` the same way: a program stored by this ROM means the same to every later one.
 
 ### Speed
 
@@ -831,7 +836,7 @@ rowhi:  .rept 25, row
 |---|---|
 | `.org $0800` | Assemble what follows at this address. The default is `$0800`. |
 | `.byte 1, 2, $FF` | Store bytes. `.db` is the same. |
-| `.text "HELLO"` | Store the characters of a string, as their ASCII codes. `.ascii` is the same, and so is a string inside `.byte`. Write in capitals: screen codes have no lowercase, so `.text "abc"` stores `$61-$63`, which show as graphics. |
+| `.text "HELLO"` | Store the characters of a string, as their ASCII codes. `.ascii` is the same, and so is a string inside `.byte`. Screen codes are ASCII, so the bytes show on the screen as the letters you wrote, small or capital. |
 | `.asciiz "HELLO"` | Store a string followed by a zero byte. |
 | `.word $C020, loop` | Store words, low byte first. `.dw` is the same. |
 | `.fill 10, $20` | Store 10 copies of `$20`. Without a value, zeros. |
@@ -1140,13 +1145,12 @@ Each byte is a **screen code**. The video chip draws each code as an 8 × 8 **gl
 |---|---|
 | `$00-$0F` | Quarter blocks: bits 0-3 light the top-left, top-right, bottom-left and bottom-right quarter of the cell. |
 | `$10-$1F` | Lines, corners and joints for drawing boxes; diagonals; two shades. |
-| `$20-$5F` | Capital letters, digits and punctuation, in ASCII order. |
-| `$60-$6F` | Eighth blocks, for bar graphs and smooth edges. |
-| `$70-$7F` | Card suits, a ball, a ring, arrows, triangles, a face, a note. |
-| `$80-$FF` | The glyphs of `$00-$7F` in reverse video. |
+| `$20-$7E` | ASCII: punctuation, digits, capital letters, small letters. A character's screen code is its ASCII code. |
+| `$7F` | A diamond. |
+| `$80-$FF` | The glyphs of `$00-$7F` in reverse video. (In 256-glyph mode, 128 more glyphs: see "256 glyphs".) |
 | `$A0` | A reversed space, which blinks (unless VMODE bit 3 is set; see below). BASIC's screen editor uses it as the cursor. |
 
-The quarter blocks are numbered so you can work them out: `$0F` is a solid block, `$03` the top half of a cell, `$0C` the bottom half. With them, the 40 × 25 screen becomes an 80 × 50 grid of dots. There are no lowercase letters; ASCII's lowercase codes are graphics here.
+The quarter blocks are numbered so you can work them out: `$0F` is a solid block, `$03` the top half of a cell, `$0C` the bottom half. With them, the 40 × 25 screen becomes an 80 × 50 grid of dots.
 
 ### The character set
 
@@ -1224,7 +1228,7 @@ The picture is drawn one raster line at a time, border and background alike, so 
 
 ### UNSCII, the character set
 
-UNSCII is 128 glyphs, built into the character ROM at `$D000-$D3FF`. Each glyph is 8 bytes, one per row from the top, and each bit is a pixel: 1 is ink, 0 is paper, bit 7 is the leftmost. Glyph *n* starts at `$D000 + n * 8`. Here is the letter A, at `$D208`:
+UNSCII is 256 glyphs, built into the character ROM at `$D000-$D7FF`: the 128 the screen uses as it's switched on, and 128 more for 256-glyph mode (below). Each glyph is 8 bytes, one per row from the top, and each bit is a pixel: 1 is ink, 0 is paper, bit 7 is the leftmost. Glyph *n* starts at `$D000 + n * 8`. Here is the letter A, at `$D208`:
 
 ```text
 $D208   %00111000   ..###...
@@ -1237,7 +1241,7 @@ $D20E   %11000110   ##...##.
 $D20F   %00000000   ........
 ```
 
-The letters use the top seven rows and the left seven columns, so that neighbouring characters never touch. The graphics glyphs use the whole cell, so they join up.
+The letters use the top seven rows and the left seven columns, so that neighbouring characters never touch. Small letters with tails (g, j, p, q, y) hang into the eighth row. The graphics glyphs use the whole cell, so they join up.
 
 ### Your own characters
 
@@ -1247,7 +1251,7 @@ The video chip doesn't have to read UNSCII. The CHARSET register says where the 
 |---|---|---|
 | `$C022` | CHARSET | High byte of the character set's address. At reset, `$D0`: UNSCII. |
 
-Copy UNSCII into memory, change the glyphs you want, and point CHARSET at your copy. The set must start on a page boundary, and it takes 1K. A trick of the era is to replace glyphs you don't need: a wall, a tree, a door and a few creatures, and the text screen becomes a game map that the processor can redraw by changing single bytes.
+Copy UNSCII's first half into memory, change the glyphs you want, and point CHARSET at your copy. The set must start on a page boundary, and it takes 1K. A trick of the era is to replace glyphs you don't need: a wall, a tree, a door and a few creatures, and the text screen becomes a game map that the processor can redraw by changing single bytes.
 
 ```asm
 ; Custom characters: copy UNSCII to RAM, redraw one glyph as an owl.
@@ -1255,7 +1259,7 @@ SCREEN  = $0400
 CHARSET = $C022
 CHARROM = $D000
 MYSET   = $3800         ; 1K at the top of a UNC 16's memory
-OWL     = $7F           ; the glyph to redraw: the note
+OWL     = $7F           ; the glyph to redraw: the diamond
 
         .org $0800
 start:  LDX #0
@@ -1327,7 +1331,31 @@ Reverse video costs half the character set. For a game that wants more glyphs, s
 
 In 256-glyph mode, the set is 2K long and glyph *n* starts at CHARSET × 256 + *n* × 8. The ROM's own printing still works, but the screen editor's cursor is whatever you draw for code `$A0`.
 
-**You need your own set.** UNSCII is only 1K. With CHARSET at `$D0`, glyphs `$80-$FF` would come from `$D400-$D7FF`, which reads `$FF`: every one of them a solid block. So 256-glyph mode starts with a 2K set in RAM. This program builds one, UNSCII in the bottom half and its reversed copy in the top half, and draws a box with the line glyphs `$10-$1A`:
+**The ROM's second half.** With CHARSET at `$D0`, as at reset, glyphs `$80-$FF` come from the second kilobyte of the character ROM, `$D400-$D7FF`, and they're pictures and signs that the first half has no room for:
+
+| Codes | Show |
+|---|---|
+| `$80-$8F` | Eighth blocks, for bar graphs and smooth edges: `$80-$86` fill the bottom 1 to 7 eighths of the cell, `$87-$8D` the left 1 to 7 eighths; `$8E` is the top eighth and `$8F` the right. |
+| `$90-$9F` | Card suits, a ball, a ring, arrows left, up, right and down, four triangles, a face, a note. |
+| `$A0-$BF` | The same 32, reversed: the other eighths, and the pictures cut out of a solid cell. |
+| `$C0-$CA` | Double lines, corners, joints and a cross, in the order of the single ones at `$10-$1A`. |
+| `$CB-$D6` | Round corners; squares, stripes across and down, and a dark shade; and a ball four cells big, in its four quarters. |
+| `$D7-$E6` | Letters with accents: Å Ä Ö å ä ö Ø ø Æ æ É é Ü ü ß ñ. |
+| `$E7-$F6` | More signs: £ ¥ § ° ± × ÷ π µ ½ ¼ ¾ ¿ ¡ « ». |
+| `$F7-$FF` | Things to play with: a ship, an alien, a man, a tree, a house, a key, a star, a bomb, a skull. |
+
+Appendix A has the whole table. One store gets you all of them, at the price of reverse video:
+
+```text
+        LDA #1
+        STA VMODE       ; $C000: 256 glyphs
+        LDA #$91
+        STA $0400       ; a heart, top left
+```
+
+Reverse video is still there if you only want it for the pictures: `$A0-$BF` are `$80-$9F` reversed. The cursor's code, `$A0`, is one of them (the bottom eighth, reversed), so the screen editor's cursor is a steady block with a gap along its foot.
+
+**A set of your own, 2K.** For 256 glyphs of your own, the set is 2K in RAM, and you fill both halves. This program builds one, UNSCII's first half in the bottom and its reversed copy in the top (which is what the screen shows without 256-glyph mode), and draws a box with the line glyphs `$10-$1A`:
 
 ```asm
 ; A box in 256-glyph mode, from a 2K set in RAM.
@@ -1819,7 +1847,7 @@ Woken from a `HLT`, the processor pushes the address of the `HLT` itself, so `RT
 
 1. Points IRQVEC and NMIVEC back at the ROM's own handlers.
 2. Sets the border and background to black, VMODE to 0 (the text screen, 128 glyphs, the blinking cursor) and CHARSET to `$D0`, the ROM's characters.
-3. Turns every interrupt source off (IRQ_ENABLE 0) and acknowledges what's waiting.
+3. Turns every interrupt source off (IRQ_ENABLE 0) and acknowledges what's waiting, and puts the keyboard back to capitals (CASE 0).
 4. Stops the speaker (SPEAKER 0) and the tape's motor.
 5. On the video board: SPRTAB 0, which is no sprites (chapter 15); the layer, the scroll and the 4-colour bitmap off; COLOUR3, the colour of text, white.
 6. Clears the screen, empties the stack, clears I, and goes to BASIC's `READY.`.
@@ -1849,13 +1877,14 @@ An NMI can arrive between any two instructions, in the middle of anything, even 
 | `$C010` | KBD | The last key in bits 0-6. Bit 7 is set while it hasn't been taken. | |
 | `$C011` | KBD_STROBE | The same as KBD, then clears bit 7. | Clears bit 7. |
 | `$C012` | HELD | The key that is down now, or 0. See below. | |
+| `$C013` | CASE | Bit 0, as written. | Bit 0: 1 and letters arrive as they're typed. 0 at reset. See "Small letters". |
 
 When you press a key, its code goes into KBD with bit 7 set. Reading `$C010` leaves it there. Reading `$C011` takes it: the read returns the value *with* bit 7 still set, and then bit 7 clears, so the program can wait for the next one. That makes `LDA KBD_STROBE` and `BPL` a key poll in one read: if N is set, A holds a new key (and it's already taken); if not, there was none.
 
 | Key | Code |
 |---|---|
-| Letters | `A-Z`, capitals only: `$41-$5A` |
-| Digits and punctuation | Their ASCII codes, `$20-$5F` |
+| Letters | `A-Z`, `$41-$5A`. With CASE set, small letters too: `a-z`, `$61-$7A` |
+| Digits and punctuation | Their ASCII codes, `$20-$7E` |
 | RETURN | 13 |
 | DELETE | 8 |
 | INSERT (shift and DELETE) | 20 |
@@ -1866,6 +1895,13 @@ When you press a key, its code goes into KBD with bit 7 set. Reading `$C010` lea
 UNC BASIC looks for STOP before every statement it runs, and stops the program with `BREAK IN` and the line number. Your own machine-language programs see STOP as code 3, like any other key, and can do what they like with it. BASIC's screen editor moves its cursor with the cursor keys and opens a space with INSERT (chapter 2); while a program runs they're the program's, and games are welcome to them. (Printed with CHROUT or stored on the screen, codes 28-31 are line-drawing glyphs, like every code below 32.)
 
 The keyboard remembers one key. If a program doesn't take a key before the next one arrives, the first is lost.
+
+**Small letters.** As the machine is switched on, CASE is 0 and every letter arrives as a capital, with SHIFT or without: a program that asks whether the key is `A` gets one answer. Store 1 in CASE and letters arrive as they're typed: small (`a` is `$61`), or capitals with SHIFT, in KBD and in HELD. There is no key that changes it; it's a store, by the program that wants small letters, and STOP and RESTORE store 0 again (chapter 10). In BASIC, `POKE 49171,1`. The signs `` ` `` `{` `|` `}` `~` (`$60`, `$7B-$7E`) arrive either way.
+
+```text
+        LDA #1
+        STA CASE        ; $C013: letters as typed
+```
 
 **Holding a key down.** Hold a key and, after a pause of about half a second, it repeats, ten or more times a second, each repeat arriving in KBD as a new press. Only the last key pressed repeats: hold LEFT, then press SPACE, and the LEFT presses stop, even though LEFT is still down. For typing that's right. For a game it's awkward: a ship steered by KBD hesitates before it moves, then moves in jerks, and stops when the player fires.
 
@@ -1901,7 +1937,7 @@ HELD shows one key. A game often wants more: turn while thrusting, and fire whil
 | 7 | `$C067` | `X` | `Y` | `Z` | `[` | `\` | `]` | `^` | `_` |
 | 8 | `$C068` | LEFT | RIGHT | UP | DOWN | RETURN | DELETE | INSERT | STOP |
 
-Rows 0-7 are the codes `$20-$5F` in order: the key with code *c* is bit *c* AND 7 of row (*c* - `$20`) / 8. Row 8 holds the cursor keys in bits 0-3 (code - 28), RETURN, DELETE, INSERT, and STOP in bit 7, where `BIT $C068` puts it in N: `BMI` and the player wants out.
+Rows 0-7 are the codes `$20-$5F` in order: the key with code *c* is bit *c* AND 7 of row (*c* - `$20`) / 8. Row 8 holds the cursor keys in bits 0-3 (code - 28), RETURN, DELETE, INSERT, and STOP in bit 7, where `BIT $C068` puts it in N: `BMI` and the player wants out. A letter is one key in the matrix, small or capital, whatever CASE says, and the five signs above `$5F` have no place in it.
 
 ```asm
 ; Read held keys from the matrix: A, D and SPACE, all at once.
@@ -2300,6 +2336,8 @@ A tune is this once a frame for each voice: a routine on the vertical blank (cha
 
 The top 8K of memory, `$E000-$FFFF`, is the **system ROM**: the program that runs when you switch on. It's read-only; writing to it does nothing. It's written in UNC assembly, and its source is the best long example of UNC-1 programming you'll find.
 
+Below it is a second ROM, 4K, at `$D000-$DFFF`. Its first half is the character set (chapter 8). Its second half, from `$D800`, is more of the system: HELP's screen and the monitor (chapter 16), and room for what a later ROM adds. Nothing in it has a promised address. The way into the ROM is the jump table.
+
 ### What it does at start-up
 
 The reset vector points at `$FFE0`, the top of the ROM. It sets the stack pointer to `$FF` and looks at WARMMK, `$0318-$0319`. If it holds `$55 $AA`, the machine has been running and someone pressed RESET: the ROM does what STOP and RESTORE does (chapter 10), and BASIC says `READY.` with your program and its variables as they were, whatever the processor was doing, jammed or not. Switched on, memory is all zeros, so it's a cold start:
@@ -2334,6 +2372,7 @@ Call the ROM's routines with `JSR` through the **jump table** at `$FF00`. The ad
 | `$FF1B` | PRNUM | A = width: 0, or 1-8 | The last NUMSTR's number printed: with no leading zeros for width 0, or in exactly *width* digits, padded with zeros | A, X |
 | `$FF1E` | RNDSEED | X = low byte, Y = high byte | SEED set; 0 becomes the start-up seed | A |
 | `$FF21` | READY | | Doesn't return: BASIC's `READY.`, with the BASIC program and its variables as they were | everything |
+| `$FF24` | MON | | Doesn't return: the monitor (chapter 16) | everything |
 
 The routines don't promise to keep the flags.
 
@@ -2342,6 +2381,8 @@ Printing doesn't draw a cursor. CHROUT, PRSTR, PRHEX, PRDEC and PRNUM put charac
 **PRDEC** prints a 16-bit number as an unsigned decimal: a score, a count, an address. It uses BASIC's workspace in the fast page (`$E4-$E5` and `$F0-$F1`), so keep your own variables out of `$D0-$FE` when you call it, as with the other routines.
 
 **RND** steps the same generator BASIC's `RND` uses, a 16-bit xorshift held in SEED (`$020B-$020C`), and returns the new high byte of SEED. The ROM seeds it at start-up, so a program that wants a different game each time should give it a new seed first, with RNDSEED: two NOISE reads when the player presses a key to start (chapter 12), say. Calling RND from machine language moves BASIC's sequence on too.
+
+**MON** is the monitor, from machine language: `JMP $FF24` where a program would otherwise stop, and its memory is there to look at (chapter 16).
 
 **READY** is the way back to BASIC from a machine-language program that has nowhere to `RTS` to: one that `LOAD` started, say. It empties the stack, turns interrupts on (BASIC runs with them on), and goes to BASIC's `READY.`, on a new line if the cursor isn't at the start of one. Nothing in memory is cleared: the BASIC program, its variables and the screen stay as they were, and RUNFLG goes to 0, direct mode. Called from a routine that a running BASIC program `SYS`ed, it stops the program there, as `END` would.
 
@@ -3319,11 +3360,107 @@ The video board, as Rev A has it: (1) Like the rest of the picture (chapter 9), 
 
 ---
 
+## 16. The monitor
+
+The monitor is a small program in the ROM for looking at memory as it is: bytes in hex, and machine language listed back as instructions. It's there on every machine. From BASIC:
+
+```text
+MON
+*_
+```
+
+The `*` is its prompt, and it reads a line the way BASIC does, with the same screen editor. Numbers are hexadecimal, always, with no `$`: one to four digits, capitals or small letters. `Q` goes back to `READY.`, and nothing in memory has changed unless you changed it: the BASIC program is as it was.
+
+### Looking at memory
+
+An address shows the byte there. Two addresses with a dot between them show everything from the first to the second, eight bytes to a row, each row starting with its address:
+
+```text
+*FF00
+FF00- 06
+*0800.0817
+0800- 0A 0A 00 80 20 22 48 49
+0808- 22 00 08 14 00 84 20 31
+0810- 30 00 00 00 00 00 00 00
+```
+
+The first is the jump table's first byte: `$06`, a `JMP`. The rest is a BASIC program as BASIC keeps it (chapter 2): a line of ten bytes, number 10, where `$80` is `PRINT`; then line 20, where `$84` is `GOTO`.
+
+RETURN on an empty line shows the next eight, and again, and again: walk through memory with one key. A row always ends at an address ending in 7 or F, so the rows line up whatever address you started from. Several addresses on a line, with spaces between, show one byte each. STOP ends a long one.
+
+### Changing memory
+
+An address, a colon, and bytes: they're stored from that address on.
+
+```text
+*3000: 28 02 33 20 C0 03
+*3000.3005
+3000- 28 02 33 20 C0 03
+```
+
+A colon at the start of a line carries on from where the last store ended, so a long routine goes in a row at a time:
+
+```text
+*3000: 28 02
+*: 33 20 C0
+*: 03
+```
+
+Storing to ROM, or to memory the machine doesn't have, does nothing, as always. Storing to the I/O addresses does what a `POKE` there would: `C020: 2` turns the border red.
+
+### Listing instructions
+
+`L` after an address lists twenty instructions from there, each with its address, its bytes and what they mean:
+
+```text
+*3000L
+3000  28 02     LDA #$02
+3002  33 20 C0  STA $C020
+3005  03        RTS
+3006  00        BRK
+```
+
+`L` alone lists the next twenty. A branch shows the address it goes to, not the distance. A byte that isn't an instruction this book describes (Appendix C) lists as `???`, one byte long; machine language listed from the wrong starting byte is nonsense for a few lines and then, usually, falls into step.
+
+This is how to read the ROM. `E000L` is where it starts, and `FF00L` is the jump table (chapter 13).
+
+### Running a routine
+
+`G` after an address calls the routine there, as `SYS` would: when it ends with `RTS`, the prompt is back. `G` alone goes to the address last given.
+
+```text
+*3000G
+```
+
+The border turns red, and the `*` comes back. A routine that never returns never gives the prompt back either: STOP and RESTORE (chapter 10) get BASIC back, and `MON` again finds memory as the routine left it.
+
+### All of it
+
+| You type | The monitor |
+|---|---|
+| `1000` | Shows the byte at `$1000`. |
+| `1000.101F` | Shows `$1000` to `$101F`. |
+| RETURN alone | Shows the next eight bytes. |
+| `1000: A9 01` | Stores bytes from `$1000`. |
+| `: 60` | Stores more, after the last. |
+| `1000L` | Lists twenty instructions from `$1000`. |
+| `L` | Lists the next twenty. |
+| `1000G` | Calls the routine at `$1000`. `G` alone: at the address last given. |
+| `Q` | Goes back to BASIC. |
+
+Anything else gets a `?` and the prompt again. The address "last given" is the one `:` stores at and `G` goes to; showing and listing keep a place of their own, which moves on as they go.
+
+From machine language, the monitor is `JMP $FF24` (chapter 13). It uses `$D0-$DF` in the fast page, which BASIC only needs while it's drawing or loading, and the line you type is in BASIC's line buffer. It doesn't touch the interrupt vectors: a `BRK` is still yours (chapter 10).
+
+---
+
 ## Appendix A. Screen codes and colours
 
 ### Screen codes
 
 UNSCII, the character ROM. Rows give the high hex digit, columns the low one. The graphics glyphs are shown with the nearest typewriter symbol; the real glyphs are 8 × 8 pixels.
+
+**The first half, `$00-$7F`**: what the screen shows as it's switched on.
 
 |   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -3333,13 +3470,30 @@ UNSCII, the character ROM. Rows give the high hex digit, columns the low one. Th
 | **3** | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | : | ; | < | = | > | ? |
 | **4** | @ | A | B | C | D | E | F | G | H | I | J | K | L | M | N | O |
 | **5** | P | Q | R | S | T | U | V | W | X | Y | Z | [ | \\ | ] | ^ | _ |
-| **6** | ▁ | ▂ | ▃ | ▄ | ▅ | ▆ | ▇ | ▏ | ▎ | ▍ | ▌ | ▋ | ▊ | ▉ | ▔ | ▕ |
-| **7** | ♠ | ♥ | ♦ | ♣ | ● | ○ | ← | ↑ | → | ↓ | ◢ | ◣ | ◤ | ◥ | ☺ | ♪ |
+| **6** | \` | a | b | c | d | e | f | g | h | i | j | k | l | m | n | o |
+| **7** | p | q | r | s | t | u | v | w | x | y | z | { | ¦ | } | ~ | ◆ |
 
 - **`$00-$0F`**: bit 0 lights the top-left quarter of the cell, bit 1 the top-right, bit 2 the bottom-left and bit 3 the bottom-right.
 - **`$10-$1A`**: the lines run through the middle of the cell, two pixels thick, and reach its edges, so neighbouring cells join into boxes.
-- **`$60-$66`** fill the bottom 1 to 7 eighths of the cell; **`$67-$6D`** the left 1 to 7 eighths. `$6E` is the top eighth and `$6F` the right eighth.
-- **`$80-$FF`**: the glyph of the code minus `$80`, in reverse video. `$C1` is a reversed A. `$A0`, the reversed space, blinks about once a second: it's the cursor. VMODE bit 3 holds it steady (chapter 8). In 256-glyph mode (chapter 8) there's no reverse video and no blinking.
+- **`$20-$7E`** are ASCII: a character's screen code is its ASCII code. `$7F` is a diamond.
+- **`$80-$FF`**, as the machine is switched on: the glyph of the code minus `$80`, in reverse video. `$C1` is a reversed A. `$A0`, the reversed space, blinks about once a second: it's the cursor. VMODE bit 3 holds it steady (chapter 8).
+
+**The second half, `$80-$FF` in 256-glyph mode** (VMODE bit 0, chapter 8): no reverse video and no blinking, and these instead.
+
+|   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | A | B | C | D | E | F |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **8** | ▁ | ▂ | ▃ | ▄ | ▅ | ▆ | ▇ | ▏ | ▎ | ▍ | ▌ | ▋ | ▊ | ▉ | ▔ | ▕ |
+| **9** | ♠ | ♥ | ♦ | ♣ | ● | ○ | ← | ↑ | → | ↓ | ◢ | ◣ | ◤ | ◥ | ☺ | ♪ |
+| **A** | row 8, reversed | | | | | | | | | | | | | | | |
+| **B** | row 9, reversed | | | | | | | | | | | | | | | |
+| **C** | ═ | ║ | ╔ | ╗ | ╚ | ╝ | ╠ | ╣ | ╦ | ╩ | ╬ | ╭ | ╮ | ╰ | ╯ | squares |
+| **D** | stripes across | stripes down | dark shade | ◜ | ◝ | ◟ | ◞ | Å | Ä | Ö | å | ä | ö | Ø | ø | Æ |
+| **E** | æ | É | é | Ü | ü | ß | ñ | £ | ¥ | § | ° | ± | × | ÷ | π | µ |
+| **F** | ½ | ¼ | ¾ | ¿ | ¡ | « | » | ship | alien | man | tree | house | key | star | bomb | skull |
+
+- **`$80-$86`** fill the bottom 1 to 7 eighths of the cell; **`$87-$8D`** the left 1 to 7 eighths. `$8E` is the top eighth and `$8F` the right eighth. Reversed, at `$A0-$AF`, they're the other eighths: `$A0` is all but the bottom eighth.
+- **`$C0-$CA`**: double lines, in the order of the single ones at `$10-$1A`, thin and on the same two pixels in every cell, so they join.
+- **`$D3-$D6`**: the four quarters of a ball two cells across: top-left, top-right, bottom-left, bottom-right.
 
 The glyphs themselves are in `rom/unscii.txt`, drawn as rows of `#` and `.`.
 
@@ -3384,9 +3538,9 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$0800-$3FFF` | 14K | **Your programs.** BASIC programs start at `$0800`; machine-language programs load there too unless they say otherwise. While the bitmap is on, it takes 8,000 bytes from BITMAP × 256: at reset, `$2000-$3F3F`. The video board (chapter 15) reads its sprite table from SPRTAB × 256 (at reset, `$3700-$377F`), its sprite images from SPRBANK × 256 (`$3800`) and its layer from LAYERPAGE × 256 (`$3C00-$3FE7`). |
 | `$4000-$BFFF` | 32K | **Expansion memory**, with the 64K expansion only. Without it, reads give `$FF` and writes vanish. |
 | `$C000-$CFFF` | 4K | **Input/output.** |
-| `$D000-$D3FF` | 1K | **UNSCII character ROM.** Read-only. |
-| `$D400-$DFFF` | 3K | Unused: reads `$FF`. |
-| `$E000-$FFFF` | 8K | **System ROM.** Read-only. |
+| `$D000-$D7FF` | 2K | **UNSCII character ROM**, 256 glyphs: the first half of the 4K ROM. Read-only. |
+| `$D800-$DFFF` | 2K | **System ROM**, the 4K ROM's second half: HELP's screen and the monitor. Read-only. |
+| `$E000-$FFFF` | 8K | **System ROM**, the 8K ROM: BASIC, the screen, tape, the jump table and the vectors. Read-only. |
 
 ### I/O registers
 
@@ -3402,6 +3556,7 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$C010` | KBD | Last key; bit 7 set while not taken | | 11 |
 | `$C011` | KBD_STROBE | As KBD (bit 7 included), then clears bit 7 | Clears bit 7 | 11 |
 | `$C012` | HELD | The key down now (the latest pressed), or 0 | | 11 |
+| `$C013` | CASE | Bit 0 | Bit 0: letters arrive as typed, small unless shifted. 0 at reset: capitals | 11 |
 | `$C020` | BORDER | Border colour | Border colour, 0-15 | 8 |
 | `$C021` | BACKGROUND | Background colour | Background colour, 0-15 | 8 |
 | `$C022` | CHARSET | Character set page | Character set page; `$D0` at reset | 8 |
@@ -3652,8 +3807,9 @@ Rows are the high nibble, columns the low nibble. Blank cells are not instructio
 | `$FF1B` | PRNUM | A = width: 0 none, 1-8 digits (over 8: 8) | NUMBUF printed: no leading zeros (0), or padded with zeros to the width; never cut short | A, X; `$F0` |
 | `$FF1E` | RNDSEED | X/Y = a 16-bit seed, low byte in X | SEED = X/Y; 0 becomes `$ACE1`, the start-up seed | A |
 | `$FF21` | READY | | Doesn't return: SP = `$FF`, I clear, RUNFLG 0, then BASIC's `READY.` on a new line. Memory, the BASIC program and its variables untouched | everything |
+| `$FF24` | MON | | Doesn't return: the monitor's `*` prompt (chapter 16). Its `Q` goes to READY | everything; `$D0-$DF` |
 
-The next free slot is `$FF24`. The table can grow up to `$FFDF`; the reset code starts at `$FFE0`.
+The next free slot is `$FF27`. The table can grow up to `$FFDF`; the reset code starts at `$FFE0`.
 
 The ROM doesn't use the timer or the shifter, and leaves SPEAKER at 0. Of the keyboard matrix it reads only row 8, at `READY.`, to wait for the cursor keys to be let go. NOISE (`$C034`, chapter 12) is the hardware's own random byte: faster than RND, and the way to seed it.
 
@@ -3669,7 +3825,7 @@ The ROM doesn't use the timer or the shifter, and leaves SPEAKER at 0. Of the ke
 
 | Address | Name | Holds |
 |---|---|---|
-| `$D0-$DB` | | UNC BASIC graphics: the pixel, its byte's address, circle centre, error term. `LOAD` and `SAVE` use `$D0-$D3` |
+| `$D0-$DB` | | UNC BASIC graphics: the pixel, its byte's address, circle centre, error term. `LOAD` and `SAVE` use `$D0-$D3`. The monitor keeps its place in `$D0-$DF` |
 | `$DC-$F6` | | UNC BASIC: LIST range, text and line pointers, expression accumulator, scratch |
 | `$F7-$F8` | SRC | ROM pointer |
 | `$F9-$FA` | DST | ROM pointer |

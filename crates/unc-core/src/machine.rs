@@ -45,6 +45,9 @@ pub mod io {
     pub const KBD_STROBE: u16 = 0xC011;
     /// Rev A: the most recently pressed key that is still down, or 0.
     pub const HELD: u16 = 0xC012;
+    /// CASE: bit 0 set, letters arrive as they're typed, small unless shifted. Clear (as at
+    /// reset), every letter arrives as a capital.
+    pub const CASE: u16 = 0xC013;
     pub const BORDER: u16 = 0xC020;
     pub const BACKGROUND: u16 = 0xC021;
     pub const CHARSET: u16 = 0xC022;
@@ -178,6 +181,10 @@ pub const RESERVED_AT_START: [u8; 16] = [19, 86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 pub const TAPE_BYTE_CYCLES: u32 = CYCLES_PER_FRAME / 12;
 
 pub static SYSTEM_ROM: &[u8; 0x2000] = include_bytes!("../../../rom/system.bin");
+/// The second half of the 4K ROM, `$D800-$DFFF` (the first half is the character set): more
+/// of the system, assembled from the same source. HELP's screen and the monitor.
+pub static LOW_ROM: &[u8; 0x800] = include_bytes!("../../../rom/system-d800.bin");
+pub const LOW_ROM_START: u16 = 0xD800;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RamSize {
@@ -205,6 +212,8 @@ pub struct Io {
     pub irq_status: u8,
     pub frame: u8,
     pub kbd: u8,
+    /// CASE, bit 0: letters arrive as typed. 0 at reset: capitals only.
+    pub case: u8,
     /// Keys that are down, oldest first. HELD reads the last one.
     pub held: Vec<u8>,
     pub border: u8,
@@ -241,6 +250,7 @@ impl Default for Io {
             irq_status: 0,
             frame: 0,
             kbd: 0,
+            case: 0,
             held: Vec::new(),
             border: 0,
             background: 0,
@@ -537,6 +547,7 @@ impl Memory {
             io::FRAME => self.io.frame,
             io::KBD | io::KBD_STROBE => self.io.kbd,
             io::HELD => self.io.held.last().copied().unwrap_or(0),
+            io::CASE => self.io.case,
             io::BORDER => self.io.border,
             io::BACKGROUND => self.io.background,
             io::CHARSET => self.io.charset,
@@ -548,7 +559,8 @@ impl Memory {
             0xC031..=0xC03F | 0xC050..=0xC06F => self.io_peek_rev_a(addr),
             0xC080..=0xC0BF => self.board.as_ref().map_or(0xFF, |b| b.peek(addr)),
             0xC0C0..=0xC0FF => self.sound.as_ref().map_or(0xFF, |c| c.chip.peek(addr as u8 - 0xC0)),
-            0xD000..=0xD3FF => CHAR_ROM[(addr - CHAR_ROM_START) as usize],
+            0xD000..=0xD7FF => CHAR_ROM[(addr - CHAR_ROM_START) as usize],
+            0xD800..=0xDFFF => LOW_ROM[(addr - LOW_ROM_START) as usize],
             _ => 0xFF,
         }
     }
@@ -660,6 +672,7 @@ impl Memory {
                 io::CHARSET => self.io.charset = value,
                 io::BITMAP => self.io.bitmap = value,
                 io::TEXTROWS => self.io.text_rows = value.min(SCREEN_ROWS as u8),
+                io::CASE => self.io.case = value & 1,
                 io::BEEPER => {
                     self.io.speaker = !self.io.speaker;
                     self.io.speaker_toggles = self.io.speaker_toggles.wrapping_add(1);
@@ -1013,14 +1026,21 @@ impl Machine {
     /// `key_up` (or until another key goes down).
     pub fn key(&mut self, code: u8) {
         self.key_hold(code);
-        self.mem.io.kbd = (code & 0x7F) | 0x80;
+        self.mem.io.kbd = self.typed(code) | 0x80;
+    }
+
+    /// A key's code as the keyboard delivers it: a small letter is a capital unless CASE
+    /// ($C013) bit 0 is set. A host passes the character typed, `a` or `A`.
+    fn typed(&self, code: u8) -> u8 {
+        let code = code & 0x7F;
+        if code.is_ascii_lowercase() && self.mem.io.case & 1 == 0 { code.to_ascii_uppercase() } else { code }
     }
 
     /// A key goes down in the matrix and HELD, but not into KBD: what a key held on a
     /// keyboard does at once, while its press waits for KBD to be free (a program that only
     /// reads HELD, as a game's steering does, never frees it).
     pub fn key_hold(&mut self, code: u8) {
-        let code = code & 0x7F;
+        let code = self.typed(code);
         self.key_matrix(code, true);
         let held = &mut self.mem.io.held;
         held.retain(|&k| k != code);
@@ -1040,7 +1060,8 @@ impl Machine {
     /// A key comes up. HELD falls back to the most recent key still down, or 0.
     pub fn key_up(&mut self, code: u8) {
         self.key_matrix(code, false);
-        self.mem.io.held.retain(|&k| k != code & 0x7F);
+        // the key, whichever case it was delivered in
+        self.mem.io.held.retain(|&k| !k.eq_ignore_ascii_case(&(code & 0x7F)));
     }
 
     /// Puts a tape in the deck, rewound to its start, with PLAY and RECORD up. A tape
@@ -1412,7 +1433,7 @@ impl Machine {
     /// characters, the cursor ($A0) is `_`, and everything else is `?`.
     pub fn screen_text(&self) -> String {
         self.screen_text_with(|c| match c {
-            0x20..=0x5F => c as char,
+            0x20..=0x7E => c as char,
             0xA0 => '_',
             _ => '?',
         })
@@ -1422,7 +1443,7 @@ impl Machine {
     /// $20-$5F, so "GAME OVER" drawn in reverse reads as "GAME OVER". Graphics are `?`.
     pub fn screen_text_plain(&self) -> String {
         self.screen_text_with(|c| match c & 0x7F {
-            p @ 0x20..=0x5F => p as char,
+            p @ 0x20..=0x7E => p as char,
             _ => '?',
         })
     }

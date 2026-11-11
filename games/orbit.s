@@ -1424,21 +1424,18 @@ clrtext: LDA #$20        ; only rows 21-24: in mixed mode the rows above are und
 
 txtitle: .word ROW23+10
         .text "ORBIT "
-        .byte $72
+        .byte $7F               ; the diamond
         .text " PRESS SPACE"
         .byte 0
 txkeys: .word ROW24+1
-        .text "A/D "
-        .byte $76, $78          ; the arrow glyphs for the cursor keys
-        .text " TURN   W "
-        .byte $77
+        .text "A/D <> TURN   W ^"
         .text " THRUST   SPACE FIRE"
         .byte 0
 txhud:  .word ROW22
         .asciiz " SCORE 000000     WAVE 01      SHIPS 3"
 txover: .word ROW23+8
         .text "GAME OVER "
-        .byte $72
+        .byte $7F
         .text " PRESS SPACE"
         .byte 0
 

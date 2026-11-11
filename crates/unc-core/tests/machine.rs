@@ -459,12 +459,25 @@ fn boot_runs_the_rom_to_basic() {
 }
 
 #[test]
-fn in_256_glyph_mode_the_rom_charset_has_no_upper_half() {
+fn in_256_glyph_mode_the_rom_charset_has_a_second_half() {
     let mut m = Machine::new(RamSize::K16);
-    assert!((0xD400..0xD800).all(|a| m.peek(a) == 0xFF), "$D400-$D7FF reads $FF");
+    let rom = &unc_core::charset::CHAR_ROM;
+    assert!((0xD000u16..0xD800).all(|a| m.peek(a) == rom[(a - 0xD000) as usize]), "$D000-$D7FF is UNSCII, 256 glyphs");
+    // lowercase is where ASCII has it, in both modes
+    m.poke(0x0400, b'a');
+    assert_eq!(glyph_rows(&m, 0), rom[b'a' as usize * 8..][..8].to_vec());
+    assert_eq!(rom[b'a' as usize * 8..][..2], [0, 0], "a small letter: nothing in its top two rows");
+    // $91 is the heart: reversed 'line, vertical' ($11) as the screen starts, the heart itself in 256-glyph mode
+    m.poke(0x0400, 0x91);
+    let line: Vec<u8> = rom[0x11 * 8..][..8].iter().map(|b| !b).collect();
+    assert_eq!(glyph_rows(&m, 0), line, "reverse video of $11");
     m.poke(io::VMODE, io::VMODE_256);
-    m.poke(0x0400, 0xC1);
-    assert_eq!(glyph_rows(&m, 0), vec![0xFF; 8], "glyph $C1 from the ROM is a solid block");
+    assert_eq!(glyph_rows(&m, 0), rom[0x91 * 8..][..8].to_vec(), "the heart, from the ROM's second half");
+    // the pictures are the first 32 of it, and the next 32 are the same reversed
+    for c in 0x80..0xA0usize {
+        let reversed: Vec<u8> = rom[c * 8..][..8].iter().map(|b| !b).collect();
+        assert_eq!(&rom[(c + 0x20) * 8..][..8], &reversed[..], "${c:02X}");
+    }
 }
 
 // ---------- the tape deck (chapter 14) ----------

@@ -235,8 +235,8 @@ fn every_listing_in_the_manual_assembles_and_runs() {
             assert_eq!(rows[2], &[0x16, 0x10, 0x1A, 0x10, 0x17]);
             assert_eq!(rows[4], &[0x14, 0x10, 0x19, 0x10, 0x15]);
             let rom = &unc_core::charset::CHAR_ROM;
-            assert_eq!(&r.m.mem.ram[0x3000..0x3400], &rom[..], "the bottom half is UNSCII");
-            let reversed: Vec<u8> = rom.iter().map(|b| !b).collect();
+            assert_eq!(&r.m.mem.ram[0x3000..0x3400], &rom[..0x400], "the bottom half is UNSCII");
+            let reversed: Vec<u8> = rom[..0x400].iter().map(|b| !b).collect();
             assert_eq!(&r.m.mem.ram[0x3400..0x3800], &reversed[..], "the top half is UNSCII reversed");
             let mut px = vec![0u8; 320 * 200];
             r.m.render(true, &mut px);

@@ -137,7 +137,7 @@ It writes a flat binary of the range: by default from the lowest to the highest 
 
 - `--tape FILE` writes a tape image (chapter 14): one machine-language program from the lowest to the highest byte the program emits (gaps are 0), entry at `start`, named NAME or after the file. The image is the bytes on the tape, so `cat a.tap b.tap > both.tap` makes a tape with both programs.
 
-- `--basic` reads the file as a BASIC listing instead, and `--tape FILE` puts it on a tape as a BASIC program (type 2, chapter 14). It types the listing into a UNC 64, line by line as you would (lower case as capitals), and saves what BASIC made of it, tokens and all, so the tape is exactly what `SAVE` would record. Every line needs a line number; a line BASIC couldn't take (a character the UNC can't type, more than 120 characters) or a program too big for memory is an error. It says if the program is too big for a UNC 16.
+- `--basic` reads the file as a BASIC listing instead, and `--tape FILE` puts it on a tape as a BASIC program (type 2, chapter 14). It types the listing into a UNC 64, line by line as you would (with CASE set, so small letters stay as they are inside quotes and after REM, and are capitals to BASIC everywhere else), and saves what BASIC made of it, tokens and all, so the tape is exactly what `SAVE` would record. Every line needs a line number; a line BASIC couldn't take (a character the UNC can't type, more than 120 characters) or a program too big for memory is an error. It says if the program is too big for a UNC 16.
 
 `-o` can be left out when you only want the symbols, the listing or the tape.
 

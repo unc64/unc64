@@ -268,11 +268,11 @@ fn the_program_fits_below_the_bitmap() {
 fn title_screen_shows_the_name_and_waits_for_space() {
     let mut g = Game::boot();
     assert_eq!(g.get("STATE"), 0);
-    assert_eq!(g.m.peek(0xC000), 0x06, "bitmap + mixed mode");
+    assert_eq!(g.m.peek(0xC000), 0x07, "bitmap + mixed mode, 256 glyphs");
     assert_eq!(g.m.peek(0xC023), 0x20, "bitmap at $2000");
     assert!(g.text_row(23).contains("DEBUG - PRESS SPACE"), "{}", g.text_row(23));
     assert!(g.text_row(24).starts_with("A/D ?? MOVE  SPACE FIRE"), "{}", g.text_row(24));
-    assert_eq!((g.m.peek(0x07C4), g.m.peek(0x07C5)), (0x76, 0x78), "arrows for the cursor keys");
+    assert_eq!((g.m.peek(0x07C4), g.m.peek(0x07C5)), (0x96, 0x98), "arrows for the cursor keys");
     let px = g.pixels();
     // "DEBUG" from the character ROM, four times size, at (80, 8).
     for (i, ch) in "DEBUG".bytes().enumerate() {

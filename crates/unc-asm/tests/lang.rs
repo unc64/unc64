@@ -68,6 +68,7 @@ fn the_io_registers_are_the_machines() {
         ("COLOURMODE", io::COLOURMODE),
         ("COLOUR1", io::COLOUR1),
         ("TEXTROWS", io::TEXTROWS),
+        ("CASE", io::CASE),
         ("COLOUR2", io::COLOUR2),
         ("COLOUR3", io::COLOUR3),
         ("BOARD", io::BOARD),
@@ -81,7 +82,7 @@ fn the_io_registers_are_the_machines() {
     ] {
         assert_eq!(at(name), addr, "{name}");
     }
-    assert_eq!(l.io.len(), 50, "a register in the manual the test doesn't know");
+    assert_eq!(l.io.len(), 51, "a register in the manual the test doesn't know");
     let table = l.io.iter().find(|r| r.name == "WAVETABLE").unwrap();
     assert_eq!(table.end, io::WAVETABLE + 31);
     let keys = l.io.iter().find(|r| r.name == "KEYS").unwrap();
