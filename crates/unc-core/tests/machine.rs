@@ -238,11 +238,23 @@ fn the_character_rom_ignores_writes() {
 
 #[test]
 fn quarter_blocks_light_the_quarters_their_bits_name() {
+    // $00-$07 and $0F are where their bits say; the seven with the bottom-right quarter and
+    // not all four are in the second half, $80-$86, and are $07-$01 reversed
     for q in 0..16usize {
-        let g = &CHAR_ROM[q * 8..q * 8 + 8];
+        let at = if (8..15).contains(&q) { q + 0x78 } else { q };
+        let g = &CHAR_ROM[at * 8..at * 8 + 8];
+        if at != q {
+            let other = &CHAR_ROM[(15 - q) * 8..][..8];
+            assert!(g.iter().zip(other).all(|(a, b)| *a == !*b), "${at:02X} is ${:02X} reversed", 15 - q);
+        }
         let top = (if q & 1 != 0 { 0xF0 } else { 0 }) | (if q & 2 != 0 { 0x0F } else { 0 });
         let bottom = (if q & 4 != 0 { 0xF0 } else { 0 }) | (if q & 8 != 0 { 0x0F } else { 0 });
         assert!(g[..4].iter().all(|&b| b == top) && g[4..].iter().all(|&b| b == bottom), "quarters ${q:02X}");
+    }
+    // $08-$0E fill the cell from the bottom, an eighth at a time
+    for n in 1..8usize {
+        let g = &CHAR_ROM[(7 + n) * 8..][..8];
+        assert!(g.iter().enumerate().all(|(row, &b)| b == if row >= 8 - n { 0xFF } else { 0 }), "bottom {n}/8");
     }
 }
 
@@ -473,9 +485,11 @@ fn in_256_glyph_mode_the_rom_charset_has_a_second_half() {
     assert_eq!(glyph_rows(&m, 0), line, "reverse video of $11");
     m.poke(io::VMODE, io::VMODE_256);
     assert_eq!(glyph_rows(&m, 0), rom[0x91 * 8..][..8].to_vec(), "the heart, from the ROM's second half");
-    // the pictures are the first 32 of it, and the next 32 are the same reversed
+    // the pictures are the first 32 of it, and the next 32 are the same reversed; but $A0-$A6
+    // are the eighths of $08-$0E reversed (a cell filled from the top), not quarters again
     for c in 0x80..0xA0usize {
-        let reversed: Vec<u8> = rom[c * 8..][..8].iter().map(|b| !b).collect();
+        let of = if c < 0x87 { c - 0x78 } else { c };
+        let reversed: Vec<u8> = rom[of * 8..][..8].iter().map(|b| !b).collect();
         assert_eq!(&rom[(c + 0x20) * 8..][..8], &reversed[..], "${c:02X}");
     }
 }

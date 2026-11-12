@@ -477,7 +477,7 @@ fn an_instrument_is_changed_on_its_screen() {
     }
     assert!(t.line(0).contains("INSTRUMENT 4"));
     assert!(t.line(2).contains("WAV 04") && t.line(7).contains("WID 80"), "{}", t.m.screen_text_plain());
-    assert_eq!((cell(&t, 2, 1), cell(&t, 2, 16), cell(&t, 2, 17), cell(&t, 5, 17)), (0x0F, 0x0F, b' ', 0x60));
+    assert_eq!((cell(&t, 2, 1), cell(&t, 2, 16), cell(&t, 2, 17), cell(&t, 5, 17)), (0x0F, 0x0F, b' ', 0x08));
     // down to WID, and left twice: the pulse narrows by four each time, and so does the picture
     for _ in 0..5 {
         t.press(31);
