@@ -9,7 +9,7 @@ python3 -m http.server -d web 8064   # development: the same sources, unbundled,
 scripts/build-web.sh                 # after changing the core or crates/unc-wasm: rebuilds unc.wasm
 ```
 
-`check-machine-room.mjs` takes `--browser firefox|webkit` (Playwright's browsers, if installed), `--no-build` and `--shots DIR` (screenshots at 1440 × 900 and 390 wide). It boots the file, runs a sample, saves a cassette and reads it back (the `unCt` chunk and the tape byte for byte), exports it, reads the game's test cassette (`tests/cassettes/`), drops a `.tap` and loads it from the deck, types in and runs BASIC, saves a BASIC project as a type-2 cassette and LOADs and RUNs it, `SAVE`s onto a blank tape with Rec and keeps it as a cassette, runs a bundled BASIC cassette from its tape, runs AURORA from Browse with the video board, and opens `web/` in development mode, with no console errors.
+`check-machine-room.mjs` takes `--browser firefox|webkit` (Playwright's browsers, if installed), `--no-build` and `--shots DIR` (screenshots at 1440 × 900 and 390 wide). It boots the file, runs a sample, saves a cassette and reads it back (the `unCt` chunk and the tape byte for byte), exports it, reads the game's test cassette (`tests/cassettes/`), drops a `.tap` and loads it from the deck, types in and runs BASIC, saves a BASIC project as a type-2 cassette and LOADs and RUNs it, `SAVE`s onto a blank tape with Rec and keeps it as a cassette, runs a bundled BASIC cassette from its tape, runs AURORA from Browse with the video board and FROSTHALL with the NIECE, and opens `web/` in development mode, with no console errors.
 
 | File | What |
 |---|---|

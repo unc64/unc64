@@ -7,7 +7,7 @@
 //   UNCCassette.drawFace(canvas, opts) -> draws the face (1004 x 638)
 //   UNCCassette.programs(tape)         -> what's on a tape: [{ name, type, load, length, entry, ok }]
 //
-// A cassette in memory: { title, author, about, machine: { ram, board }, tape: Uint8Array,
+// A cassette in memory: { title, author, about, machine: { ram, board, niece }, tape: Uint8Array,
 // files: { path: text } | null, main, created, extra: { unknown fields, kept }, png: the
 // file's bytes when it came from one }.
 window.UNCCassette = (() => {
@@ -127,7 +127,7 @@ window.UNCCassette = (() => {
       title: String(j.title || programs(tape)[0]?.name || 'UNTITLED'),
       author: String(j.author || ''),
       about: String(j.about || ''),
-      machine: { ram: m.ram === 64 ? 64 : 16, board: !!m.board },
+      machine: { ram: m.ram === 64 ? 64 : 16, board: !!m.board, niece: !!m.niece },
       tape,
       files,
       main: files && files[j.main] !== undefined ? j.main : files ? Object.keys(files)[0] : null,
@@ -162,6 +162,7 @@ window.UNCCassette = (() => {
   function toJSON(c) {
     const j = { format: FORMAT, version: VERSION, title: c.title, author: c.author || '', about: c.about || '' };
     j.machine = { ram: c.machine?.ram === 64 ? 64 : 16, board: !!c.machine?.board };
+    if (c.machine?.niece) j.machine.niece = true;
     j.tape = toBase64(c.tape);
     if (c.files && Object.keys(c.files).length) { j.files = c.files; j.main = c.main; }
     j.created = c.created || new Date().toISOString().replace(/\.\d+Z$/, 'Z');
@@ -336,11 +337,12 @@ window.UNCCassette = (() => {
       ctx.textAlign = 'right';
       const ram = `${o.machine?.ram === 64 ? 64 : 16}K`;
       ctx.font = `40px ${FONTS.display}`;
-      ctx.fillText(ram, 902, HUB + (o.machine?.board ? 0 : 16));
-      if (o.machine?.board) {
+      const cards = [o.machine?.board ? 'VIDEO BOARD' : '', o.machine?.niece ? 'NIECE' : ''].filter(Boolean).join(' + ');
+      ctx.fillText(ram, 902, HUB + (cards ? 0 : 16));
+      if (cards) {
         ctx.font = `20px ${FONTS.display}`;
         ctx.letterSpacing = '1px';
-        ctx.fillText('+ VIDEO BOARD', 904, HUB + 32);
+        ctx.fillText(`+ ${cards}`, 904, HUB + 32);
         ctx.letterSpacing = '0px';
       }
       ctx.textAlign = 'left';

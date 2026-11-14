@@ -26,6 +26,7 @@
   <div class="settings" aria-label="The machine">
     <label title="Changing it switches the machine off and on">RAM <select id="ram"><option value="16">16K</option><option value="64">64K</option></select></label>
     <label title="Applies at power on: the machine is switched off and on"><input type="checkbox" id="board"> Video board</label>
+    <label title="The prototype graphics chip of chapter 17. Applies at power on: the machine is switched off and on"><input type="checkbox" id="niece"> NIECE</label>
     <label><input type="checkbox" id="colour"> Colour</label>
     <select id="phosphor" aria-label="Monochrome screen colour" title="The monochrome screen's colour"></select>
     <label><input type="checkbox" id="mute"> Mute</label>
@@ -152,6 +153,7 @@
           <label><input type="radio" name="s-ram" value="16" checked> 16K</label>
           <label><input type="radio" name="s-ram" value="64"> 64K</label>
           <label><input type="checkbox" id="s-board"> The video board</label>
+          <label><input type="checkbox" id="s-niece"> The NIECE</label>
         </fieldset>
         <label><input type="checkbox" id="s-src" checked> Include the source</label>
         <p class="note">The label shows the screen as it is now. The tape's name, for <code>LOAD "NAME"</code>: <b id="s-tapename"></b>.</p>

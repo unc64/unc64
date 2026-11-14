@@ -11,6 +11,7 @@
 // (tests/cassettes/hello.unc.png) reads, and its tape is tests/cassettes/hello.tap; a .tap
 // dropped on the page joins the library and loads from the deck with LOAD and PLAY; a BASIC
 // project is typed in and runs; AURORA runs from Browse with the video board, to its title;
+// FROSTHALL runs from Browse with the NIECE, to its hall;
 // a BASIC project saves as a type-2 cassette that LOADs and RUNs; SAVE onto a blank tape with
 // RECORD, ejected and kept, joins the library and loads; no errors in the console. --shots saves screenshots at 1440 x 900 and 390 wide.
 import { createRequire } from 'node:module';
@@ -279,6 +280,20 @@ async function main() {
       return shown >= 6 ? shown : false;
     }, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => 0);
     ok(aurora > 0 && await page.isChecked('#board'), 'AURORA runs from Browse with the video board, to its title', `${aurora} sprites on`);
+
+    // FROSTHALL from Browse, with the NIECE: its page shown, in sixteen colours
+    await page.click('#b-browse');
+    await page.waitForSelector('[data-src="bundled"] [data-id="frosthall"] [data-act="run"]');
+    await page.click('[data-src="bundled"] [data-id="frosthall"] [data-act="run"]');
+    const hall = await page.waitForFunction(() => {
+      const w = window.uncRoom.wasm;
+      if (!w.has_niece || !w.has_niece() || w.peek(0xC100) !== 1 || !/FROSTHALL/.test(window.uncRoom.screenText())) return false;
+      const px = new Uint8Array(w.memory.buffer, w.render(1), 64000);
+      const colours = new Set();
+      for (let i = 0; i < 168 * 320; i++) if (px[i] & 16) colours.add(px[i] & 15);
+      return colours.size >= 5 ? colours.size : false;
+    }, null, { timeout: 60000 }).then((h) => h.jsonValue(), () => 0);
+    ok(hall > 0 && await page.isChecked('#niece'), 'FROSTHALL runs from Browse with the NIECE, to its hall', `${hall} colours on the page`);
 
     // Browse: faces for the bundled cassettes
     await page.click('#b-browse');

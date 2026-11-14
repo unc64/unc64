@@ -45,6 +45,7 @@ The monitor shows the machine at 50 frames a second. Each refresh of your screen
 
 - **RAM**: 16K (UNC 16) or 64K (with the expansion).
 - **Video board**: the board of chapter 15 in, or out. It goes in or out as the machine is switched on, so changing it (or RAM) switches the machine off and on.
+- **NIECE**: the prototype graphics chip of chapter 17 in, or out, the same way. No UNC has one unless you tick this.
 - **Colour**: a colour monitor, or the monochrome one, in the phosphor you pick (green, amber, paper white, or the blue screen).
 - **Mute**: silence the speaker. Browsers allow sound only after you click, tap or press a key, so it starts at your first one. On an iPhone or an iPad it plays with the silent switch on (Safari 17 and later; before that, switch it off or use headphones).
 
@@ -78,7 +79,7 @@ The deck under the monitor is the deck of chapter 14. The cassette in it shows b
 
 - **Fast load**: the next byte arrives as soon as `LOAD` has taken the last, so a game loads in a moment. `LOAD` runs exactly as usual, stripes and all; without it, the tape gives about 600 bytes a second, as on the real deck.
 - **Tape it** puts your project on a tape, as `unc-asm --tape` would, named after its title, and puts it in the deck.
-- **Run** in Browse puts a cassette in the deck, switches the machine on with what the cassette asks for (RAM, the video board), types `LOAD` and presses Play for you.
+- **Run** in Browse puts a cassette in the deck, switches the machine on with what the cassette asks for (RAM, the video board, the NIECE), types `LOAD` and presses Play for you.
 
 - **Blank tape** puts a blank C60 in the deck, and **Rec** is the RECORD key (it takes PLAY down with it). Type `SAVE "NAME"` at `READY.`; `SAVE` says `PRESS RECORD AND PLAY ON TAPE`; press Rec. When you eject a tape with something new recorded on it, the Machine Room offers to **keep it as a cassette** in your library, named after the program, with a blank tape's face.
 
@@ -96,7 +97,7 @@ For a BASIC project, the tape is a BASIC program (type 2, chapter 14): the Machi
 
 **Browse** shows cassettes as pictures on a shelf, with a search box, in three sections:
 
-- **Bundled**: the games (SNAKE, STACK, ORBIT, DEBUG and AURORA, the video board's demonstration cassette), the Machine Room's samples, and BASIC to type in, among them the Game Design Corner starter from *8-Bit Monthly*. They come as source, so their pictures are taken by running them, the first time you look.
+- **Bundled**: the games (SNAKE, STACK, ORBIT, DEBUG, AURORA, the video board's demonstration cassette, and FROSTHALL and MOTHS, for the NIECE), the Machine Room's samples, and BASIC to type in, among them the Game Design Corner starter from *8-Bit Monthly*. They come as source, so their pictures are taken by running them, the first time you look.
 - **Yours**: the cassettes you've saved or brought in. They're kept in this browser (in its own storage, not your files), so Download the ones you want to keep for good. A browser that won't keep anything for a page opened from your disk (some private windows do this) keeps them until you close the page, and says so.
 - **Online**: coming later, a library of what other people have made, in the same file format.
 

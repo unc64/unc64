@@ -7,7 +7,7 @@
 //     list()  -> Promise<[entry]>,
 //     get(id) -> Promise<cassette>  (UNCCassette's shape: title, tape, files, main, ...) }
 //
-//   entry: { id, title, author, about, machine: { ram, board }, hasFiles, kind,
+//   entry: { id, title, author, about, machine: { ram, board, niece }, hasFiles, kind,
 //            face() -> Promise<url of the face picture> }
 //
 // Yours lives in the browser's IndexedDB. Where the browser won't keep anything (some
@@ -202,6 +202,7 @@ window.UNCLibrary = (() => {
       const badges = [
         `<span class="b">${e.machine?.ram === 64 ? '64K' : '16K'}</span>`,
         e.machine?.board ? '<span class="b board">Video board</span>' : '',
+        e.machine?.niece ? '<span class="b board">NIECE</span>' : '',
         e.kind === 'basic' ? '<span class="b">BASIC</span>' : '',
         e.hasFiles ? '<span class="b src">Source</span>' : '<span class="b">Binary only</span>',
       ].join('');
