@@ -249,6 +249,41 @@ fn a_thing_is_drawn_at_its_size_and_hidden_where_a_wall_is_nearer() {
     assert!(with != without, "the barrel shows through the doorway");
 }
 
+/// Turning on the spot, a thing stays where the hall says it is: its middle on the page is
+/// 80 + 121 x (how far to the right) / (how far ahead), the same sum the walls' rays make.
+#[test]
+fn a_thing_stays_put_in_the_hall_as_you_turn() {
+    let mut h = Hall::boot();
+    let barrel = thing_at(&h, 5, 4);
+    let (tx, ty) = (h.sym("thingx") + barrel, h.sym("thingy") + barrel);
+    for (px, py) in [(3.5f64, 4.5f64), (3.2, 3.3), (7.6, 2.4)] {
+        for turn in -18i32..=18 {
+            // facing the barrel, then up to 25 degrees either side
+            let (dx, dy) = (5.5 - px, 4.5 - py);
+            let facing = (dy.atan2(dx) * 128.0 / std::f64::consts::PI).round() as i32 + turn;
+            let a = (facing.rem_euclid(256)) as u8;
+            let rad = a as f64 * std::f64::consts::PI / 128.0;
+            let (ahead, right) = (dx * rad.cos() + dy * rad.sin(), dy * rad.cos() - dx * rad.sin());
+            let want = 80.0 + 121.25 * right / ahead;
+            h.stand(px as f32, py as f32, a);
+            h.m.poke(tx, 5);
+            h.m.poke(ty, 4);
+            let with = h.look();
+            h.m.poke(tx, 30);
+            h.m.poke(ty, 22);
+            let without = h.look();
+            let cols: Vec<usize> = (0..84 * 160).filter(|&i| with[i] != without[i]).map(|i| i % 160).collect();
+            if !(20.0..140.0).contains(&want) {
+                continue; // partly off the page: its middle can't be read off what shows
+            }
+            assert!(cols.len() > 100, "from ({px}, {py}) facing {a}: the barrel isn't drawn");
+            let (x0, x1) = (*cols.iter().min().unwrap() as f64, *cols.iter().max().unwrap() as f64);
+            let middle = (x0 + x1 + 1.0) / 2.0;
+            assert!((middle - want).abs() < 3.0, "from ({px}, {py}) facing {a}: its middle is at {middle}, the hall says {want:.1}");
+        }
+    }
+}
+
 #[test]
 fn walking_goes_by_the_clock_and_stops_at_walls() {
     let mut far = Vec::new();
@@ -268,7 +303,7 @@ fn walking_goes_by_the_clock_and_stops_at_walls() {
         h.hold(RIGHT, 16);
         assert!((28..=40).contains(&h.get("ANG")), "{}", h.get("ANG"));
         h.hold(LEFT, 32);
-        assert!(h.get("ANG") > 220, "{}", h.get("ANG"));
+        assert!((208..=236).contains(&h.get("ANG")), "{}", h.get("ANG"));
         h.hold(b'D', 16);
         h.hold(b'W', 10);
         assert!(h.x() > 9.0);

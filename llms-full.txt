@@ -3901,15 +3901,13 @@ The multiplier is signed and the divider isn't. Chapter 7's multiply works a bit
 
 Numbers with a fraction work as they are. If 256 stands for 1.0 in both, the product's bytes 1 and 2 are the answer on the same scale.
 
-### Two cassettes, and what 1 MHz makes of them
+### A cassette, and what 1 MHz makes of it
 
-Two programs came out of the laboratory with the NIECE, both for a UNC 64 with the 64K expansion, and both are in the Machine Room with their source.
-
-**MOTHS** is a fixed shooter on a summer night: thirty-two moths in ranks, swooping at your lantern and growing as they come, and a far bigger one after them. It draws the whole picture again every frame: three scrolling backgrounds, then up to fifty see-through pictures at whatever size each one is just then. With the fullest swarm it takes the processor about 10,600 cycles of a frame's 19,968 and the NIECE about 9,900 of drawing, so it holds 50 frames a second with half of each to spare.
+A program came out of the laboratory with the NIECE, for a UNC 64 with the 64K expansion, and it's in the Machine Room with its source.
 
 **FROSTHALL** is a walk round a hall in three dimensions. The NIECE knows nothing of that: the program sends a ray out through the columns of the picture, the arithmetic unit does the six or seven divisions and multiplications a ray needs, and each column of wall is one BLIT, a pixel's width of a picture drawn as tall as the wall is near. The things in the hall are one BLIT each, and the depth line hides what's behind a wall. A ray costs the processor 800 or 900 cycles, so 80 of them a picture is 12 to 18 pictures a second; with a ray for every other column, and the columns between filled in where both neighbours met the same flat wall, it's 16 to 26, and that's how it starts. The NIECE itself is idle most of the time: the processor is what there isn't enough of.
 
-Both read better than this paragraph: `games/niece/moths.s` and `games/niece/frosthall.s`.
+It reads better than this paragraph: `games/niece/frosthall.s`.
 
 ### What it doesn't do
 

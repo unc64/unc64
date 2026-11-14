@@ -1043,12 +1043,13 @@ tsize:  LDA TDXL            ; right = down * cosine - across * sine
         STA NMULB
         LDA TDYH
         STA NMULB+1
-        SEC
-        LDA NPROD+1
+        SEC                 ; (both bytes worked out before NMULA changes: NPROD is
+        LDA NPROD+1         ;   always the answer for what the registers hold now)
         SBC LATL
-        STA NMULA
+        TAY
         LDA NPROD+2
         SBC LATH
+        STY NMULA
         STA NMULA+1
         LDA NQUOT           ; its size on the page: a wall's height at that distance
         STA NMULB

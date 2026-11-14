@@ -28,7 +28,6 @@ const ABOUT = {
   debug: 'Bugs march down the screen in formation. You\'re the cursor. Fix them.',
   aurora: 'Fly low over the fells at night, under the northern lights. The video board\'s demonstration cassette.',
   frosthall: 'Walk round a hall of timber, stone and ice, in three dimensions, at 1 MHz. For the NIECE, the prototype graphics chip.',
-  moths: 'A summer night, a lantern, and everything with wings. For the NIECE, the prototype graphics chip.',
   tracker: 'A three-voice tracker for the AUNT, the sound chip, with four tunes on it. RETURN plays, T is the next tune.',
 };
 const TITLE = { sun: 'SUN OVER A HOUSE', tracker: 'MUSIC TRACKER' };
