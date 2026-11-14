@@ -36,17 +36,28 @@
 ;     loaded one bites, and a wheel in the air does neither.
 ;   The engine turns the back wheel, and whatever turns the wheel one way turns the
 ;     moped the other: throttle lifts the nose, brakes tip it forward, and in the air
-;     the two turn it, gently. (That reaction is taken at a quarter of what the
-;     wheel's inertia would give. At the whole of it a held throttle put the moped on
-;     its back in a second, and nobody enjoyed it.) Leaning is the rider's weight, a
-;     plain torque, three times as strong with a wheel on the ground to push against
-;     as in the air. With a wheel on the ground the turning dies away a sixteenth a
-;     frame, in the air a 256th, and it's never more than 6 degrees a frame.
-;   So: the throttle held on the flat lifts the nose 5 degrees and the moped is away.
-;     Throttle and leaning back, held, puts it over in a second and a third. Off a
-;     crest, the throttle turns it 24 degrees in a second and leaning 100.
+;     the two turn it, gently. The engine pulls with a little less than the moped's
+;     weight, all of it up to 1.9 pixels a frame and none at 3.3, the limiter. How
+;     hard that turns the moped is tuned, not derived: with the back wheel on the
+;     ground an arm of 5.5 pixels (the wheel's radius is 5), in the air 1.25, so
+;     that the front comes up as below and a jump isn't a somersault.
+;     Leaning is the rider's weight, a plain torque, three times as strong with a
+;     wheel on the ground to push against as in the air. The turning dies away a
+;     256th a frame in the air, a 16th with both wheels down, and a quarter on the
+;     back wheel alone with the nose under 60 degrees: the rider balancing, which
+;     is what gives the player time. It is never more than 6 degrees a frame.
+;   So: the throttle held from a standstill on the flat has the front wheel off the
+;     ground in half a second and the nose 18 degrees up, and then it settles, to 5
+;     degrees at 2.9 pixels a frame, for as long as it's held. A wheelie is made on
+;     purpose, with a lean back as well, and kept by letting go of the lean at 32
+;     degrees and the throttle at 42: as long as the flat lasts. Keep both held and
+;     it's over in a second and a fifth. Once it's up, staying on the throttle takes
+;     it over; letting go brings it down from 50 degrees, and a lean forward from
+;     58. A climb or a kick from a hollow puts it up the same way, and that's where
+;     the careless come off.
 ;   The rider's head is a third thing that can touch: a circle of 1.5 pixels in the
-;     middle of the helmet. When it is a whole pixel into the ground the run is over,
+;     middle of the helmet. When it is a whole pixel into the ground, or has lain on
+;     it for 8 frames, the run is over,
 ;     and for a second the same sums show the heap coming to rest. Nothing else is a
 ;     crash: not a hard landing, not the helmet brushing the turf.
 ;   Units: pixels and frames. Places and speeds have 16 bits of fraction (the sums use
@@ -62,12 +73,12 @@
 ; 520 pixels, make the rollers: 25 to 45 lines from trough to crest, no two alike,
 ; there at full size three metres from the start and a fifth bigger by 250 metres. Two
 ; short ones, 110 and 64 pixels, make them rough, and those grow with every metre for
-; the first 650. Nothing in the first 300 metres is steeper than 2 in 3. A column is
+; the first 330. Nothing in the first 300 metres is steeper than 5 in 6. A column is
 ; worked out as it comes into view and kept twice: as a height for the physics (HGL,
 ; HGH: a ring of 256 columns), and as a picture.
 ;
 ; Coins and cans are 64 pixels apart along it, a can every 16th place (every 32nd after
-; 250 metres) and it fills the tank, which is 24 seconds of throttle. A can stands on
+; 250 metres) and it fills the tank, which is 19 seconds of throttle. A can stands on
 ; the ground and a coin hangs where the moped's middle goes: on the ground line, or
 ; behind a crest as much above it as the ground has fallen away in the last 40
 ; pixels, up to 12, which is the line the moped flies. The moped picks up what comes
@@ -75,9 +86,18 @@
 ; 16 above, 12 below), so everything is in reach from the ground and nothing at four
 ; pixels a frame gets between two frames.
 ;
+; Tricks (`tricks`). A wheelie pays: while the back wheel carries the moped, the front
+; carries nothing and it's doing half a pixel a frame or more forwards, every second of
+; it pays coins, 1 then 2, 3, 4 and 5 a second from then on, with WHEELIE +n on the panel
+; and a note that climbs. The front wheel touching down ends it, or stopping, or a
+; crash (what it paid is kept); a hop with both wheels in the air stops the clock for a
+; quarter of a second, no longer. The next one starts at 1. And a whole turn in the air,
+; seven eighths of one or more, landed on a wheel: FLIP +5.
+;
 ; How hard it is (the tests ride it): a player who holds the throttle and does nothing
-; else gets 336 metres; one who eases off when the nose is 25 degrees up and leans to
-; level it in the air gets 650.
+; else rides the first hills with the front wheel light, takes two cans, and comes off
+; 160 metres out, where the ground has got rough. One who eases off when the nose is 17
+; degrees above the slope, leans forward at 25 and levels it in the air gets 650.
 ;
 ; What it shows of the NIECE:
 ;   the ground's picture is a strip of the sheet 256 columns wide, a ring like the
@@ -105,18 +125,19 @@
 ;
 ; Time, at 1 MHz (measured by crates/unc-asm/tests/game_fellrider.rs over a long ride):
 ;   50 frames a second, held, with every frame's FLIP at the very next vertical blank.
-;   A frame's work is 8,300 of its 19,968 cycles on average and 12,000 at worst on a
-;   ride (12,900 in the one frame that writes the words when a run ends). Where they go:
-;     the forces, with the panel and the sound    4,000   (5,400 at worst)
+;   A frame's work is 8,000 to 8,300 of its 19,968 cycles on average and 11,700 at
+;   worst on a ride (13,200 in the one frame that writes the words when a run ends).
+;   Where they go:
+;     the forces, tricks, panel and sound         3,700   (5,600 at worst)
 ;     the keys, the rules and the places            350
-;     the ground: 685 a new column                1,700   at 2.5 pixels a frame (2,750 at four)
+;     the ground: 690 a new column                1,550   at 2.3 pixels a frame (2,760 at four)
 ;     the three strips' BLITs                       220
-;     the things, the moped and the dust          2,050   (3,150 at worst)
+;     the things, the moped and the dust          2,200   (3,200 at worst)
 ;   The NIECE draws 31,000 pixels a frame (33,500 with the board of words up): 7,700
 ;   of its cycles, two fifths of what it could. 26,800 of them are the three strips,
-;   and those are in the queue about 2,300 cycles into the frame (a step of the
+;   and those are in the queue about 2,100 cycles into the frame (a step of the
 ;   physics is places first, then forces, for that reason), so the chip is done
-;   when the processor is: 14,600 cycles after the frame began, at the latest.
+;   when the processor is: 14,700 cycles after the frame began, at the latest.
 ;   The queue gets 21 deep of its 64. LATE counts the frames that missed their
 ;   vertical blank; the tests want 0.
 ;   Not in that: a new run makes its 256 columns of ground before its first frame,
@@ -226,8 +247,13 @@ CMAX    = 12                ; nothing is squeezed further than this, in whole pi
 NMAX    = 29000             ; nor pushed harder: 0.44, eight times the moped's weight
 SLIPMAX = 800
 KTYRE   = 38                ; pull for slip: 38/256 of the moped's weight for a pixel a frame
-DMAX    = 2700              ; the engine at a standstill: 0.041, three quarters of gravity
-DFADE   = 640               ;   less this for each pixel a frame the wheel is doing
+DMAX    = 3400              ; the engine's pull: 0.052, a little under the moped's weight,
+DTOP    = 8250              ;   all of it up to 1.9 pixels a frame of tyre, then less by
+DFADE   = 2500              ;   DFADE for each pixel a frame more (DTOP - DFADE x speed),
+SLIMIT  = 845               ;   and none at 3.3: the rev limiter
+REACT   = 22                ; how hard the engine's pull turns the moped the other way:
+                            ;   quarters of a pixel of arm
+AIRREACT = 5                ;   and in the air
 BRAKE   = 1400 * 4          ; the brake, as a change of tyre speed (a wheel's inertia is 1/4)
 DREV    = 1200              ; backwards, gently
 SREV    = 384               ; under 1.5 pixels a frame LEFT is backwards, not a brake
@@ -341,6 +367,13 @@ UU      = $A7
 VV      = $A9
 MOVED   = $AB               ; `scroll`: columns made to the right (1) or the left (2)
 NOLATE  = $AC               ; a new run took frames to make: don't count them as late
+HEADT   = $AD               ; frames the head has been on the ground
+WHEELT  = $AE               ; frames of this wheelie since it began, or last paid
+STREAK  = $AF               ; what it last paid: 1 to 5 coins
+MSGT    = $C0               ; frames the words about it have left on the panel
+AIRT    = $C1               ; frames off the ground in the middle of a wheelie
+ROT     = $C2               ; how far it has turned since it left the ground: four bytes,
+                            ;   OM's three and whole turns
 DLIFE   = $B0               ; the dust: frames each speck has left,
 DVYH    = $B8               ;   and its speed down, in pixels (the rest is after the tables)
 
@@ -409,6 +442,7 @@ terrain:
         JSR scroll          ;   the ground to go under it,
 draw:   JSR backdrop        ;   and the chip can be drawing that
 phys:   JSR physics         ;   while the forces are worked out
+        JSR tricks
         JSR hud
         JSR sound
 sprites:
@@ -537,7 +571,7 @@ rules:  LDA KEYS            ; SPACE, as it goes down
         BEQ @done
         SEC                 ; and pulling
         LDA GAS
-        SBC #48
+        SBC #64
         STA GAS
         LDA GAS+1
         SBC #0
@@ -588,8 +622,147 @@ runover:
         STA TIMER
         JMP words
 
+; ---------------------------------------------------------------- tricks
+; A wheelie pays. It's on while the back wheel carries the moped, the front wheel
+; carries nothing, and the moped is doing half a pixel a frame or more forwards. Every
+; 50 frames it has been on it pays: 1 coin the first time, then 2, 3, 4, and 5 from then
+; on, with the words on the panel and a note that climbs. The front wheel coming down
+; ends it, or going too slowly, or a crash; a hop with both wheels off the ground only
+; stops the clock, for up to 12 frames. The next one starts at 1 again.
+; And a whole turn in the air, landed on a wheel: 5 coins.
+tricks: LDA MSGT            ; the words come off the panel when their time is up
+        BEQ @nomsg
+        DEC MSGT
+        BNE @nomsg
+        LDX #9
+        LDA #' '
+@wipe:  STA SCREEN + 2 * 40 + 15,X
+        DEX
+        BPL @wipe
+@nomsg: LDA STATE
+        CMP #RIDE
+        BNE @end
+        LDA CRASH
+        BNE @end
+        LDA NL              ; in the air? Both wheels carrying nothing
+        ORA NH
+        ORA NL+1
+        ORA NH+1
+        BNE @ground
+        LDY #0              ; it's turning: add it up
+        LDA OM+2
+        BPL @rp
+        DEY
+@rp:    CLC
+        LDA ROT
+        ADC OM
+        STA ROT
+        LDA ROT+1
+        ADC OM+1
+        STA ROT+1
+        LDA ROT+2
+        ADC OM+2
+        STA ROT+2
+        TYA
+        ADC ROT+3
+        STA ROT+3
+        LDA WHEELT          ; and a wheelie waits, a quarter of a second
+        ORA STREAK
+        BEQ @done
+        INC AIRT
+        LDA AIRT
+        CMP #13
+        BCC @done
+@end:   LDA #0              ; no wheelie
+        STA WHEELT
+        STA STREAK
+        STA AIRT
+        STA ROT
+        STA ROT+1
+        STA ROT+2
+        STA ROT+3
+@done:  RTS
+@ground:
+        LDA ROT+3           ; down again. Seven eighths of a turn or more, either way?
+        BMI @back
+        BNE @flip
+        LDA ROT+2
+        CMP #$E0
+        BCS @flip
+        BCC @noflip
+@back:  CMP #$FF
+        BNE @flip
+        LDA ROT+2
+        CMP #$20
+        BCS @noflip
+@flip:  LDA #5
+        JSR pay
+        LDX #9
+@fw:    LDA flipmsg,X
+        STA SCREEN + 2 * 40 + 15,X
+        DEX
+        BPL @fw
+        LDA #$C0
+        JSR pluck
+@noflip:
+        LDA #0
+        STA ROT
+        STA ROT+1
+        STA ROT+2
+        STA ROT+3
+        STA AIRT
+        LDA NL+1            ; a wheelie: the front wheel carrying nothing (the back one is,
+        ORA NH+1            ;   or this would be the air),
+        BNE @end
+        LDA VX+2            ;   and half a pixel a frame forwards
+        BMI @end
+        BNE @on
+        LDA VX+1
+        BPL @end
+@on:    INC WHEELT
+        LDA WHEELT
+        CMP #50
+        BCC @done
+        LDA #0
+        STA WHEELT
+        LDA STREAK
+        CMP #5
+        BCS @most
+        INC STREAK
+@most:  LDA STREAK
+        JSR pay
+        LDX #9
+@ww:    LDA wheemsg,X
+        STA SCREEN + 2 * 40 + 15,X
+        DEX
+        BPL @ww
+        LDA STREAK
+        ORA #'0'
+        STA SCREEN + 2 * 40 + 24
+        LDA STREAK          ; the note: higher each time
+        ASL A
+        ASL A
+        ASL A
+        ASL A
+        ADC #$70
+        JMP pluck
+; A coins, up to 99 of them, and the words stay up for a second.
+pay:    CLC
+        ADC COINS
+        CMP #100
+        BCC @p
+        LDA #99
+@p:     STA COINS
+        LDA #50
+        STA MSGT
+        RTS
+wheemsg: .text "WHEELIE +1"
+flipmsg: .text "  FLIP +5 "
+
 ; ---------------------------------------------------------------- a new run
-newrun: LDX #X0
+newrun: LDA #1              ; (whatever the panel says about a wheelie goes next frame)
+        STA MSGT
+        LDX #X0
         LDA #0
 @zero:  STA 0,X             ; everything that moves, still
         INX
@@ -602,6 +775,14 @@ newrun: LDX #X0
         BNE @zero2
         STA STOPT
         STA THUMP
+        STA HEADT
+        STA WHEELT
+        STA STREAK
+        STA AIRT
+        STA ROT
+        STA ROT+1
+        STA ROT+2
+        STA ROT+3
         STA DNEXT
         STA WAL
         STA WAL+1
@@ -844,9 +1025,18 @@ physics:
         JSR contact
         INC IDX
         JSR contact
-        LDA CPH+2           ; the head a whole pixel into the ground: a brush isn't a crash
+        LDA NL+2            ; the head: a whole pixel into the ground, or resting on it
+        ORA NH+2            ;   for 8 frames. A brush isn't a crash
+        BNE @on
+        STA HEADT
+        BEQ @deep
+@on:    INC HEADT
+        LDA HEADT
+        CMP #8
+        BCS @off
+@deep:  LDA CPH+2
         BEQ @head
-        LDA #1
+@off:   LDA #1
         STA CRASH
 @head:  LDA CRASH
         BEQ @alive
@@ -1407,8 +1597,15 @@ controls:
         AND #2
         BNE @thr
         JMP @nothr
-@thr:   LDA SL              ; throttle: DMAX less DFADE for each pixel a frame of tyre
-        STA NMULA
+@thr:   SEC                 ; throttle. At the limiter: nothing
+        LDA SL
+        SBC #<SLIMIT
+        LDA SH
+        SBC #>SLIMIT
+        BMI @pull
+        JMP @lean
+@pull:  LDA SL              ; under it: DTOP less DFADE for each pixel a frame of tyre,
+        STA NMULA           ;   and no more than DMAX
         LDA SH
         STA NMULA+1
         LDA #<DFADE
@@ -1416,19 +1613,19 @@ controls:
         LDA #>DFADE
         STA NMULB+1
         SEC
-        LDA #<DMAX
+        LDA #<DTOP
         SBC NPROD+1
         STA T0
-        LDA #>DMAX
+        LDA #>DTOP
         SBC NPROD+2
         STA T1
-        BMI @nodrive        ; flat out
+        BMI @nodrive
         LDA T0
         CMP #<DMAX
         LDA T1
         SBC #>DMAX
         BCC @drive
-        LDA #<DMAX          ; (rolling backwards: no more than DMAX)
+        LDA #<DMAX
         STA T0
         LDA #>DMAX
         STA T1
@@ -1436,7 +1633,7 @@ controls:
 @nodrive:
         JMP @lean
 ; The engine turns the wheel by T0,T1 (a force at the tyre; signed), and the moped the
-; other way by the same force at the wheel's radius.
+; other way: that force at an arm of REACT quarter pixels.
 @drive: LDA T0
         STA T4
         LDA T1
@@ -1446,28 +1643,32 @@ controls:
         BPL @dp
         DEY
 @dp:    STY T6
-        STY T3
-        CLC                 ; the turning: T and a quarter of T
-        LDA T0
-        ADC ALA
-        STA ALA
+        LDA T0              ; the turning: T x REACT / 4
+        STA NMULA
         LDA T1
-        ADC ALA+1
-        STA ALA+1
-        TYA
-        ADC ALA+2
-        STA ALA+2
-        LDA T0
+        STA NMULA+1
+        LDX #REACT          ; (with the back wheel on the ground. In the air the wheel
+        LDA NL              ;   only has itself to turn against: AIRREACT)
+        ORA NH
+        BNE @arm
+        LDX #AIRREACT
+@arm:   STX NMULB
+        LDA #0
+        STA NMULB+1
+        LDA NPROD
         STA T7
-        LDA T1
+        LDA NPROD+1
         STA T2
+        LDA NPROD+2
         CMP #$80
+        ROR A
         ROR T2
         ROR T7
-        LDA T2
         CMP #$80
+        ROR A
         ROR T2
         ROR T7
+        STA T3
         CLC
         LDA T7
         ADC ALA
@@ -1820,7 +2021,7 @@ accel:  LDY #0              ; VX += AXA - VX / 256: the air
         ROR ALA+1
         ROR ALA
         LDY #0              ; and OM less a 256th of itself in the air, a 16th with a
-        LDA OM+2            ;   wheel on the ground: the tyres and the springs soak it up
+        LDA OM+2            ;   wheel on the ground (the tyres and the springs soak it up)
         BPL @op
         DEY
 @op:    STY T6
@@ -1849,6 +2050,13 @@ accel:  LDY #0              ; VX += AXA - VX / 256: the air
         LDA T6
         STA T3
         LDX #4
+        LDA NL+1            ; on the back wheel alone it's a quarter, not a 16th: the
+        ORA NH+1            ;   rider balancing. That's what makes a wheelie slow
+        BNE @sh             ;   enough to catch. Past 60 degrees there's no balancing it
+        LDA TH+2
+        CMP #43
+        BCS @sh
+        LDX #6
 @sh:    ASL T0
         ROL T1
         ROL T2
@@ -2167,11 +2375,13 @@ gencol: LDA COL             ; three sines: each one's angle is the column times 
         BCC @r1ok
         LDA RMAX
 @r1ok:  STA T6
-        LDA T2              ; the rough's size: a 64th of the pixels, up to 160
+        LDA T2              ; the rough's size: a 32nd of the pixels, up to 160
         BNE @rmost
         LDA T1
-        CMP #40
+        CMP #20
         BCS @rmost
+        ASL T0
+        ROL A
         ASL T0
         ROL A
         ASL T0
