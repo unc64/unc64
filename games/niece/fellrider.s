@@ -3,7 +3,7 @@
 ; United Northern Computers' laboratory, 1985. Needs 64K and the NIECE; no video board.
 ;
 ; A summer on the fells with fifty cubic centimetres. Ride the moped as far as you can
-; over ground that gets rougher the further you go. Pick up the coins, and the gas cans
+; over hills that get rougher the further you go. Pick up the coins, and the gas cans
 ; before the tank runs dry. The run is over when the rider's head touches the ground, or
 ; when the gas is gone and the moped has rolled to a stop.
 ;
@@ -16,27 +16,39 @@
 ; The physics. Nothing here is on rails: the moped is where the sums put it.
 ;   The body (frame, engine and rider together) is one rigid thing with a place (X, Y),
 ;     a velocity (VX, VY), a pitch angle TH and a rate of turning OM. Its mass is 1 and
-;     its moment of inertia 40.74, a radius of gyration of 6.4 pixels: that number makes
-;     a force times an arm come out in the angle's own units with no division.
-;   Two wheels hang from it, each on its own spring and damper, 8 pixels fore and aft of
-;     the centre of mass and 7 below it at full stretch. A wheel has no weight of its
-;     own, but it has spin: a speed at the tyre (SL, SH), and an inertia a quarter of the
-;     moped's mass.
+;     its moment of inertia 81.48, a radius of gyration of 9 pixels: twice the 40.74
+;     that makes a force times an arm come out in the angle's own units with no
+;     division, so a torque is halved and that's all.
+;   Two wheels hang from it, each on its own spring and damper, 9 pixels fore and aft of
+;     the centre of mass and 5 below it at full stretch: the weight is carried low,
+;     7 pixels off the ground with the springs settled, which is what keeps it on
+;     its wheels. A wheel has no weight of its own, but it has spin: a speed at the
+;     tyre (SL, SH), and an inertia a quarter of the moped's mass.
 ;   Each step, for each wheel (`contact`): how far the tyre is into the ground, straight
-;     down, is how far
-;     its spring is squeezed (C). The spring pushes back along the ground's normal with
-;     K x C and the damper with D x how fast C is changing; a bump stop seven times as
-;     stiff joins in at the end of the travel. That push is the wheel's load, N.
+;     down, is how far its spring is squeezed (C). The spring pushes back along the
+;     ground's normal with K x C and the damper with D x how fast C is changing; a
+;     bump stop ten times as stiff joins in at the end of the travel, 6.5 pixels.
+;     That push is the wheel's load, N. The ground's slope there is taken over 8
+;     pixels: what a tyre that size bridges.
 ;   Grip is the load times MU, no more. The tyre's speed over the ground less the ground's
 ;     speed under it is its slip, and the ground pulls on the tyre along its tangent in
 ;     proportion to the slip, up to the grip. So an unloaded wheel spins or locks, a
 ;     loaded one bites, and a wheel in the air does neither.
 ;   The engine turns the back wheel, and whatever turns the wheel one way turns the
-;     moped the other: throttle lifts the front (hold it from a standstill and it goes
-;     over backwards), brakes tip it forward, and in the air the two are how you steer
-;     the pitch. Leaning is the rider's weight, a plain torque.
-;   The rider's head is a third thing that can touch. When it does the run is over, and
-;     for a second the same sums show the heap coming to rest.
+;     moped the other: throttle lifts the nose, brakes tip it forward, and in the air
+;     the two turn it, gently. (That reaction is taken at a quarter of what the
+;     wheel's inertia would give. At the whole of it a held throttle put the moped on
+;     its back in a second, and nobody enjoyed it.) Leaning is the rider's weight, a
+;     plain torque, three times as strong with a wheel on the ground to push against
+;     as in the air. With a wheel on the ground the turning dies away a sixteenth a
+;     frame, in the air a 256th, and it's never more than 6 degrees a frame.
+;   So: the throttle held on the flat lifts the nose 5 degrees and the moped is away.
+;     Throttle and leaning back, held, puts it over in a second and a third. Off a
+;     crest, the throttle turns it 24 degrees in a second and leaning 100.
+;   The rider's head is a third thing that can touch: a circle of 1.5 pixels in the
+;     middle of the helmet. When it is a whole pixel into the ground the run is over,
+;     and for a second the same sums show the heap coming to rest. Nothing else is a
+;     crash: not a hard landing, not the helmet brushing the turf.
 ;   Units: pixels and frames. Places and speeds have 16 bits of fraction (the sums use
 ;     the top 8 of them), forces are in 65536ths of a pixel per frame per frame, angles
 ;     in 65536ths of a circle. Gravity is 0.055. One step a frame, 50 a second, always:
@@ -46,10 +58,26 @@
 ;   A wheel all but still, with no key held, is still, and a moped standing on two such
 ;     wheels stands: otherwise rounding would have it creep downhill on the flat.
 ;
-; The ground is three sine waves added up, of 300, 110 and 37 pixels' wavelength, times
-; a roughness that grows from nothing at the start to its most 8,000 pixels on
-; (`gencol`). It is worked out a column at a time as it comes into view and kept twice:
-; as a height for the physics (HGL, HGH: a ring of 256 columns), and as a picture.
+; The ground (`gencol`) is hills from the first screen. Two long sine waves, 340 and
+; 520 pixels, make the rollers: 25 to 45 lines from trough to crest, no two alike,
+; there at full size three metres from the start and a fifth bigger by 250 metres. Two
+; short ones, 110 and 64 pixels, make them rough, and those grow with every metre for
+; the first 650. Nothing in the first 300 metres is steeper than 2 in 3. A column is
+; worked out as it comes into view and kept twice: as a height for the physics (HGL,
+; HGH: a ring of 256 columns), and as a picture.
+;
+; Coins and cans are 64 pixels apart along it, a can every 16th place (every 32nd after
+; 250 metres) and it fills the tank, which is 24 seconds of throttle. A can stands on
+; the ground and a coin hangs where the moped's middle goes: on the ground line, or
+; behind a crest as much above it as the ground has fallen away in the last 40
+; pixels, up to 12, which is the line the moped flies. The moped picks up what comes
+; within a box round its wheels and its rider (12 either side of the centre of mass,
+; 16 above, 12 below), so everything is in reach from the ground and nothing at four
+; pixels a frame gets between two frames.
+;
+; How hard it is (the tests ride it): a player who holds the throttle and does nothing
+; else gets 336 metres; one who eases off when the nose is 25 degrees up and leans to
+; level it in the air gets 650.
 ;
 ; What it shows of the NIECE:
 ;   the ground's picture is a strip of the sheet 256 columns wide, a ring like the
@@ -77,22 +105,22 @@
 ;
 ; Time, at 1 MHz (measured by crates/unc-asm/tests/game_fellrider.rs over a long ride):
 ;   50 frames a second, held, with every frame's FLIP at the very next vertical blank.
-;   A frame's work is 7,400 of its 19,968 cycles on average and 10,900 at worst on a
-;   ride (11,850 in the one frame that writes the words when a run ends). Where they go:
-;     the forces, with the panel and the sound    3,800   (5,200 at worst)
+;   A frame's work is 8,300 of its 19,968 cycles on average and 12,000 at worst on a
+;   ride (12,900 in the one frame that writes the words when a run ends). Where they go:
+;     the forces, with the panel and the sound    4,000   (5,400 at worst)
 ;     the keys, the rules and the places            350
-;     the ground: 555 a new column                1,100   at two pixels a frame (2,200 at four)
+;     the ground: 685 a new column                1,700   at 2.5 pixels a frame (2,750 at four)
 ;     the three strips' BLITs                       220
-;     the things, the moped and the dust          1,950   (3,000 at worst)
+;     the things, the moped and the dust          2,050   (3,150 at worst)
 ;   The NIECE draws 31,000 pixels a frame (33,500 with the board of words up): 7,700
 ;   of its cycles, two fifths of what it could. 26,800 of them are the three strips,
-;   and those are in the queue about 1,700 cycles into the frame (a step of the
+;   and those are in the queue about 2,300 cycles into the frame (a step of the
 ;   physics is places first, then forces, for that reason), so the chip is done
-;   when the processor is: 13,600 cycles after the frame began, at the latest.
-;   The queue gets 20 deep of its 64. LATE counts the frames that missed their
+;   when the processor is: 14,600 cycles after the frame began, at the latest.
+;   The queue gets 21 deep of its 64. LATE counts the frames that missed their
 ;   vertical blank; the tests want 0.
 ;   Not in that: a new run makes its 256 columns of ground before its first frame,
-;   seven frames with the last picture standing; and the start-up is 3.7 seconds,
+;   nine frames with the last picture standing; and the start-up is 3.7 seconds,
 ;   nearly all of it turning the body.
 ;
 ; Sound, the AUNT: voice 1 is the engine, its pitch the back wheel's speed; voice 2
@@ -193,7 +221,7 @@ MUHEAD  = 160
 RWHEEL  = 5 * 256           ; a wheel's radius
 RHEAD   = 384               ; and the helmet's hard middle: 1.5
 CSTOP   = 1664              ; the travel: 6.5 pixels, then the bump stop
-KSTOP   = 6000
+KSTOP   = 6000              ; the bump stop: ten times the spring
 CMAX    = 12                ; nothing is squeezed further than this, in whole pixels
 NMAX    = 29000             ; nor pushed harder: 0.44, eight times the moped's weight
 SLIPMAX = 800

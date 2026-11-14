@@ -1335,10 +1335,11 @@ fn the_first_300_metres_are_big_hills_none_too_steep() {
     }
     let steepest = (130..4928).map(|x| (h[x + 2] - h[x - 2]).abs() / 4.0).fold(0.0, f64::max);
     assert!(steepest < 0.67, "the steepest slope is {steepest}");
-    // and smooth: a pixel on, the slope has changed by less than a tenth
+    // and smooth: under a tyre (eight pixels, as the physics takes the slope) a pixel
+    // further on the slope has changed by less than an eighth
     for x in 130..4928 {
-        let (a, b) = ((h[x + 2] - h[x - 2]) / 4.0, (h[x + 3] - h[x - 1]) / 4.0);
-        assert!((a - b).abs() < 0.1, "a kink at {x}: slopes {a} and {b}");
+        let (a, b) = ((h[x + 4] - h[x - 4]) / 8.0, (h[x + 5] - h[x - 3]) / 8.0);
+        assert!((a - b).abs() < 0.125, "a kink at {x}: slopes {a} and {b}");
     }
     // the game's ground is that ground
     let g = Game::ride();
@@ -1348,13 +1349,13 @@ fn the_first_300_metres_are_big_hills_none_too_steep() {
 }
 
 /// A first-time player holds the throttle and does nothing else. That's a ride: over the
-/// first hills and off their crests, more than 150 metres before the moped comes off.
+/// first hills and off their crests, more than 250 metres before the moped comes off.
 #[test]
-fn just_holding_the_throttle_is_a_ride_of_150_metres() {
+fn just_holding_the_throttle_is_a_ride_of_250_metres() {
     let mut g = Game::ride();
     let ride = g.ride_to_the_end(8000, |g| g.m.key_hold(RIGHT));
     eprintln!("the throttle held: {ride:?}");
-    assert!(ride.metres >= 150, "{ride:?}");
+    assert!(ride.metres >= 250, "{ride:?}");
     assert!(ride.frames >= 1000, "{ride:?}");
     assert!(ride.cans >= 2 && ride.cans == ride.cans_passed, "the cans are where it can't miss them: {ride:?}");
     assert!(ride.coins * 10 >= ride.coins_passed * 8, "{ride:?}");
@@ -1569,32 +1570,55 @@ fn pictures() {
     let mut g = Game::boot();
     shot(&mut g, "title");
     g.press(b' ');
+    // a wheelie caught: throttle and leaning back, then leaning forward as it goes
     g.m.key(RIGHT);
+    g.m.key_hold(UP);
+    for i in 0..120 {
+        if i == 36 {
+            g.m.key_up(UP);
+            g.m.key_hold(DOWNKEY);
+        }
+        if i == 60 {
+            g.m.key_up(DOWNKEY);
+        }
+        g.frame();
+        if i % 6 == 0 {
+            shot(&mut g, &format!("caught-{:03}", i));
+        }
+    }
+    g.keys_up();
+    assert_eq!(g.get("STATE"), RIDE, "the wheelie was caught");
+    // and one not: over it goes
+    g.m.key(LEFT);
+    g.until(300, "stopped", |g| g.vx().abs() < 0.05);
+    g.keys_up();
+    g.frames(30);
+    g.m.key(RIGHT);
+    g.m.key_hold(UP);
     for i in 0..110 {
         g.frame();
         if i % 6 == 0 {
-            shot(&mut g, &format!("wheelie-{:03}", i));
+            shot(&mut g, &format!("over-{:03}", i));
         }
     }
-    g.m.key_up(RIGHT);
+    g.keys_up();
     g.until(100, "over", |g| g.get("STATE") == OVER);
     shot(&mut g, "over");
     g.frames(40);
     g.press(b' ');
-    let mut dice = Dice(0xF311_1DE5);
     let mut i = 0;
     let from: f64 = std::env::var("UNC_FROM").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
-    while i < 8000 && g.get("STATE") != OVER {
-        let speed = if g.x() < 1500.0 { 4.0 } else { 2.2 + (dice.next() % 100) as f64 / 100.0 };
-        for _ in 0..25 {
-            g.rider(speed);
-            g.frame();
-            i += 1;
-            if i % every == 0 && g.x() >= from {
-                shot(&mut g, &format!("ride-{:05}", i));
-            }
+    let upto: f64 = std::env::var("UNC_UPTO").ok().and_then(|v| v.parse().ok()).unwrap_or(1e9);
+    while i < 12000 && g.get("STATE") == RIDE {
+        g.rider(2.6);
+        g.frame();
+        i += 1;
+        if i % every == 0 && g.x() >= from && g.x() < upto {
+            shot(&mut g, &format!("ride-{:05}", i));
         }
     }
+    g.keys_up();
+    g.frames(70);
     shot(&mut g, "end");
     g.report("pictures");
 }
