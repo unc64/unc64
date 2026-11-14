@@ -3729,7 +3729,7 @@ The processor reaches the sheet's bytes through a window, one at a time:
 | `$C104-$C105` | NVADDR | A byte of the sheet, 0-65,535: line × 128 + column / 2. |
 | `$C106` | NVDATA | The byte at NVADDR. Reading it or writing it moves NVADDR on by one (after `$FFFF` comes 0). |
 
-NVDATA doesn't go through the queue: a byte written is in the sheet at once.
+NVDATA doesn't go through the queue: a byte written is in the sheet at once. So it can get there before a command that was asked for first: FILL a place and then write bytes into it, and the FILL lands on top of them when its turn comes. Wait for the queue to empty before writing where a command is going to draw.
 
 ```asm
 ; A picture on the sheet, drawn at three sizes.
@@ -3901,13 +3901,15 @@ The multiplier is signed and the divider isn't. Chapter 7's multiply works a bit
 
 Numbers with a fraction work as they are. If 256 stands for 1.0 in both, the product's bytes 1 and 2 are the answer on the same scale.
 
-### A cassette, and what 1 MHz makes of it
+### The cassettes, and what 1 MHz makes of them
 
-A program came out of the laboratory with the NIECE, for a UNC 64 with the 64K expansion, and it's in the Machine Room with its source.
+These programs came out of the laboratory with the NIECE, for a UNC 64 with the 64K expansion, and they're in the Machine Room with their source.
+
+**CLOUDBERRY** is a platformer that scrolls: two levels, each nearly thirteen screens long, a pixel at a time. The stretch of level you can see is kept on the sheet as a ring 256 pixels wide, and the page's background is one BLIT a frame whose source starts wherever the camera is: a source that runs off the sheet's edge carries on from the other, so the ring is never copied. When the camera crosses into a new column of tiles, twelve small BLITs draw that column into the ring. Three more layers move behind it at an eighth, a quarter and a half of the speed, the sky is patterned FILLs, and everything that moves is a BLIT. The processor's worst frame is about 7,000 cycles of 19,968 and the NIECE's about 12,500 of drawing: 50 frames a second, with most of both to spare.
 
 **FROSTHALL** is a walk round a hall in three dimensions. The NIECE knows nothing of that: the program sends a ray out through the columns of the picture, the arithmetic unit does the six or seven divisions and multiplications a ray needs, and each column of wall is one BLIT, a pixel's width of a picture drawn as tall as the wall is near. The things in the hall are one BLIT each, and the depth line hides what's behind a wall. A ray costs the processor 800 or 900 cycles, so 80 of them a picture is 12 to 18 pictures a second; with a ray for every other column, and the columns between filled in where both neighbours met the same flat wall, it's 16 to 26, and that's how it starts. The NIECE itself is idle most of the time: the processor is what there isn't enough of.
 
-It reads better than this paragraph: `games/niece/frosthall.s`.
+They read better than these paragraphs: `games/niece/cloudberry.s` and `games/niece/frosthall.s`.
 
 ### What it doesn't do
 

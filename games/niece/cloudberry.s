@@ -35,8 +35,8 @@
 ;     a column at a time from tables of sines (`fells`, `hills`), the trees and
 ;     clouds from three small pictures at several sizes
 ;   patterned FILL (NPATTERN): the sky is five bands of two colours mixed, paling
-;     towards the fells, and the lake is stripes (`sky`). The fells themselves are
-;     mixtures too. Seven FILLs a frame and no picture of a sky anywhere
+;     towards the fells, and the lake is stripes (`sky`). The fells and the hills
+;     are mixtures too. Seven FILLs a frame and no picture of a sky anywhere
 ;   the short registers, NDXS, NDYS, NDWS and NDHS, wherever the number fits a
 ;     byte. (NDXS is signed, so a place on the right of the page, 128-159, still
 ;     takes both bytes of NDX: `sprset`, `pdraw`.)
@@ -67,15 +67,16 @@
 ;
 ; Time, at 1 MHz. Paced by the FLIP: one step of the game a frame, 50 a second;
 ; `work` to `endwork` is one frame's work. Walking each level from its start to
-; its hut, a frame's work is 4,000 cycles of the 19,968 on average and 6,900 at
+; its hut, a frame's work is 4,000 cycles of the 19,968 on average and 7,000 at
 ; the worst (a new column of tiles, ten things on the page and a landing all at
-; once): 600 the sky, 800 moving him, 350 the backdrop's four BLITs, 600 a new
+; once): 500 the sky, 800 moving him, 400 the backdrop's four BLITs, 600 a new
 ; column when there is one, up to 2,900 the berries and the creatures, 200 drawing
-; him, 200 the score. The NIECE has 49,800 pixels to draw in the fullest frame,
-; of the 79,872 it can: 16,000 of sky, 16,000 of backdrop, 15,360 of level, and
-; the rest things. It's done 12,500 cycles after the vertical blank, and the
-; queue is never more than 29 deep. So 50 frames a second, with two thirds of the
-; processor and a third of the chip to spare. LATE counts frames that missed
+; him, 200 the score. The NIECE has 49,800 pixels to draw in a level's fullest
+; frame, of the 79,872 it can: 16,000 of sky, 16,000 of backdrop, 15,360 of
+; level, and the rest things (the title, with its words' boxes, is 51,900). It's
+; done 12,500 cycles after the vertical blank, 13,000 on the title, and the queue
+; is never more than 27 deep of its 64. So 50 frames a second, with two thirds of
+; the processor and a third of the chip to spare. LATE counts frames that missed
 ; their vertical blank; the tests want 0.
 ;
 ; Twice the picture stands still: setting up the sheet at the start takes half a
@@ -379,11 +380,10 @@ go:     BIT NSTATUS             ; bit 6 goes to V
 
 ; ---------------------------------------------------------------- the sky
 ; Everything behind the level that doesn't move: the strip the score is on,
-; then seven FILLs down the page, most of them a mixture of two colours
-; (NPATTERN): the sky paling towards the fells, the lake in stripes, and the
-; dark of the hillside under the near hills. They don't depend on where the
-; camera is, so they go in first and the chip draws them while the processor
-; works out where the camera is going.
+; then six FILLs down the page, most of them a mixture of two colours
+; (NPATTERN): the sky paling towards the fells, and the lake in stripes. They
+; don't depend on where the camera is, so they go in first and the chip draws
+; them while the processor works out where the camera is going.
 sky:    LDA #0
         STA NFLAGS
         STA NPATTERN
@@ -411,14 +411,14 @@ sky:    LDA #0
         INX
         INX
         INX
-        CPX #7 * 4
+        CPX #6 * 4
         BNE @band
         RTS
 
 ; ---------------------------------------------------------------- the backdrop
-; Four BLITs, each 160 wide from a picture 256 wide that joins up with
-; itself: a source that runs off the sheet's right edge carries on from the
-; left. The clouds move an eighth as fast as the level and drift by
+; Four BLITs (and a FILL), each 160 wide from a picture 256 wide that joins
+; up with itself: a source that runs off the sheet's right edge carries on
+; from the left. The clouds move an eighth as fast as the level and drift by
 ; themselves, the far fells a quarter, the near hills a half. The fourth is
 ; the level: the ring, from the camera's x modulo 256, which is its low byte.
 backdrop:
@@ -475,6 +475,22 @@ backdrop:
         STA NDHS
         STA NSH
         LDA #BLIT
+        JSR go
+        LDA #0                  ; the hillside under the near hills: a FILL
+        STA NFLAGS              ; of their own mixture of two colours. A
+        LDA #84                 ; pattern starts from the page's corner and
+        STA NDYS                ; the hills' from wherever they've got to,
+        LDA #16                 ; so when that's an odd column the pattern
+        STA NDHS                ; is turned inside out to match
+        LDA BANDS+26
+        STA NCOLOUR
+        LDA T1
+        LSR A
+        LDA BANDS+27
+        BCC @even
+        EOR #$FF
+@even:  STA NPATTERN
+        LDA #FILL
         JSR go
         LDA HILLF               ; the near hills
         STA NFLAGS
@@ -1902,7 +1918,7 @@ midge:  TXA
         BNE @draw
         JSR hurt
 @draw:  LDA TICK
-        AND #6                  ; FLIPX and FLIPY, by turns
+        AND #FLIPX | FLIPY      ; mirrored, upside down, both, neither
         ORA #KEY
         STA SFL
         LDA TICK
@@ -2674,8 +2690,8 @@ fells:  LDA #SHEET
         BNE @col
         RTS
 
-; The near hills, the same way: dark green, a lighter line along the top,
-; and spruces and birches standing on them, each one BLIT of a little
+; The near hills, the same way: a dark mixture, green along the crest and a
+; lighter line at its edge, and spruces and birches standing on them, each one BLIT of a little
 ; picture at one of three sizes.
 hills:  LDA #SHEET
         STA NFLAGS
@@ -2708,13 +2724,19 @@ hills:  LDA #SHEET
         LDA #<[NEARY + NEARH]
         SBC T0
         STA NDY
-        LDA #$B5                ; a little dark grey among green
+        LDA #$B5                ; dark grey among green: the slopes in shade
         STA NCOLOUR
-        LDA #%10000000
+        LDA #%10100101
         STA NPATTERN
         LDA #FILL
         JSR go
-        LDA #1
+        LDA #5                  ; green: the crest in the light
+        STA NDH
+        LDA #0
+        STA NPATTERN
+        LDA #FILL
+        JSR go
+        LDA #1                  ; and its edge, lighter still
         STA NDH
         LDA #$5D
         STA NCOLOUR
@@ -2901,7 +2923,7 @@ cloudtab:
         .byte 206, 8, 32, 9
         .byte 0
 
-; The sky, a level each: seven bands of y, height, the two colours and the
+; The sky, a level each: seven FILLs of y, height, the two colours and the
 ; pattern; then NFLAGS for the far fells and for the near hills. 32 bytes a
 ; level.
 skies:  .byte TOPY, 10, $6E, %10000010          ; light blue with a little blue
@@ -2910,7 +2932,7 @@ skies:  .byte TOPY, 10, $6E, %10000010          ; light blue with a little blue
         .byte 38, 10, $1E, %10100101
         .byte 48, 12, $E1, %10000010            ; nearly white over the fells
         .byte 60, 24, $6E, %11110000            ; the lake: stripes
-        .byte 84, 16, $B5, %10000000            ; the hillside
+        .byte 84, 16, $B5, %10100101            ; the hillside (`backdrop` draws it)
         .byte KEY, KEY, 0, 0
         .byte TOPY, 10, $46, %10100101          ; the evening: purple and blue
         .byte 14, 10, $4A, %10100101            ; purple and pink

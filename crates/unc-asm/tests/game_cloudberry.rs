@@ -417,7 +417,9 @@ impl Game {
             for x in 0..160i32 {
                 let mut c = 0;
                 // the sky
-                for &(by, bh, col, pat) in &bands {
+                for (i, &(by, bh, col, pat)) in bands.iter().enumerate() {
+                    // the last is the hillside, whose pattern goes with the hills'
+                    let pat = if i == 6 && (cam >> 1) & 1 != 0 { !pat } else { pat };
                     if (by..by + bh).contains(&y) {
                         let bit = pat >> (7 - (x & 3) - 4 * (y & 1)) & 1;
                         c = if bit != 0 { col >> 4 } else { col & 15 };

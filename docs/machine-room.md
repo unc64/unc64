@@ -97,7 +97,7 @@ For a BASIC project, the tape is a BASIC program (type 2, chapter 14): the Machi
 
 **Browse** shows cassettes as pictures on a shelf, with a search box, in three sections:
 
-- **Bundled**: the games (SNAKE, STACK, ORBIT, DEBUG, AURORA, the video board's demonstration cassette, and FROSTHALL, for the NIECE), the Machine Room's samples, and BASIC to type in, among them the Game Design Corner starter from *8-Bit Monthly*. They come as source, so their pictures are taken by running them, the first time you look.
+- **Bundled**: the games (SNAKE, STACK, ORBIT, DEBUG, AURORA, the video board's demonstration cassette, and CLOUDBERRY and FROSTHALL, for the NIECE), the Machine Room's samples, and BASIC to type in, among them the Game Design Corner starter from *8-Bit Monthly*. They come as source, so their pictures are taken by running them, the first time you look.
 - **Yours**: the cassettes you've saved or brought in. They're kept in this browser (in its own storage, not your files), so Download the ones you want to keep for good. A browser that won't keep anything for a page opened from your disk (some private windows do this) keeps them until you close the page, and says so.
 - **Online**: coming later, a library of what other people have made, in the same file format.
 
