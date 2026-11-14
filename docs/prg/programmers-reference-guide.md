@@ -3519,12 +3519,12 @@ To draw, set the registers that say what and where, then write a command's numbe
 | Address | Register | |
 |---|---|---|
 | `$C103` | NGO | Write only. 1 FILL, 2 BLIT, 3 LINE, 4 FLIP. Any other number does nothing. |
-| `$C101` | NSTATUS | Read only. Bit 7: busy, the queue isn't empty. Bit 6: the queue is full. Bit 5: a command was lost (reading NSTATUS clears this bit). Bit 0: the page shown, 0 or 1. |
+| `$C101` | NSTATUS | Read only. Bit 7: busy, the queue isn't empty. Bit 6: the queue is full. Bit 5: a command was lost; it stays set until anything is written to NSTATUS. Bit 0: the page shown, 0 or 1. |
 | `$C102` | NQUEUE | Read only. How many commands are in the queue, 0-64. |
 
 The command doesn't happen at once. It joins a **queue** of up to 64 commands, and it takes the registers with it *as they stand when NGO is written*: change them straight afterwards for the next command, and the one in the queue keeps what it had. The NIECE works through the queue in order while your program carries on.
 
-A command written when the queue already holds 64 is **lost**: it never runs, and bit 5 of NSTATUS says so. A program that might fill the queue looks at bit 6 first:
+A command written when the queue already holds 64 is **lost**: it never runs, and bit 5 of NSTATUS says so, for as long as it takes you to look: reading NSTATUS doesn't clear it, writing it does. A program that might fill the queue looks at bit 6 first:
 
 ```text
 @full:  BIT NSTATUS         ; bit 6 goes to V
@@ -3669,7 +3669,7 @@ If the destination is the same size as the source, it's a plain copy. If it's wi
 
 so every pixel of a picture drawn at twice its size becomes 2 × 2, and one drawn at half its size keeps every other pixel. This holds for the pixels that are on the page even when most of the destination isn't: a 64 × 64 picture drawn 600 high shows the right slice of its middle. A source that runs off the sheet's edge carries on from the opposite edge. A width or height of 0, source or destination, draws nothing.
 
-The source can be anywhere on the sheet, the pages included.
+The source can be anywhere on the sheet, the pages included. The destination doesn't carry on round an edge the way a source does: what's off the page, or with SHEET off the sheet, is cut off.
 
 NFLAGS says how:
 
@@ -3815,7 +3815,7 @@ The NIECE has four **ink tables** of sixteen colours each. BLIT looks every sour
 
 Fill table 1 with darker colours and the same picture can be drawn in daylight or in shadow. Fill one with white and a thing can flash when it's hit. Give two tables different colours for 2 and 10 and one picture of a ship is two fleets.
 
-KEY looks at the source's colour, before the table: the see-through colour stays see-through whatever the table says. And a command takes its table with it into the queue, like the registers.
+KEY looks at the source's colour, before the table: the see-through colour stays see-through whatever the table says, and a table can still draw that colour from another one, so a picture keyed on 0 can have black in it. And a command takes a copy of its table with it into the queue, like the registers: change the table straight after NGO and the next command can have different colours again, so four tables are as many palettes as you care to store.
 
 ### The depth line
 
@@ -3863,6 +3863,16 @@ The multiplier is signed and the divider isn't. Chapter 7's multiply works a bit
 ```
 
 Numbers with a fraction work as they are. If 256 stands for 1.0 in both, the product's bytes 1 and 2 are the answer on the same scale.
+
+### Two cassettes, and what 1 MHz makes of them
+
+Two programs came out of the laboratory with the NIECE, both for a UNC 64 with the 64K expansion, and both are in the Machine Room with their source.
+
+**MOTHS** is a fixed shooter on a summer night: thirty-two moths in ranks, swooping at your lantern and growing as they come, and a far bigger one after them. It draws the whole picture again every frame: three scrolling backgrounds, then up to fifty see-through pictures at whatever size each one is just then. With the fullest swarm it takes the processor about 10,600 cycles of a frame's 19,968 and the NIECE about 9,900 of drawing, so it holds 50 frames a second with half of each to spare.
+
+**FROSTHALL** is a walk round a hall in three dimensions. The NIECE knows nothing of that: the program sends a ray out through the columns of the picture, the arithmetic unit does the six or seven divisions and multiplications a ray needs, and each column of wall is one BLIT, a pixel's width of a picture drawn as tall as the wall is near. The things in the hall are one BLIT each, and the depth line hides what's behind a wall. A ray costs the processor 800 or 900 cycles, so 80 of them a picture is 12 to 18 pictures a second; with a ray for every other column, and the columns between filled in where both neighbours met the same flat wall, it's 16 to 26, and that's how it starts. The NIECE itself is idle most of the time: the processor is what there isn't enough of.
+
+Both read better than this paragraph: `games/niece/moths.s` and `games/niece/frosthall.s`.
 
 ### What it doesn't do
 
@@ -4020,7 +4030,7 @@ The NIECE (chapter 17) draws in all sixteen at once: each pixel of its page is o
 | `$C0DF` | SOUND | `$16`: the AUNT | | 12 |
 | `$C0E0-$C0FF` | WAVETABLE | As written | The wave table: 32 steps | 12 |
 | `$C100` | NCTRL | Bit 0: the NIECE's page shown. The NIECE, | Bit 0 | 17 |
-| `$C101` | NSTATUS | Bit 7 busy, bit 6 queue full, bit 5 a command lost (reading clears it), bit 0 the page shown | | 17 |
+| `$C101` | NSTATUS | Bit 7 busy, bit 6 queue full, bit 5 a command lost, bit 0 the page shown | Any value: clears bit 5 | 17 |
 | `$C102` | NQUEUE | Commands in the queue, 0-64 | | 17 |
 | `$C103` | NGO | | A command into the queue: 1 FILL, 2 BLIT, 3 LINE, 4 FLIP | 17 |
 | `$C104-$C105` | NVADDR | As written | A byte of the sheet | 17 |

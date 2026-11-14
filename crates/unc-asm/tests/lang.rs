@@ -185,7 +185,7 @@ fn json_has_every_part() {
 /// Every .s file in the repository, with its path.
 fn sources() -> Vec<(String, String)> {
     let mut out = Vec::new();
-    for dir in ["games", "games/board", "rom", "web/samples"] {
+    for dir in ["games", "games/board", "games/niece", "rom", "web/samples"] {
         let Ok(rd) = std::fs::read_dir(root(dir)) else { continue };
         for e in rd.flatten() {
             let p = e.path();

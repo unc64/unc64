@@ -40,7 +40,7 @@ msg:    .text "HELLO FROM THE UNC 64!"
 
 Change the message, run it again. Then:
 
-- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and five games with their full source: SNAKE, STACK, ORBIT, DEBUG, and AURORA for the video board. MUSIC TRACKER is there too, an editor for the sound chip written in assembly.
+- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and games with their full source: SNAKE, STACK, ORBIT, DEBUG, and AURORA for the video board. MOTHS and FROSTHALL, a raycaster at 1 MHz, are for the NIECE: a prototype graphics chip that isn't part of the machine proper (manual chapter 17). MUSIC TRACKER is there too, an editor for the sound chip written in assembly.
 - **Hover** over any instruction, register or ROM call in the editor for what it does and how many cycles it takes. **Help** explains the Machine Room; the whole machine is in [the manual](docs/prg/programmers-reference-guide.md).
 - **The debugger**: breakpoints, stepping (F7, F6 over), run and stop (F8), registers and memory.
 - **Save** puts your program on a cassette: a `.unc.png`, a picture of a tape with the program inside, to share or to load in the game.

@@ -204,13 +204,16 @@ fn the_queue_holds_64_runs_in_order_and_says_when_it_lost_one() {
     m.poke(N + reg::NGO, cmd::FILL);
     assert_eq!(m.peek(N + reg::NQUEUE), 64);
     assert_eq!(m.peek(N + reg::NSTATUS) & niece::STATUS_LOST, niece::STATUS_LOST);
-    // a program's read of NSTATUS clears LOST
-    m.load(0x0800, &[0x2B, 0x01, 0xC1, 0x02]); // LDA $C101, HLT
+    // a program's reads of NSTATUS leave LOST set (a wait loop polls it); a write clears it
+    m.load(0x0800, &[0x2B, 0x01, 0xC1, 0x2B, 0x01, 0xC1, 0x33, 0x01, 0xC1, 0x02]); // LDA $C101 twice, STA $C101, HLT
     m.cpu.state = unc_core::CpuState::Running;
     m.cpu.pc = 0x0800;
     m.step();
+    m.step();
     assert_eq!(m.cpu.a & niece::STATUS_LOST, niece::STATUS_LOST);
+    m.step();
     assert_eq!(m.peek(N + reg::NSTATUS) & niece::STATUS_LOST, 0);
+    assert_eq!(m.peek(N + reg::NQUEUE), 64, "and changes nothing else");
     // one command done every 4,004 cycles
     idle(&mut m, 4004);
     assert_eq!(m.peek(N + reg::NQUEUE), 63);

@@ -72,7 +72,8 @@ pub mod reg {
 /// NCTRL bit 0: the shown page is in the picture, behind everything else.
 pub const CTRL_SHOW: u8 = 0x01;
 /// NSTATUS: bit 7 while the queue holds anything, bit 6 while it's full, bit 5 once a command
-/// was written to a full queue and lost (reading NSTATUS clears it), bit 0 the page shown.
+/// was written to a full queue and lost (it stays until NSTATUS is written), bit 0 the page
+/// shown.
 pub const STATUS_BUSY: u8 = 0x80;
 pub const STATUS_FULL: u8 = 0x40;
 pub const STATUS_LOST: u8 = 0x20;
@@ -319,13 +320,10 @@ impl Niece {
         }
     }
 
-    /// The side effect of the processor reading register `r`: NSTATUS forgets a lost command,
-    /// and NVDATA moves NVADDR on.
+    /// The side effect of the processor reading register `r`: NVDATA moves NVADDR on.
     pub fn take(&mut self, r: u16) {
-        match r {
-            reg::NSTATUS => self.lost = false,
-            reg::NVDATA => self.vaddr = self.vaddr.wrapping_add(1),
-            _ => {}
+        if r == reg::NVDATA {
+            self.vaddr = self.vaddr.wrapping_add(1);
         }
     }
 
@@ -343,6 +341,8 @@ impl Niece {
         let hi = r & 1 != 0;
         match r {
             reg::NCTRL => self.ctrl = value & CTRL_SHOW,
+            // any write forgets a lost command; a wait loop's reads don't
+            reg::NSTATUS => self.lost = false,
             reg::NGO => self.go(value, now),
             0x04..=0x05 => set(&mut self.vaddr, hi, value),
             reg::NVDATA => {
