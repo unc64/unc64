@@ -351,7 +351,8 @@ CUT     = $A4           ; the filter: its corner, which way it's going,
 CUTDIR  = $A5
 CUTSTEP = $A6           ; how far it moves a frame (the tune says),
 FILTV   = $A7           ; and the voices going through it
-FPEND   = $A8
+TUNEN   = $A8           ; which tune (a T_ number) was started last
+FPEND   = $A9
 
 ; ---------------------------------------------------------------- start
         .org $0800
@@ -789,10 +790,7 @@ st_dying:
         STA HITS
         LDA #PLAY
         STA STATE
-        LDA LEVEL               ; and the level's tune from its start
-        ASL A
-        CLC
-        ADC #T_DAY
+        LDA #T_TITLE            ; and the tune from its start
         JMP tunestart
 @rts:   RTS
 @over:  LDA #OVER
@@ -901,8 +899,7 @@ totitle:
         STA PY
         LDA #TITLE
         STA STATE
-        LDA #T_TITLE
-        JSR tunestart
+        JSR thetune
         LDX #M_NAME
         JSR say
         LDX #M_SUB
@@ -945,11 +942,7 @@ startlevel:
         STA HITS
         LDA #PLAY
         STA STATE
-        LDA LEVEL               ; T_DAY, or T_DUSK
-        ASL A
-        CLC
-        ADC #T_DAY
-        JSR tunestart
+        JSR thetune             ; the tune carries on, if it's the tune that's playing
         JSR hush
         JSR hudline
         LDA LEVEL
@@ -2361,7 +2354,7 @@ noises: LDA JSND
 ; and WAVE are written. Then the string's wave table, if a note of it is
 ; young; and the filter's corner, which goes up and down by itself.
 ;
-; With the effects it costs 1,000 cycles a frame on average and 2,500 at the
+; With the effects it costs COSTMEAN cycles a frame on average and COSTWORST at the
 ; worst: a row where three notes start and the wave table is redrawn (its 32
 ; steps are 480 cycles by themselves).
 music:  LDA TUNEON
@@ -2775,9 +2768,19 @@ setpos: LDY #5
         STA VTR
         RTS
 
+; The tune, from its start unless it's already playing: it goes on from the
+; title into a level and from one level into the next.
+thetune:
+        LDA TUNEN
+        BNE @start              ; the last thing played was a few notes for something
+        LDA TUNEON
+        BNE tunerts
+@start: LDA #T_TITLE
+
 ; Tune A (one of the T_ numbers) from its start. The filter's sweep starts
 ; over with it.
 tunestart:
+        STA TUNEN
         TAX
         LDA tunes,X
         STA ORDP
@@ -2807,6 +2810,8 @@ tunestart:
         STA VDUR+1
         STA VDUR+2
         BNE setpos
+tunerts:
+        RTS
 
 ; ---------------------------------------------------------------- a level
 ; A level is 256 columns of 12 tiles, written at the end of this file as
@@ -3535,57 +3540,31 @@ F_DRAWS = 8             ;   its note starts the wave table being redrawn
 
 ; In a pattern, an instrument is one of these.
 STRING  = $80 | 1
-SING    = $80 | 2
-LEAD    = $80 | 3
-TRILL   = $80 | 4
-TRIANG  = $80 | 5
-WHISTLE = $80 | 6
-BASS    = $80 | 7
-SNARE   = $80 | 8
-HAT     = $80 | 9
-TOM     = $80 | 10
-KICK    = $80 | 11
-LOW     = $80 | 12
-CRACK   = $80 | 13
-DROP    = $80 | 14
-BLIP    = $80 | 15
-THUMP   = $80 | 16
-RIM     = $80 | 17
-TSS     = $80 | 18
-OPEN    = $80 | 19
+LEAD    = $80 | 2
+TRIANG  = $80 | 3
+BLIP    = $80 | 4
+THUMP   = $80 | 5
+RIM     = $80 | 6
+TSS     = $80 | 7
+OPEN    = $80 | 8
 
 ;       wave  AD   SR  width vib|pwm gate table flags
 INSTR:  .fill 8
         .byte DRAWN, $00, $F2, $80, $00, 0, 0, $48      ; the plucked string, drawn in the wave table and driven
-        .byte DRAWN, $00, $F2, $80, $30, 0, 0, $48      ; the string with a late vibrato, for slow tunes
         .byte PULSE, $38, $7A, $80, $3C, 0, 0, $02      ; a pulse lead whose width runs
-        .byte PULSE, $08, $58, $80, $00, 0, 4, $12      ; a note and its octave, a frame each
         .byte TRI, $0F, $F8, $80, $30, 0, 0, $02        ; a held triangle
-        .byte TRI, $7B, $9A, $80, $40, 0, 0, $02        ; a whistle: a triangle that comes in slowly
-        .byte PULSE, $09, $98, $30, $02, 0, 10, $12     ; a thin pulse bass with a frame of noise for the pick
-        .byte NOISE, $0A, $09, $80, $00, 2, 18, $10     ; a snare of noise and pulse
-        .byte NOISE, $02, $08, $80, $00, 2, 0, $70      ; a hat: play it high
-        .byte PULSE, $06, $4B, $30, $00, 2, 32, $20     ; a tom of pulse and noise: play it where the chord is
-        .byte TRI, $00, $F1, $80, $00, 9, 48, $00       ; a kick that lands on its note: a triangle falling a twelfth
-        .byte TRI, $00, $F1, $80, $00, 0, 0, $02        ; a held triangle bass
-        .byte NOISE, $05, $05, $80, $00, 9, 0, $00      ; a snare of noise alone
-        .byte TRI, $00, $F1, $80, $00, 6, 58, $00       ; a tom: a triangle falling
-        .byte PULSE, $08, $98, $46, $00, 0, 72, $13     ; a bass that clicks, blips an octave up, and settles
-        .byte PULSE, $08, $89, $80, $00, 0, 82, $03     ; a kick of pulse that lands on its note
-        .byte NOISE, $07, $06, $80, $00, 4, 96, $20     ; a small snare: a stick, a skin, a rattle
+        .byte PULSE, $08, $98, $46, $00, 0, 4, $13      ; a bass that clicks, blips an octave up, and settles
+        .byte PULSE, $08, $89, $80, $00, 0, 14, $03     ; a kick of pulse that lands on its note
+        .byte NOISE, $07, $06, $80, $00, 4, 28, $20     ; a small snare: a stick, a skin, a rattle
         .byte NOISE, $01, $01, $80, $00, 2, 0, $80      ; a quiet hat
         .byte NOISE, $06, $05, $80, $00, 8, 0, $80      ; an open hat
 
 ; The tables: a waveform (0: the instrument's) and a pitch for each frame of a note. A
 ; pitch is semitones above the note, or with bit 7 a note of its own. $FF ends a table,
 ; with where to go on from: an arpeggio goes round, a drum stays on its last frame.
-TABLES: .byte 0, 0, $FF, 0, 0, 0, 0, 12, $FF, 4, 0, 0, NOISE, 36, 0, 0
-        .byte $FF, 14, NOISE, 12, NOISE, 0, PULSE, 12, NOISE, 0, NOISE, 12, NOISE, 0, $FF, 26
-        .byte PULSE, 0, NOISE, 12, NOISE, 0, PULSE, 12, PULSE, 0, PULSE, 12, PULSE, 0, $FF, 42
-        .byte TRI, 19, TRI, 12, TRI, 5, TRI, 0, $FF, 54, TRI, 11, TRI, 8, TRI, 6
-        .byte TRI, 4, TRI, 2, TRI, 0, $FF, 68, 0, 0, NOISE, 36, 0, 12, 0, 0
-        .byte $FF, 78, TRI, 24, NOISE, 40, PULSE, 12, PULSE, 7, PULSE, 3, PULSE, 0, $FF, 92
-        .byte NOISE, $DB, TRI, $AF, TRI, $AB, NOISE, $D7, NOISE, $D4, $FF, 104
+TABLES: .byte 0, 0, $FF, 0, 0, 0, NOISE, 36, 0, 12, 0, 0, $FF, 10, TRI, 24
+        .byte NOISE, 40, PULSE, 12, PULSE, 7, PULSE, 3, PULSE, 0, $FF, 24, NOISE, $DB, TRI, $AF
+        .byte TRI, $AB, NOISE, $D7, NOISE, $D4, $FF, 36
 
 ; The string. SCHED: for each frame of a note's age, which drawing of the wave table to
 ; copy to the chip, or $FF for none this frame. WAVES: the 32 drawings, 32 steps each:
@@ -3804,16 +3783,16 @@ VIBTAB: .byte 0, 1, 2, 1, 0, $FF, $FE, $FF
 ; A pattern is notes, each with how many rows until the next thing, a bar to a line.
 ; Voices 2 and 3 change instrument as they go: a name by itself.
 T_TITLE = 0
-T_DAY   = 2
-T_DUSK  = 4
-T_CLEAR = 6
-T_LIFE  = 8
-T_OVER  = 10
-tunes:  .word t_title, t_day, t_dusk, t_clear, t_life, t_over
+T_CLEAR = 2
+T_LIFE  = 4
+T_OVER  = 6
+tunes:  .word t_title, t_clear, t_life, t_over
 
-; ---- The title: "Before the Rain". C minor, 107 beats a minute (7 frames a row).
-; Voice 3 is a kick that lands on the bass, the bass blipping its octave, and the
-; snare in its place, through the filter as it opens and closes; voice 2 is hats.
+; ---- The tune: "Before the Rain". C minor, 107 beats a minute (7 frames a row). It
+; starts on the title and plays on through both levels. Voice 3 is a kick that lands on
+; the bass and the bass blipping its octave, one riff moved to each bar's chord, through
+; the filter as it opens and closes; voice 2 is quiet hats, with a rim on the second and
+; fourth beats.
 t_title:.byte 7, 1
         .word title_l1, title_p1, title_b1; the way in: Cm G
         .byte STRING & $7F, 0
@@ -3836,12 +3815,12 @@ title_l1:
         .byte B4,8, D5,8
         .byte END
 title_p1:
-        .byte TSS, As7,2, As7,1, As7,1, As7,2, As7,2, As7,2, As7,1, As7,1, As7,2, OPEN, As7,2
-        .byte TSS, As7,2, As7,1, As7,1, As7,2, As7,2, As7,2, As7,1, As7,1, As7,2, OPEN, As7,2
+        .byte TSS, As7,2, As7,1, As7,1, RIM, C4,2, TSS, As7,2, As7,2, As7,1, As7,1, RIM, C4,2, OPEN, As7,2
+        .byte TSS, As7,2, As7,1, As7,1, RIM, C4,2, TSS, As7,2, As7,2, As7,1, As7,1, RIM, C4,2, OPEN, As7,2
         .byte END
 title_b1:
-        .byte THUMP, C2,3, BLIP, C3,1, SNARE, As3,2, BLIP, C2,2, THUMP, C2,2, BLIP, G2,2, SNARE, As3,2, BLIP, As2,2
-        .byte THUMP, G1,3, BLIP, G2,1, SNARE, As3,2, BLIP, G1,2, THUMP, G1,2, BLIP, D2,2, SNARE, As3,2, BLIP, F2,2
+        .byte THUMP, C2,3, BLIP, C3,1, G2,2, C2,2, THUMP, C2,2, BLIP, G2,2, C3,2, As2,2
+        .byte THUMP, G1,3, BLIP, G2,1, D2,2, G1,2, THUMP, G1,2, BLIP, D2,2, G2,2, F2,2
         .byte END
 title_l2:
         .byte C5,3, Ds5,3, G5,2, F5,4, Ds5,2, D5,2
@@ -3850,16 +3829,16 @@ title_l2:
         .byte D5,12, G4,4
         .byte END
 title_p2:
-        .byte TSS, As7,2, As7,1, As7,1, As7,2, As7,2, As7,2, As7,1, As7,1, As7,2, OPEN, As7,2
-        .byte TSS, As7,2, As7,1, As7,1, As7,2, As7,2, As7,2, As7,1, As7,1, As7,2, OPEN, As7,2
-        .byte TSS, As7,2, As7,1, As7,1, As7,2, As7,2, As7,2, As7,1, As7,1, As7,2, OPEN, As7,2
-        .byte TSS, As7,2, As7,1, As7,1, As7,2, As7,2, As7,2, As7,1, As7,1, As7,2, OPEN, As7,2
+        .byte TSS, As7,2, As7,1, As7,1, RIM, C4,2, TSS, As7,2, As7,2, As7,1, As7,1, RIM, C4,2, OPEN, As7,2
+        .byte TSS, As7,2, As7,1, As7,1, RIM, C4,2, TSS, As7,2, As7,2, As7,1, As7,1, RIM, C4,2, OPEN, As7,2
+        .byte TSS, As7,2, As7,1, As7,1, RIM, C4,2, TSS, As7,2, As7,2, As7,1, As7,1, RIM, C4,2, OPEN, As7,2
+        .byte TSS, As7,2, As7,1, As7,1, RIM, C4,2, TSS, As7,2, As7,2, As7,1, As7,1, RIM, C4,2, OPEN, As7,2
         .byte END
 title_b2:
-        .byte THUMP, C2,3, BLIP, C3,1, SNARE, As3,2, BLIP, C2,2, THUMP, C2,2, BLIP, G2,2, SNARE, As3,2, BLIP, As2,2
-        .byte THUMP, Gs1,3, BLIP, Gs2,1, SNARE, As3,2, BLIP, Gs1,2, THUMP, Gs1,2, BLIP, Ds2,2, SNARE, As3,2, BLIP, Fs2,2
-        .byte THUMP, F1,3, BLIP, F2,1, SNARE, As3,2, BLIP, F1,2, THUMP, F1,2, BLIP, C2,2, SNARE, As3,2, BLIP, Ds2,2
-        .byte THUMP, G1,3, BLIP, G2,1, SNARE, As3,2, BLIP, G1,2, THUMP, G1,2, BLIP, D2,2, SNARE, As3,2, BLIP, F2,1, SNARE, As3,1
+        .byte THUMP, C2,3, BLIP, C3,1, G2,2, C2,2, THUMP, C2,2, BLIP, G2,2, C3,2, As2,2
+        .byte THUMP, Gs1,3, BLIP, Gs2,1, Ds2,2, Gs1,2, THUMP, Gs1,2, BLIP, Ds2,2, Gs2,2, Fs2,2
+        .byte THUMP, F1,3, BLIP, F2,1, C2,2, F1,2, THUMP, F1,2, BLIP, C2,2, F2,2, Ds2,2
+        .byte THUMP, G1,3, BLIP, G2,1, D2,2, G1,2, THUMP, G1,2, BLIP, D2,2, G2,2, F2,1, G2,1
         .byte END
 title_l3:
         .byte C5,3, Ds5,3, G5,2, F5,4, Ds5,2, D5,2
@@ -3880,10 +3859,10 @@ title_l5:
         .byte C5,16
         .byte END
 title_b3:
-        .byte THUMP, Gs1,3, BLIP, Gs2,1, SNARE, As3,2, BLIP, Gs1,2, THUMP, Gs1,2, BLIP, Ds2,2, SNARE, As3,2, BLIP, Fs2,2
-        .byte THUMP, As1,3, BLIP, As2,1, SNARE, As3,2, BLIP, As1,2, THUMP, As1,2, BLIP, F2,2, SNARE, As3,2, BLIP, Gs2,2
-        .byte THUMP, C2,3, BLIP, C3,1, SNARE, As3,2, BLIP, C2,2, THUMP, C2,2, BLIP, G2,2, SNARE, As3,2, BLIP, As2,2
-        .byte THUMP, C2,3, BLIP, C3,1, SNARE, As3,2, BLIP, C2,2, THUMP, C2,2, BLIP, G2,2, SNARE, As3,2, BLIP, As2,1, SNARE, As3,1
+        .byte THUMP, Gs1,3, BLIP, Gs2,1, Ds2,2, Gs1,2, THUMP, Gs1,2, BLIP, Ds2,2, Gs2,2, Fs2,2
+        .byte THUMP, As1,3, BLIP, As2,1, F2,2, As1,2, THUMP, As1,2, BLIP, F2,2, As2,2, Gs2,2
+        .byte THUMP, C2,3, BLIP, C3,1, G2,2, C2,2, THUMP, C2,2, BLIP, G2,2, C3,2, As2,2
+        .byte THUMP, C2,3, BLIP, C3,1, G2,2, C2,2, THUMP, C2,2, BLIP, G2,2, C3,2, As2,1, C3,1
         .byte END
 title_l6:
         .byte C5,6, Ds5,6, Gs5,4
@@ -3892,297 +3871,60 @@ title_l6:
         .byte B5,8, D5,8
         .byte END
 title_b4:
-        .byte THUMP, Gs1,3, BLIP, Gs2,1, SNARE, As3,2, BLIP, Gs1,2, THUMP, Gs1,2, BLIP, Ds2,2, SNARE, As3,2, BLIP, Fs2,2
-        .byte THUMP, As1,3, BLIP, As2,1, SNARE, As3,2, BLIP, As1,2, THUMP, As1,2, BLIP, F2,2, SNARE, As3,2, BLIP, Gs2,2
-        .byte THUMP, Ds2,3, BLIP, Ds3,1, SNARE, As3,2, BLIP, Ds2,2, THUMP, Ds2,2, BLIP, As2,2, SNARE, As3,2, BLIP, Cs3,2
-        .byte THUMP, G1,3, BLIP, G2,1, SNARE, As3,2, BLIP, G1,2, THUMP, G1,2, BLIP, D2,2, SNARE, As3,2, BLIP, F2,1, SNARE, As3,1
-        .byte END
-
-; ---- Level 1, the day: "The Full Pail". D dorian (the B natural of its G chord), 125
-; beats a minute (6 frames a row). Voice 3 is one riff with the snare inside it, the
-; same every bar on the bar's chord; voice 2 is hats, and toms on the chord's root
-; and fifth; the tune is one bar that moves and one that waits, said again lower.
-t_day:  .byte 6, 1
-        .word day_l1, day_p1, day_b1    ; the way in: Dm G
-        .byte STRING & $7F, 0
-day_loop:
-        .word day_l2, day_p2, day_b2    ; A, on the string: Dm F C G
-        .byte STRING & $7F, 0
-        .word day_l3, day_p2, day_b2    ;    its second half, left hanging
-        .byte STRING & $7F, 0
-        .word day_l2, day_p2, day_b2    ; A again, a pulse an octave up
-        .byte LEAD & $7F, 12
-        .word day_l4, day_p2, day_b2    ;    and this time it lands
-        .byte LEAD & $7F, 12
-        .word day_l5, day_p3, day_b3    ; B, the trill: Bb C Dm Dm
-        .byte TRILL & $7F, 0
-        .word day_l6, day_p4, day_b4    ;    Bb C F A: the dominant
-        .byte TRILL & $7F, 0
-        .word day_l2, day_p2, day_b2    ; A, the string again
-        .byte STRING & $7F, 0
-        .word day_l4, day_p2, day_b2    ; 
-        .byte STRING & $7F, 0
-        .word day_l7, day_p5, day_b5    ; the quiet part: the riff and a triangle
-        .byte TRIANG & $7F, 0
-        .word day_l2, day_p2, day_b2    ; A, the pulse
-        .byte LEAD & $7F, 12
-        .word day_l4, day_p2, day_b2    ;    and round to A on the string
-        .byte LEAD & $7F, 12
-        .word 0, day_loop
-day_l1:
-        .byte A4,16
-        .byte B4,8, D5,8
-        .byte END
-day_p1:
-        .byte HAT, As7,4, As7,4, As7,2, TOM, D4,2, HAT, As7,2, TOM, A4,2
-        .byte HAT, As7,4, As7,4, As7,2, TOM, G4,2, HAT, As7,2, TOM, D5,2
-        .byte END
-day_b1:
-        .byte BASS, D2,2, D2,1, D3,1, SNARE, As3,2, BASS, D2,2, A2,2, D3,2, SNARE, As3,2, BASS, C3,2
-        .byte G1,2, G1,1, G2,1, SNARE, As3,2, BASS, G1,2, D2,2, G2,2, SNARE, As3,2, BASS, F2,2
-        .byte END
-day_l2:
-        .byte D5,3, F5,3, E5,2, A5,3, G5,3, F5,2
-        .byte A5,12, G5,4
-        .byte C5,3, E5,3, D5,2, G5,3, F5,3, E5,2
-        .byte G5,12, D5,4
-        .byte END
-day_p2:
-        .byte HAT, As7,2, TOM, D4,2, HAT, As7,2, As7,1, TOM, A4,1, HAT, As7,2, TOM, D4,2, HAT, As7,1, As7,1, TOM, A4,2
-        .byte HAT, As7,2, TOM, F4,2, HAT, As7,2, As7,1, TOM, C5,1, HAT, As7,2, TOM, F4,2, HAT, As7,1, As7,1, TOM, C5,2
-        .byte HAT, As7,2, TOM, C4,2, HAT, As7,2, As7,1, TOM, G4,1, HAT, As7,2, TOM, C4,2, HAT, As7,1, As7,1, TOM, G4,2
-        .byte HAT, As7,2, TOM, G4,2, HAT, As7,2, As7,1, TOM, D5,1, HAT, As7,2, TOM, G4,2, HAT, As7,1, As7,1, TOM, D5,2
-        .byte END
-day_b2:
-        .byte BASS, D2,2, D2,1, D3,1, SNARE, As3,2, BASS, D2,2, A2,2, D3,2, SNARE, As3,2, BASS, C3,2
-        .byte F1,2, F1,1, F2,1, SNARE, As3,2, BASS, F1,2, C2,2, F2,2, SNARE, As3,2, BASS, D2,2
-        .byte C2,2, C2,1, C3,1, SNARE, As3,2, BASS, C2,2, G2,2, C3,2, SNARE, As3,2, BASS, As2,2
-        .byte G1,2, G1,1, G2,1, SNARE, As3,2, BASS, G1,2, D2,2, G2,2, SNARE, As3,2, As3,1, As3,1
-        .byte END
-day_l3:
-        .byte D5,3, F5,3, E5,2, A5,3, G5,3, F5,2
-        .byte A5,4, C6,8, A5,4
-        .byte G5,3, E5,3, G5,2, F5,3, E5,3, D5,2
-        .byte D5,8, B4,4, D5,4
-        .byte END
-day_l4:
-        .byte D5,3, F5,3, E5,2, A5,3, G5,3, F5,2
-        .byte A5,4, C6,8, A5,4
-        .byte G5,3, E5,3, G5,2, F5,3, E5,3, D5,2
-        .byte B4,4, D5,12
-        .byte END
-day_l5:
-        .byte D5,2, F5,2, As5,12
-        .byte E5,2, G5,2, C6,12
-        .byte F5,2, A5,2, D6,12
-        .byte D6,8, A5,8
-        .byte END
-day_p3:
-        .byte HAT, As7,2, TOM, As3,2, HAT, As7,2, As7,1, TOM, F4,1, HAT, As7,2, TOM, As3,2, HAT, As7,1, As7,1, TOM, F4,2
-        .byte HAT, As7,2, TOM, C4,2, HAT, As7,2, As7,1, TOM, G4,1, HAT, As7,2, TOM, C4,2, HAT, As7,1, As7,1, TOM, G4,2
-        .byte HAT, As7,2, TOM, D4,2, HAT, As7,2, As7,1, TOM, A4,1, HAT, As7,2, TOM, D4,2, HAT, As7,1, As7,1, TOM, A4,2
-        .byte HAT, As7,2, TOM, D4,2, HAT, As7,2, As7,1, TOM, A4,1, HAT, As7,2, TOM, D4,2, HAT, As7,1, As7,1, TOM, A4,2
-        .byte END
-day_b3:
-        .byte BASS, As1,2, As1,1, As2,1, SNARE, As3,2, BASS, As1,2, F2,2, As2,2, SNARE, As3,2, BASS, G2,2
-        .byte C2,2, C2,1, C3,1, SNARE, As3,2, BASS, C2,2, G2,2, C3,2, SNARE, As3,2, BASS, As2,2
-        .byte D2,2, D2,1, D3,1, SNARE, As3,2, BASS, D2,2, A2,2, D3,2, SNARE, As3,2, BASS, C3,2
-        .byte D2,2, D2,1, D3,1, SNARE, As3,2, BASS, D2,2, A2,2, D3,2, SNARE, As3,2, As3,1, As3,1
-        .byte END
-day_l6:
-        .byte D5,2, F5,2, As5,12
-        .byte E5,2, G5,2, C6,12
-        .byte F5,2, A5,2, C6,8, A5,4
-        .byte A5,4, Cs6,12
-        .byte END
-day_p4:
-        .byte HAT, As7,2, TOM, As3,2, HAT, As7,2, As7,1, TOM, F4,1, HAT, As7,2, TOM, As3,2, HAT, As7,1, As7,1, TOM, F4,2
-        .byte HAT, As7,2, TOM, C4,2, HAT, As7,2, As7,1, TOM, G4,1, HAT, As7,2, TOM, C4,2, HAT, As7,1, As7,1, TOM, G4,2
-        .byte HAT, As7,2, TOM, F4,2, HAT, As7,2, As7,1, TOM, C5,1, HAT, As7,2, TOM, F4,2, HAT, As7,1, As7,1, TOM, C5,2
-        .byte HAT, As7,2, TOM, A4,2, HAT, As7,2, As7,1, TOM, E5,1, HAT, As7,2, TOM, A4,2, HAT, As7,1, As7,1, TOM, E5,2
-        .byte END
-day_b4:
-        .byte BASS, As1,2, As1,1, As2,1, SNARE, As3,2, BASS, As1,2, F2,2, As2,2, SNARE, As3,2, BASS, G2,2
-        .byte C2,2, C2,1, C3,1, SNARE, As3,2, BASS, C2,2, G2,2, C3,2, SNARE, As3,2, BASS, As2,2
-        .byte F1,2, F1,1, F2,1, SNARE, As3,2, BASS, F1,2, C2,2, F2,2, SNARE, As3,2, BASS, D2,2
-        .byte A1,2, A1,1, A2,1, SNARE, As3,2, BASS, A1,2, E2,2, A2,2, SNARE, As3,2, As3,1, As3,1
-        .byte END
-day_l7:
-        .byte A5,16
-        .byte C6,12, A5,4
-        .byte G5,16
-        .byte B5,8, D6,8
-        .byte END
-day_p5:
-        .byte REST,64
-        .byte END
-day_b5:
-        .byte BASS, D2,2, D2,1, D3,1, SNARE, As3,2, BASS, D2,2, A2,2, D3,2, SNARE, As3,2, BASS, C3,2
-        .byte F1,2, F1,1, F2,1, SNARE, As3,2, BASS, F1,2, C2,2, F2,2, SNARE, As3,2, BASS, D2,2
-        .byte C2,2, C2,1, C3,1, SNARE, As3,2, BASS, C2,2, G2,2, C3,2, SNARE, As3,2, BASS, As2,2
-        .byte G1,2, G1,1, G2,1, SNARE, As3,2, BASS, G1,2, D2,2, G2,2, SNARE, As3,2, BASS, F2,2
-        .byte END
-
-; ---- Level 2, the evening: "The Long Light". A minor, 93 beats a minute (8 frames a
-; row). Voice 3 is a triangle bass in quavers with the kick and the snare in it; voice
-; 2 is quiet hats and a rim; the tune is long, long, short-short.
-t_dusk: .byte 8, 1
-        .word dusk_l1, dusk_p1, dusk_b1 ; the way in: Am G
-        .byte SING & $7F, 0
-dusk_loop:
-        .word dusk_l2, dusk_p2, dusk_b2 ; A, on the string: Am Em F G
-        .byte SING & $7F, 0
-        .word dusk_l3, dusk_p2, dusk_b2 ;    its second half, left hanging
-        .byte SING & $7F, 0
-        .word dusk_l2, dusk_p2, dusk_b2 ; A again, on the pulse
-        .byte LEAD & $7F, 0
-        .word dusk_l4, dusk_p2, dusk_b2 ;    and it lands
-        .byte LEAD & $7F, 0
-        .word dusk_l5, dusk_p2, dusk_b3 ; B, the whistle: F G Am Am
-        .byte WHISTLE & $7F, 0
-        .word dusk_l6, dusk_p2, dusk_b4 ;    F G Em E: the dominant
-        .byte WHISTLE & $7F, 0
-        .word dusk_l2, dusk_p2, dusk_b2 ; A, the string again
-        .byte SING & $7F, 0
-        .word dusk_l4, dusk_p2, dusk_b2 ; 
-        .byte SING & $7F, 0
-        .word dusk_l7, dusk_p3, dusk_b5 ; the quiet part: the bass alone under a triangle
-        .byte TRIANG & $7F, 0
-        .word dusk_l2, dusk_p2, dusk_b2 ; A, the pulse
-        .byte LEAD & $7F, 0
-        .word dusk_l4, dusk_p2, dusk_b2 ;    and round to A on the string
-        .byte LEAD & $7F, 0
-        .word 0, dusk_loop
-dusk_l1:
-        .byte E5,16
-        .byte D5,8, B4,8
-        .byte END
-dusk_p1:
-        .byte TSS, As7,2, As7,1, RIM, C4,3, TSS, As7,2, As7,2, As7,1, RIM, C4,1, OPEN, As7,2, TSS, As7,2
-        .byte As7,2, As7,1, RIM, C4,3, TSS, As7,2, As7,2, As7,1, RIM, C4,1, OPEN, As7,2, TSS, As7,2
-        .byte END
-dusk_b1:
-        .byte KICK, A2,2, LOW, A2,2, CRACK, As4,2, LOW, A3,2, A2,2, KICK, A2,2, CRACK, As4,2, LOW, E3,2
-        .byte KICK, G2,2, LOW, G2,2, CRACK, As4,2, LOW, G3,2, G2,2, KICK, G2,2, CRACK, As4,2, LOW, D3,2
-        .byte END
-dusk_l2:
-        .byte E5,8, A5,4, C6,4
-        .byte B5,12, G5,4
-        .byte C5,8, F5,4, A5,4
-        .byte G5,12, D5,4
-        .byte END
-dusk_p2:
-        .byte TSS, As7,2, As7,1, RIM, C4,3, TSS, As7,2, As7,2, As7,1, RIM, C4,1, OPEN, As7,2, TSS, As7,2
-        .byte As7,2, As7,1, RIM, C4,3, TSS, As7,2, As7,2, As7,1, RIM, C4,1, OPEN, As7,2, TSS, As7,2
-        .byte As7,2, As7,1, RIM, C4,3, TSS, As7,2, As7,2, As7,1, RIM, C4,1, OPEN, As7,2, TSS, As7,2
-        .byte As7,2, As7,1, RIM, C4,3, TSS, As7,2, As7,2, As7,1, RIM, C4,1, OPEN, As7,2, TSS, As7,2
-        .byte END
-dusk_b2:
-        .byte KICK, A2,2, LOW, A2,2, CRACK, As4,2, LOW, A3,2, A2,2, KICK, A2,2, CRACK, As4,2, LOW, E3,2
-        .byte KICK, E3,2, LOW, E3,2, CRACK, As4,2, LOW, E4,2, E3,2, KICK, E3,2, CRACK, As4,2, LOW, B3,2
-        .byte KICK, F3,2, LOW, F3,2, CRACK, As4,2, LOW, F4,2, F3,2, KICK, F3,2, CRACK, As4,2, LOW, C4,2
-        .byte KICK, G2,2, LOW, G2,2, CRACK, As4,2, LOW, G3,2, G2,2, KICK, G2,2, CRACK, As4,2, DROP, As3,1, Ds3,1
-        .byte END
-dusk_l3:
-        .byte E5,8, A5,4, C6,4
-        .byte E6,8, D6,4, B5,4
-        .byte C6,8, A5,4, F5,4
-        .byte G5,8, B5,8
-        .byte END
-dusk_l4:
-        .byte E5,8, A5,4, C6,4
-        .byte E6,8, D6,4, B5,4
-        .byte C6,8, A5,4, F5,4
-        .byte B5,4, G5,4, A5,8
-        .byte END
-dusk_l5:
-        .byte F5,6, A5,6, C6,4
-        .byte G5,6, B5,6, D6,4
-        .byte E6,12, C6,4
-        .byte A5,16
-        .byte END
-dusk_b3:
-        .byte KICK, F3,2, LOW, F3,2, CRACK, As4,2, LOW, F4,2, F3,2, KICK, F3,2, CRACK, As4,2, LOW, C4,2
-        .byte KICK, G2,2, LOW, G2,2, CRACK, As4,2, LOW, G3,2, G2,2, KICK, G2,2, CRACK, As4,2, LOW, D3,2
-        .byte KICK, A2,2, LOW, A2,2, CRACK, As4,2, LOW, A3,2, A2,2, KICK, A2,2, CRACK, As4,2, LOW, E3,2
-        .byte KICK, A2,2, LOW, A2,2, CRACK, As4,2, LOW, A3,2, A2,2, KICK, A2,2, CRACK, As4,2, DROP, C4,1, F3,1
-        .byte END
-dusk_l6:
-        .byte F5,6, A5,6, C6,4
-        .byte G5,6, B5,6, D6,4
-        .byte E6,8, B5,4, G5,4
-        .byte Gs5,8, B5,8
-        .byte END
-dusk_b4:
-        .byte KICK, F3,2, LOW, F3,2, CRACK, As4,2, LOW, F4,2, F3,2, KICK, F3,2, CRACK, As4,2, LOW, C4,2
-        .byte KICK, G2,2, LOW, G2,2, CRACK, As4,2, LOW, G3,2, G2,2, KICK, G2,2, CRACK, As4,2, LOW, D3,2
-        .byte KICK, E3,2, LOW, E3,2, CRACK, As4,2, LOW, E4,2, E3,2, KICK, E3,2, CRACK, As4,2, LOW, B3,2
-        .byte KICK, E3,2, LOW, E3,2, CRACK, As4,2, LOW, E4,2, E3,2, KICK, E3,2, CRACK, As4,2, DROP, G4,1, C4,1
-        .byte END
-dusk_l7:
-        .byte E5,16
-        .byte G5,16
-        .byte A5,16
-        .byte B5,8, D6,8
-        .byte END
-dusk_p3:
-        .byte REST,64
-        .byte END
-dusk_b5:
-        .byte LOW, A2,2, A2,2, A2,2, A3,2, A2,2, A2,2, A2,2, E3,2
-        .byte E3,2, E3,2, E3,2, E4,2, E3,2, E3,2, E3,2, B3,2
-        .byte F3,2, F3,2, F3,2, F4,2, F3,2, F3,2, F3,2, C4,2
-        .byte G2,2, G2,2, G2,2, G3,2, G2,2, G2,2, G2,2, D3,2
+        .byte THUMP, Gs1,3, BLIP, Gs2,1, Ds2,2, Gs1,2, THUMP, Gs1,2, BLIP, Ds2,2, Gs2,2, Fs2,2
+        .byte THUMP, As1,3, BLIP, As2,1, F2,2, As1,2, THUMP, As1,2, BLIP, F2,2, As2,2, Gs2,2
+        .byte THUMP, Ds2,3, BLIP, Ds3,1, As2,2, Ds2,2, THUMP, Ds2,2, BLIP, As2,2, Ds3,2, Cs3,2
+        .byte THUMP, G1,3, BLIP, G2,1, D2,2, G1,2, THUMP, G1,2, BLIP, D2,2, G2,2, F2,1, G2,1
         .byte END
 
 ; ---- The hut.
-t_clear:.byte 6, 1
-        .word clear_l1, clear_p1, clear_b1; home: up a chord of D minor to its top
+t_clear:.byte 7, 1
+        .word clear_l1, clear_p1, clear_b1; home: up the chord of C minor to its top
         .byte STRING & $7F, 0
         .word 0, 0
 clear_l1:
-        .byte D5,2, F5,2, A5,2, C6,2, D6,15
-        .byte OFF,9
+        .byte C5,2, Ds5,2, G5,2, As5,2, C6,14
+        .byte OFF,10
         .byte END
 clear_p1:
-        .byte TOM, D4,2, F4,2, A4,2, C5,2, HAT, As7,24
+        .byte TSS, As7,2, As7,2, As7,2, As7,2, OPEN, As7,24
         .byte END
 clear_b1:
-        .byte BASS, D2,2, D3,2, SNARE, As3,2, BASS, A2,2, D2,8
+        .byte THUMP, C2,2, BLIP, C3,2, G2,2, As2,2, THUMP, C2,8
         .byte OFF,16
         .byte END
 
 ; ---- A life.
-t_life: .byte 6, 1
-        .word life_l1, life_p1, life_b1 ; a life: down to the C sharp that wants to be elsewhere
+t_life: .byte 7, 1
+        .word life_l1, life_p1, life_b1 ; a life: down to the B that wants to be C
         .byte LEAD & $7F, 0
         .word 0, 0
 life_l1:
-        .byte A5,2, F5,2, D5,2, Cs5,10
+        .byte G5,2, Ds5,2, C5,2, B4,10
         .byte END
 life_p1:
-        .byte TOM, A4,4, D4,12
+        .byte RIM, C4,6, OPEN, As7,10
         .byte END
 life_b1:
-        .byte BASS, A1,6, SNARE, As3,2, BASS, A1,4, OFF,4
+        .byte BLIP, G1,6, THUMP, G1,6, OFF,4
         .byte END
 
 ; ---- Game over.
-t_over: .byte 8, 1
-        .word over_l1, over_p1, over_b1 ; game over: down the chord of A minor
-        .byte SING & $7F, 0
+t_over: .byte 7, 1
+        .word over_l1, over_p1, over_b1 ; game over: down the chord of C minor
+        .byte STRING & $7F, 0
         .word 0, 0
 over_l1:
-        .byte E5,8, C5,8
-        .byte A4,16
+        .byte G5,8, Ds5,8
+        .byte C5,16
         .byte END
 over_p1:
         .byte OPEN, As7,16
         .byte As7,16
         .byte END
 over_b1:
-        .byte KICK, A2,8, LOW, E3,8
-        .byte KICK, A2,16
+        .byte THUMP, C2,8, BLIP, G1,8
+        .byte THUMP, C2,12, OFF,4
         .byte END
 
 ; ---------------------------------------------------------------- the levels
