@@ -7,7 +7,7 @@
 
 <p align="center"><b>A computer that fits in your head.</b></p>
 
-The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid-1980s that never existed. This is the machine, emulated for real: a cycle-counted 6502-family processor, a system ROM with UNC BASIC, a character set, a beeper and a three-voice sound chip, tape, and a video board with sprites and smooth scrolling. 64K of memory. One manual. You can know all of it.
+The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid-1980s that never existed. This is the machine, emulated for real: a cycle-counted 6502-family processor, a system ROM with UNC BASIC, a character set, a beeper and a three-voice sound chip, tape, and a graphics chip that draws in sixteen colours at any size. 64K of memory. One manual. You can know all of it.
 
 ## Start in one minute: the Machine Room
 
@@ -40,7 +40,7 @@ msg:    .text "HELLO FROM THE UNC 64!"
 
 Change the message, run it again. Then:
 
-- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and games with their full source: SNAKE, STACK, ORBIT, DEBUG, and AURORA for the video board. CLOUDBERRY, a scrolling platformer, FELLRIDER, a moped with real suspension, and FROSTHALL, a raycaster at 1 MHz, are for the NIECE: a prototype graphics chip that isn't part of the machine proper (manual chapter 17). MUSIC TRACKER is there too, an editor for the sound chip written in assembly.
+- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and games with their full source: SNAKE, STACK, ORBIT and DEBUG for the UNC 16, and for the UNC 64, with its 64K and its graphics chip, the NIECE (manual chapter 15): CLOUDBERRY, a scrolling platformer, FELLRIDER, a moped with real suspension, and FROSTHALL, a raycaster at 1 MHz. MUSIC TRACKER is there too, an editor for the sound chip written in assembly.
 - **Hover** over any instruction, register or ROM call in the editor for what it does and how many cycles it takes. **Help** explains the Machine Room; the whole machine is in [the manual](docs/prg/programmers-reference-guide.md).
 - **The debugger**: breakpoints, stepping (F7, F6 over), run and stop (F8), registers and memory.
 - **Save** puts your program on a cassette: a `.unc.png`, a picture of a tape with the program inside, to share or to load in the game.
@@ -48,7 +48,7 @@ Change the message, run it again. Then:
 
 ## Learn the machine
 
-[The Programmer's Reference Guide](docs/prg/programmers-reference-guide.md) is the whole machine in one book: the processor, the screen, timing and the raster, interrupts, the keyboard, sound, the ROM, tape, UNC BASIC, the video board, every instruction with its cycles. It's also the spec: every program listing in it is assembled and run by the tests. Coming from the 6502? Start at Appendix F.
+[The Programmer's Reference Guide](docs/prg/programmers-reference-guide.md) is the whole machine in one book: the processor, the screen, timing and the raster, interrupts, the keyboard, sound, the ROM, tape, UNC BASIC, the NIECE, every instruction with its cycles. It's also the spec: every program listing in it is assembled and run by the tests. Coming from the 6502? Start at Appendix F.
 
 AI agents: [`llms.txt`](llms.txt) and [`llms-full.txt`](llms-full.txt).
 

@@ -1,5 +1,5 @@
 //! CLOUDBERRY (games/niece/cloudberry.s): a platformer that scrolls, for the NIECE, the
-//! prototype graphics chip of manual chapter 17. Played through scripted keys on a booted 64K
+//! graphics chip of manual chapter 15. Played through scripted keys on a booted 64K
 //! machine with the chip in; its state is read from the addresses the source's symbol table
 //! gives.
 //!
@@ -9,7 +9,7 @@
 //! picture out again from the map, the tiles and the backdrops and compares every pixel. And
 //! does a 1 MHz processor hold it at 50 frames a second? The meter measures both halves of a
 //! frame, the processor's work (`work` to `endwork`) and the chip's drawing (every command
-//! written to NGO, costed as chapter 17 costs it), and that every FLIP came at the very next
+//! written to NGO, costed as chapter 15 costs it), and that every FLIP came at the very next
 //! vertical blank.
 
 use unc_core::machine::{CYCLES_PER_FRAME, CYCLES_PER_LINE, VBLANK_LINE};

@@ -127,8 +127,8 @@
 
   // ---------- the bench: tapes and pictures ----------
   function benchPower(machine) {
-    bench.set_video_board(machine.board ? 1 : 0);
     bench.set_niece?.(machine.niece ? 1 : 0);
+    bench.set_sound_chip?.(machine.aunt === false ? 0 : 1);
     bench.power_on(machine.ram === 64 ? 64 : 16);
   }
   // A project on tape: { ok, tape } or { ok: false, errors, message }.
@@ -173,7 +173,7 @@
   // The core draws the picture as the beam drew it (render, manual chapter 9); this colours
   // it, line by line, in the colours each line had when it was drawn (line_colours_ptr):
   // value 0 is the background, which `background(y, colour)` paints under the line; 1-3 show
-  // the line's ink colours. A value with bit 4 set is the NIECE's page (manual chapter 17):
+  // the line's ink colours. A value with bit 4 set is the NIECE's page (manual chapter 15):
   // the colour itself in its low four bits. On the monochrome monitor each is a shade of the
   // phosphor, and white is the phosphor itself.
   function paintPixels(ex, img, blink, background) {
@@ -248,6 +248,8 @@
     let ac = null;
     let gain = null;
     let next = 0;
+    let avg = -1; // how far ahead, averaged
+    let frac = 0; // the samples' fraction, carried to the next frame
     let muted = pref.get('mute', '0') === '1';
     const stats = { frames: 0, samples: 0, nonzero: 0 };
     const start = () => {
@@ -269,11 +271,18 @@
       if (!ac || ac.state !== 'running') return;
       const sr = ac.sampleRate;
       const now = ac.currentTime;
-      if (next < now + 0.02) next = now + 0.08;
+      if (next < now + 0.02) { next = now + 0.08; avg = -1; }
       const ahead = next - now;
       if (ahead > 0.3) return;
       const base = sr * 0.019968; // one frame: 19,968 cycles at 1 MHz
-      const n = Math.round(base * Math.min(1.03, Math.max(0.97, 1 + (0.08 - ahead) * 0.5)));
+      // A frame's sound is spread over the samples it's given: their number is its pitch. So
+      // always a frame's worth (the fraction carried), trimmed by at most 0.2% (3 cents) to
+      // stay about 80 ms ahead, by an average over a second or so: frames arrive in bursts,
+      // and following each one wobbled the pitch by up to 3%, half a semitone.
+      avg = avg < 0 ? ahead : avg + (ahead - avg) * 0.02;
+      frac += base * (1 + Math.min(0.002, Math.max(-0.002, (0.08 - avg) * 0.05)));
+      const n = Math.floor(frac);
+      frac -= n;
       const ptr = wasm.audio_frame(sr, n);
       const data = new Float32Array(wasm.memory.buffer, ptr, n);
       const buf = ac.createBuffer(1, n, sr);
@@ -301,7 +310,7 @@
   })();
 
   // ---------- the project ----------
-  // { title, author, about, machine: { ram, board, niece }, files: { path: text }, main, extra,
+  // { title, author, about, machine: { ram, niece, aunt }, files: { path: text }, main, extra,
   //   created, lib: { src, id } when it came from (or went to) the library }
   let project = null;
   let tabs = [];
@@ -330,7 +339,7 @@ msg:    .text "HELLO, UNC 64!"
 `;
   function newProject(kind) {
     const main = kind === 'basic' ? 'main.bas' : 'main.s';
-    return { title: 'UNTITLED', author: pref.get('author', ''), about: '', machine: { ram: 16, board: false }, files: { [main]: kind === 'basic' ? NEW_BAS : NEW_ASM }, main, extra: {}, created: null, lib: null };
+    return { title: 'UNTITLED', author: pref.get('author', ''), about: '', machine: { ram: 16 }, files: { [main]: kind === 'basic' ? NEW_BAS : NEW_ASM }, main, extra: {}, created: null, lib: null };
   }
   function fromCassette(c, lib) {
     return { title: c.title, author: c.author, about: c.about, machine: { ...c.machine }, files: { ...c.files }, main: c.main, extra: { ...c.extra }, created: c.created, lib };
@@ -579,7 +588,7 @@ msg:    .text "HELLO, UNC 64!"
     [...$('flags').children].forEach((el, i) => el.classList.toggle('on', (p & FLAGS[i][1]) !== 0));
     const line = lineAt(pc);
     $('meta').innerHTML = `<span>Cycles <b>${Math.round(wasm.cycles()).toLocaleString('en-US')}</b></span>`
-      + `<span>Raster <b>${wasm.raster_line()}</b></span><span>RAM <b>${wasm.ram_kb()}K</b>${wasm.has_video_board && wasm.has_video_board() ? ' + <b>BOARD</b>' : ''}${wasm.has_niece && wasm.has_niece() ? ' + <b>NIECE</b>' : ''}</span>`
+      + `<span>Raster <b>${wasm.raster_line()}</b></span><span>RAM <b>${wasm.ram_kb()}K</b>${wasm.has_niece && wasm.has_niece() ? ' + <b>NIECE</b>' : ''}${wasm.has_sound_chip && !wasm.has_sound_chip() ? ' − <b>AUNT</b>' : ''}</span>`
       + (line ? `<span>Source <b>${esc(line[3] || '')}:${line[0]}</b></span>` : '');
     if (running && st === 0 && !force) return;
     const len = wasm.disassemble(disasmStart(pc), 18);
@@ -695,15 +704,15 @@ msg:    .text "HELLO, UNC 64!"
   $('memaddr').addEventListener('change', (e) => setMem(e.target.value || '0'));
   document.querySelectorAll('[data-mem]').forEach((b) => b.addEventListener('click', () => setMem(b.dataset.mem)));
 
-  // ---------- the machine: power, RAM, the video board, the NIECE ----------
+  // ---------- the machine: power, and its three parts: RAM, the NIECE, the AUNT ----------
   function powerOn() {
     // the deck isn't part of the computer: its tape, and anything recorded on it, stays in
     const kept = deck ? deckBytes() : null;
     if (deck && kept) deck.cassette.tape = kept;
     srcAddrs.forEach((a) => wasm.set_breakpoint(a, 0)); // the dots go back in after the next Run
     srcAddrs = new Set();
-    wasm.set_video_board($('board').checked ? 1 : 0);
     wasm.set_niece?.($('niece').checked ? 1 : 0);
+    wasm.set_sound_chip?.($('aunt').checked ? 1 : 0);
     wasm.power_on(Number($('ram').value));
     wasm.set_tape_turbo?.($('turbo').checked ? 1 : 0);
     typing = [];
@@ -714,11 +723,13 @@ msg:    .text "HELLO, UNC 64!"
     reinsertTape();
   }
   function setMachine(machine, power = true) {
-    const { ram, board, niece } = machine;
-    const changed = Number($('ram').value) !== ram || $('board').checked !== !!board || $('niece').checked !== !!niece;
-    $('ram').value = String(ram === 64 ? 64 : 16);
-    $('board').checked = !!board;
-    $('niece').checked = !!niece;
+    const ram = machine.ram === 64 ? 64 : 16;
+    const niece = !!machine.niece;
+    const aunt = machine.aunt !== false; // in, unless a project says it was taken out
+    const changed = Number($('ram').value) !== ram || $('niece').checked !== niece || $('aunt').checked !== aunt;
+    $('ram').value = String(ram);
+    $('niece').checked = niece;
+    $('aunt').checked = aunt;
     if (power && changed) powerOn();
   }
   $('reset').addEventListener('click', powerOn);
@@ -734,8 +745,8 @@ msg:    .text "HELLO, UNC 64!"
     focusScreen();
   });
   $('ram').addEventListener('change', () => { project.machine.ram = Number($('ram').value); markDirty(); powerOn(); });
-  $('board').addEventListener('change', () => { project.machine.board = $('board').checked; markDirty(); powerOn(); });
   $('niece').addEventListener('change', () => { project.machine.niece = $('niece').checked; markDirty(); powerOn(); });
+  $('aunt').addEventListener('change', () => { project.machine.aunt = $('aunt').checked; markDirty(); powerOn(); });
   $('colour').checked = colour;
   $('colour').addEventListener('change', (e) => { colour = e.target.checked; pref.set('colour', colour ? '1' : '0'); faces.clear(); });
   const phSel = $('phosphor');
@@ -932,15 +943,16 @@ msg:    .text "HELLO, UNC 64!"
     stack: { shell: '#1c1c1e', face: '#2a1f4a', ink: '#e9c04e' },
     orbit: { shell: '#d8d4ca', face: '#090b1c', ink: '#c8e0ff' },
     debug: { shell: '#1c1c1e', face: '#e9c04e', ink: '#1a1410' },
-    aurora: { shell: '#1d2440', face: '#0b1030', ink: '#9fe08a' },
+    cloudberry: { shell: '#d8d4ca', face: '#1f3a22', ink: '#f2c230' },
+    fellrider: { shell: '#1c1c1e', face: '#1a2350', ink: '#f2b62a' },
     Samples: { shell: '#cfc7b4', face: '#2b2018', ink: '#efe6cf' },
     BASIC: { shell: '#cfc7b4', face: '#2b3a6a', ink: '#f4f1e8' },
   };
-  const AUTHOR = { aurora: 'United Northern Computers', frosthall: 'United Northern Computers', cloudberry: 'United Northern Computers', fellrider: 'United Northern Computers', design_starter: '8-Bit Monthly' };
+  const AUTHOR = { frosthall: 'United Northern Computers', cloudberry: 'United Northern Computers', fellrider: 'United Northern Computers', design_starter: '8-Bit Monthly' };
   const faces = new Map(); // key -> Promise<url>
   let shots = Promise.resolve();
   const bundledCas = (b) => ({
-    title: b.title, author: AUTHOR[b.id] || '', about: b.about, machine: { ram: b.ram, board: b.board, niece: !!b.niece },
+    title: b.title, author: AUTHOR[b.id] || '', about: b.about, machine: { ram: b.ram, niece: !!b.niece },
     files: { [b.file]: b.source }, main: b.file, extra: {}, created: null,
   });
   const bundled = {
@@ -950,7 +962,7 @@ msg:    .text "HELLO, UNC 64!"
     async list() {
       return window.UNC_BUNDLED.map((b) => ({
         id: b.id, group: b.group, title: b.title, author: AUTHOR[b.id] || '', about: b.about,
-        machine: { ram: b.ram, board: b.board, niece: !!b.niece }, hasFiles: true, kind: /\.bas$/.test(b.file) ? 'basic' : 'asm',
+        machine: { ram: b.ram, niece: !!b.niece }, hasFiles: true, kind: /\.bas$/.test(b.file) ? 'basic' : 'asm',
         face: () => bundledFace(b),
       }));
     },
@@ -997,7 +1009,7 @@ msg:    .text "HELLO, UNC 64!"
       const basic = C.programs(c.tape)[0]?.type === 2;
       afterTyping = () => { wasm.press_play(); pendingRun = basic; updateDeck(true); };
       focusScreen();
-      const warn = c.machine.board && !wasm.set_video_board ? ' It needs the video board.' : c.machine.niece && !wasm.set_niece ? ' It needs the NIECE.' : '';
+      const warn = c.machine.board ? ' It was written for the video board, which the machine no longer has.' : c.machine.niece && !wasm.set_niece ? ' It needs the NIECE.' : '';
       toast(`${c.title} is in the deck: LOAD, PLAY.${warn}`);
     },
     async open(src, id) {
@@ -1055,7 +1067,7 @@ msg:    .text "HELLO, UNC 64!"
       title: $('s-title').value.trim() || 'UNTITLED',
       author: $('s-author').value.trim(),
       about: $('s-about').value.trim(),
-      machine: { ram: Number(dlg.querySelector('[name=s-ram]:checked').value), board: $('s-board').checked, niece: $('s-niece').checked },
+      machine: { ram: Number(dlg.querySelector('[name=s-ram]:checked').value), niece: $('s-niece').checked, aunt: $('s-aunt').checked },
       files: $('s-src').checked ? { ...project.files } : null,
       main: $('s-src').checked ? project.main : null,
       extra: { ...project.extra },
@@ -1076,8 +1088,8 @@ msg:    .text "HELLO, UNC 64!"
     $('s-author').value = project.author || pref.get('author', '');
     $('s-about').value = project.about || '';
     dlg.querySelector(`[name=s-ram][value="${project.machine.ram === 64 ? 64 : 16}"]`).checked = true;
-    $('s-board').checked = !!project.machine.board;
     $('s-niece').checked = !!project.machine.niece;
+    $('s-aunt').checked = project.machine.aunt !== false;
     $('s-err').textContent = '';
     $('s-lib').classList.toggle('go', mode === 'save');
     $('s-png').classList.toggle('go', mode === 'export');
@@ -1087,7 +1099,7 @@ msg:    .text "HELLO, UNC 64!"
     (mode === 'export' ? $('s-png') : $('s-title')).focus();
     if (!$('s-title').value) $('s-title').focus();
   }
-  ['s-title', 's-author', 's-about', 's-board', 's-niece', 's-src'].forEach((id) => $(id).addEventListener('input', drawPreview));
+  ['s-title', 's-author', 's-about', 's-niece', 's-aunt', 's-src'].forEach((id) => $(id).addEventListener('input', drawPreview));
   dlg.querySelectorAll('[name=s-ram]').forEach((r) => r.addEventListener('change', drawPreview));
   // The dialog's cassette, with its tape: null (and the reason shown) if it doesn't build.
   async function makeCassette() {
@@ -1133,6 +1145,26 @@ msg:    .text "HELLO, UNC 64!"
     downloadBytes(c.tape, C.fileName(c.title, '.tap'), 'application/octet-stream');
     dlg.close();
     toast(`Downloaded ${C.fileName(c.title, '.tap')}. ${GAME_HINT}`);
+  });
+  // Submit to the Portal: the cassette is downloaded, and the Portal's Submit page opens and is
+  // handed the same file (it asks for it once it's ready), as if it had been dropped there.
+  // The page is opened first, while the click still counts as yours.
+  $('s-portal').addEventListener('click', async () => {
+    const page = window.open(`${LIB.PORTAL}submit/#from-machine-room`, '_blank');
+    const c = await makeCassette();
+    if (!c) { page?.close(); return; }
+    const png = await cassettePNG(c);
+    const name = C.fileName(c.title, '.unc.png');
+    downloadBytes(png, name, 'image/png');
+    dlg.close();
+    if (!page) { toast(`Downloaded ${name}. Drop it on unc64.com/portal/submit to send it in.`); return; }
+    const hand = (e) => {
+      if (e.source !== page || e.origin !== new URL(LIB.PORTAL).origin || e.data?.type !== 'unc64-portal-ready') return;
+      window.removeEventListener('message', hand);
+      page.postMessage({ type: 'unc64-cassette', png, name }, e.origin);
+    };
+    window.addEventListener('message', hand);
+    toast(`Downloaded ${name}, and the Portal's Submit page has it too: label it there and send it in.`);
   });
   $('b-save').addEventListener('click', () => openSave('save'));
   $('b-export').addEventListener('click', () => openSave('export'));
@@ -1360,6 +1392,16 @@ msg:    .text "HELLO, UNC 64!"
     breakpoints: (path, lines) => setSourceBreakpoints(path, lines),
     isBasic,
   });
+  // ?portal=ID: a cassette from the Portal (its page's "Open in the Machine Room"): into the
+  // deck and running, with its source a click away. Your project is left as it is.
+  const wanted = new URLSearchParams(location.search).get('portal');
+  if (wanted && /^[a-z0-9-]+$/.test(wanted)) {
+    host.run(LIB.online, wanted).then(async () => {
+      const c = await LIB.online.get(wanted);
+      if (c.files) toast(`${c.title} is in the deck, from the Portal.`, [['Open its source', () => host.open(LIB.online, wanted).catch((err) => toast(err.message))]]);
+    }).catch((err) => toast(`The Portal: ${err.message}`));
+  }
+
   // for tests: the pieces a script needs to drive it
   window.uncRoom = {
     get project() { return project; }, wasm, bench, C, LIB, buildTape, run, insertTape, picture, showBrowse, setProject,

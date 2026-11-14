@@ -1,7 +1,8 @@
-//! The NIECE, the Northern Image Engine, Colour Experimental (the chip is marked NV-1, for
-//! Northern Video): a prototype graphics chip, not
-//! part of System Rev A. The spec is docs/prg/programmers-reference-guide.md, chapter 17, and
-//! Appendix B for the registers (`$C100-$C14F`, `reg` here holds the offsets).
+//! The NIECE, the Northern Image Engine, Colour Extension (the chip is marked NV-1, for
+//! Northern Video): the graphics chip. A part of its own, like the 64K memory expansion: a
+//! machine can have either, and a fully expanded one, the UNC 64, has both. The spec is
+//! docs/prg/programmers-reference-guide.md, chapter 15, and Appendix B for the registers
+//! (`$C100-$C14F`, `reg` here holds the offsets).
 //!
 //! It has 64K of memory of its own, the **sheet**: 256 x 512 pixels of 4 bits, a colour
 //! (0-15, Appendix A) each. The top of the sheet is two **pages** of 160 x 100, one shown

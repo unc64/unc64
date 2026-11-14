@@ -1,6 +1,6 @@
 // UNC assembly for the web tools: the language reference, a line tokenizer, cycle costs,
 // hover docs and a static highlighter. Shared by the Machine Room's editor (web/editor.js)
-// and the showcase's "Read the source" on unc64.com. A plain script: it sets
+// (once, the showcase's "Read the source" on unc64.com too). A plain script: it sets
 // window.UNCLang, so it works the same from a file, a module or an inlined preview.
 //
 // The reference comes from the emulator when it can: UNCLang.fromWasm(exports) reads
@@ -8,7 +8,6 @@
 // it. Otherwise, and for anything that's missing there, it uses the copy below, which
 // follows the manual (Appendix B, C and D) and crates/unc-core/src/isa.rs.
 //
-// The website's showcase keeps a copy of this file: edit this one, then copy it over.
 (function () {
   'use strict';
 

@@ -335,7 +335,7 @@ fn the_keys_1_2_3_choose_the_columns() {
     assert_eq!(h.get("MODE"), 2);
 }
 
-/// The claim in the source's header and in chapter 17: at 1 MHz, with a ray for every
+/// The claim in the source's header and in chapter 15: at 1 MHz, with a ray for every
 /// other column, the hall is drawn 15 to 25 times a second, and no command is ever lost.
 #[test]
 fn pictures_a_second_at_1_mhz() {

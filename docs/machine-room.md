@@ -44,8 +44,10 @@ Tab types a tab, Shift+Tab unindents, Ctrl+F finds (`/` in Vim), Ctrl+/ comments
 The monitor shows the machine at 50 frames a second. Each refresh of your screen runs the frames the machine is owed, at most two, so the picture keeps time without bursts; on a 60 Hz screen, one refresh in six shows no new frame. Click it, and your keys go to the machine: the cursor keys as codes 28-31, Ctrl+C as STOP, and every key's release to HELD (chapter 11). In the top bar:
 
 - **RAM**: 16K (UNC 16) or 64K (with the expansion).
-- **Video board**: the board of chapter 15 in, or out. It goes in or out as the machine is switched on, so changing it (or RAM) switches the machine off and on.
-- **NIECE**: the prototype graphics chip of chapter 17 in, or out, the same way. No UNC has one unless you tick this.
+- **NIECE**: the graphics chip of chapter 15 in, or out.
+- **AUNT**: the sound chip of chapter 12 in, or out. It's in unless you take it out.
+
+  Each is a part of its own, so any mix is a machine you can build; a UNC 64 is 64K with the NIECE. They go in or out as the machine is switched on, so changing one switches the machine off and on.
 - **Colour**: a colour monitor, or the monochrome one, in the phosphor you pick (green, amber, paper white, or the blue screen).
 - **Mute**: silence the speaker. Browsers allow sound only after you click, tap or press a key, so it starts at your first one. On an iPhone or an iPad it plays with the silent switch on (Safari 17 and later; before that, switch it off or use headphones).
 
@@ -79,7 +81,7 @@ The deck under the monitor is the deck of chapter 14. The cassette in it shows b
 
 - **Fast load**: the next byte arrives as soon as `LOAD` has taken the last, so a game loads in a moment. `LOAD` runs exactly as usual, stripes and all; without it, the tape gives about 600 bytes a second, as on the real deck.
 - **Tape it** puts your project on a tape, as `unc-asm --tape` would, named after its title, and puts it in the deck.
-- **Run** in Browse puts a cassette in the deck, switches the machine on with what the cassette asks for (RAM, the video board, the NIECE), types `LOAD` and presses Play for you.
+- **Run** in Browse puts a cassette in the deck, switches the machine on with what the cassette asks for (RAM, the NIECE, the AUNT), types `LOAD` and presses Play for you.
 
 - **Blank tape** puts a blank C60 in the deck, and **Rec** is the RECORD key (it takes PLAY down with it). Type `SAVE "NAME"` at `READY.`; `SAVE` says `PRESS RECORD AND PLAY ON TAPE`; press Rec. When you eject a tape with something new recorded on it, the Machine Room offers to **keep it as a cassette** in your library, named after the program, with a blank tape's face.
 
@@ -93,13 +95,15 @@ A **cassette** is how a program travels: a `.unc.png` file, a picture of the tap
 
 For a BASIC project, the tape is a BASIC program (type 2, chapter 14): the Machine Room types the listing into a machine of its own and puts what BASIC made of it on the tape, exactly what `SAVE` would record. On the command line, `unc-asm --basic prog.bas --tape prog.tap` makes the same tape.
 
+**Submit to the Portal**, in the same box, is for when it's ready for other people: it downloads the `.unc.png` and opens the Portal's Submit page (unc64.com/portal/submit) with the same cassette handed over, where you say what kind of thing it is and send it in. A cassette's page on the Portal has **Open in the Machine Room**: that's this page with `?portal=` and the cassette's name, which puts it in the deck and runs it, with its source a click away.
+
 ## Browse
 
 **Browse** shows cassettes as pictures on a shelf, with a search box, in three sections:
 
-- **Bundled**: the games (SNAKE, STACK, ORBIT, DEBUG, AURORA, the video board's demonstration cassette, and CLOUDBERRY, FELLRIDER and FROSTHALL, for the NIECE), the Machine Room's samples, and BASIC to type in, among them the Game Design Corner starter from *8-Bit Monthly*. They come as source, so their pictures are taken by running them, the first time you look.
+- **Bundled**: the games (SNAKE, STACK, ORBIT and DEBUG, for the UNC 16, and CLOUDBERRY, FELLRIDER and FROSTHALL, which need 64K and the NIECE), the Machine Room's samples, and BASIC to type in, among them the Game Design Corner starter from *8-Bit Monthly*. They come as source, so their pictures are taken by running them, the first time you look.
 - **Yours**: the cassettes you've saved or brought in. They're kept in this browser (in its own storage, not your files), so Download the ones you want to keep for good. A browser that won't keep anything for a page opened from your disk (some private windows do this) keeps them until you close the page, and says so.
-- **Online**: coming later, a library of what other people have made, in the same file format.
+- **Online**: the Portal (unc64.com/portal), what other people have made, in the same file format. Its list is fetched when you open Browse, and a cassette when you Run, Open or Download it; nothing of yours is sent. Offline, the section says so, and the rest of Browse works as ever.
 
 Each cassette has **Run** (into the deck, and loaded), **Open** (its project into the editor, if it has the source) and **Download**; yours also have **Duplicate** and **Delete**. Drop `.unc.png` and `.tap` files anywhere on the page to put them in Yours.
 
@@ -114,6 +118,10 @@ To play a cassette in the game: turn on **My tapes** in the game's pause menu (S
 | Linux | `~/Documents/UNC 64/Cassettes` (the system's Documents folder) |
 
 **Open the folder**, beside My tapes, opens it. Your cassettes turn up in the shoebox on the desk: put one in the deck, `LOAD`, PLAY.
+
+**The Portal**, under it, lists the cassettes on unc64.com/portal: pick one and it's fetched into the folder and is in the shoebox, and the game offers to put it in the deck. It's the only time the game goes online, and only when you press it.
+
+Going the other way, a program you `SAVE` in the game lands in the folder as a `.tap`. Drop that on the Portal's Submit page and it becomes a cassette, with a label and a picture of its screen.
 
 ## The command-line assembler
 

@@ -1,4 +1,4 @@
-//! The NIECE, the prototype graphics chip (manual chapter 17): its registers, its queue and
+//! The NIECE, the graphics chip (manual chapter 15): its registers, its queue and
 //! what each command costs, its commands pixel by pixel, the depth line, FLIP and the beam,
 //! its arithmetic, and where its page shows in the picture.
 

@@ -10,7 +10,7 @@
 // unCt chunk and the same tape, byte for byte; Export downloads it; the game's test cassette
 // (tests/cassettes/hello.unc.png) reads, and its tape is tests/cassettes/hello.tap; a .tap
 // dropped on the page joins the library and loads from the deck with LOAD and PLAY; a BASIC
-// project is typed in and runs; AURORA runs from Browse with the video board, to its title;
+// project is typed in and runs;
 // FROSTHALL runs from Browse with the NIECE, to its hall;
 // a BASIC project saves as a type-2 cassette that LOADs and RUNs; SAVE onto a blank tape with
 // RECORD, ejected and kept, joins the library and loads; no errors in the console. --shots saves screenshots at 1440 x 900 and 390 wide.
@@ -45,6 +45,14 @@ const SCREEN = `(() => { const w = window.uncRoom.wasm; let s = '';
 
 async function open(browser, url, viewport = { width: 1440, height: 900 }) {
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
+  // Browse asks the Portal (unc64.com/portal) for its shelf: here it gets the one in this
+  // repository, or an empty shelf where there is none. Nothing else leaves the machine.
+  await ctx.route('https://unc64.com/portal/**', (r) => {
+    const f = path.join(ROOT, 'site', 'portal', new URL(r.request().url()).pathname.replace(/^\/portal\//, ''));
+    if (fs.existsSync(f) && fs.statSync(f).isFile()) return r.fulfill({ body: fs.readFileSync(f), contentType: f.endsWith('.json') ? 'application/json' : 'image/png', headers: { 'access-control-allow-origin': '*' } });
+    if (f.endsWith('index.json')) return r.fulfill({ json: { format: 'unc64-portal', version: 1, cassettes: [] }, headers: { 'access-control-allow-origin': '*' } });
+    return r.fulfill({ status: 404, body: '' });
+  });
   const page = await ctx.newPage();
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -70,7 +78,7 @@ async function main() {
     console.log(`     (Yours is kept in ${keeps ? 'IndexedDB' : 'memory: this browser won\'t keep it on file://'})`);
 
     // a sample: open the bundled HELLO and run it
-    await page.evaluate(() => { const b = window.UNC_BUNDLED.find((x) => x.id === 'hello'); window.uncRoom.setProject({ title: 'HELLO', author: '', about: '', machine: { ram: 16, board: false }, files: { 'hello.s': b.source }, main: 'hello.s', extra: {}, created: null, lib: null }); });
+    await page.evaluate(() => { const b = window.UNC_BUNDLED.find((x) => x.id === 'hello'); window.uncRoom.setProject({ title: 'HELLO', author: '', about: '', machine: { ram: 16 }, files: { 'hello.s': b.source }, main: 'hello.s', extra: {}, created: null, lib: null }); });
     await page.click('#b-run');
     ok(await screenHas(page, 'HELLO FROM THE UNC 64!'), 'a sample assembles and runs');
     await page.waitForFunction(() => document.getElementById('status').textContent === 'HALTED', null, { timeout: 5000 }).catch(() => {});
@@ -88,7 +96,7 @@ async function main() {
     // breakpoints in the source: dots in the gutter, clicked; a dot on a line with no code
     // moves to the next that has some; Run stops there and lights the line; stepping into a
     // subroutine in another file opens it; the disassembly's dot is the same breakpoint
-    await page.evaluate(() => window.uncRoom.setProject({ title: 'BREAKS', author: '', about: '', machine: { ram: 16, board: false },
+    await page.evaluate(() => window.uncRoom.setProject({ title: 'BREAKS', author: '', about: '', machine: { ram: 16 },
       files: { 'main.s': '        .org $0800\nstart:  LDX #0\nloop:   INX\n        JSR bump\n        CPX #10\n        BNE loop\n        HLT\n        .include "sub.s"\n',
         'sub.s': '; the subroutine, in a file of its own\nbump:   INC $10\n        RTS\n' }, main: 'main.s', extra: {}, created: null, lib: null }));
     const gutterClick = async (line) => {
@@ -114,7 +122,7 @@ async function main() {
     await page.waitForFunction(() => /BREAK AT \$0802/.test(document.getElementById('status').textContent), null, { timeout: 5000 }).catch(() => {});
     await page.evaluate(() => document.querySelector('#dis tr[data-addr="2050"]')?.click());
     ok(await dots() === '[2]' && await page.evaluate(() => !window.uncRoom.wasm.breakpoint(0x0802)), 'clearing it in the disassembly clears the dot', await dots());
-    await page.evaluate(() => { const b = window.UNC_BUNDLED.find((x) => x.id === 'hello'); window.uncRoom.setProject({ title: 'HELLO', author: '', about: '', machine: { ram: 16, board: false }, files: { 'hello.s': b.source }, main: 'hello.s', extra: {}, created: null, lib: null }); });
+    await page.evaluate(() => { const b = window.UNC_BUNDLED.find((x) => x.id === 'hello'); window.uncRoom.setProject({ title: 'HELLO', author: '', about: '', machine: { ram: 16 }, files: { 'hello.s': b.source }, main: 'hello.s', extra: {}, created: null, lib: null }); });
 
     // an error goes to Problems
     await page.evaluate(() => { window.uncEditor.view.dispatch({ changes: { from: 0, insert: '        LDQ #1\n' } }); });
@@ -144,7 +152,7 @@ async function main() {
       const again = await R.C.toPNG(c, document.createElement('canvas'));
       const chunk2 = R.C.chunks(again).find((x) => x.type === 'unCt');
       const same = chunk.data.length === chunk2.data.length && chunk.data.every((v, i) => v === chunk2.data[i]);
-      const t = R.buildTape(R.project.files, R.project.main, 'Hello test', { ram: 16, board: false });
+      const t = R.buildTape(R.project.files, R.project.main, 'Hello test', { ram: 16 });
       const tapeSame = t.ok && t.tape.length === c.tape.length && t.tape.every((v, i) => v === c.tape[i]);
       const img = await new Promise((res) => { const i = new Image(); i.onload = () => res([i.naturalWidth, i.naturalHeight]); i.onerror = () => res(null); i.src = URL.createObjectURL(new Blob([png], { type: 'image/png' })); });
       const json = JSON.parse(new TextDecoder().decode(chunk.data));
@@ -199,7 +207,7 @@ async function main() {
 
     // BASIC: typed in, then RUN
     await page.evaluate(() => {
-      window.uncRoom.setProject({ title: 'BASIC TEST', author: '', about: '', machine: { ram: 16, board: false }, files: { 'main.bas': '# a note, not typed\n10 PRINT "SUM";\n20 S=0:FOR I=1 TO 10:S=S+I:NEXT\n30 PRINT S\n' }, main: 'main.bas', extra: {}, created: null, lib: null });
+      window.uncRoom.setProject({ title: 'BASIC TEST', author: '', about: '', machine: { ram: 16 }, files: { 'main.bas': '# a note, not typed\n10 PRINT "SUM";\n20 S=0:FOR I=1 TO 10:S=S+I:NEXT\n30 PRINT S\n' }, main: 'main.bas', extra: {}, created: null, lib: null });
     });
     await page.click('#b-run');
     ok(await screenHas(page, 'SUM55', 15000), 'a BASIC project is typed in and runs');
@@ -267,21 +275,7 @@ async function main() {
     await page.waitForFunction(() => !window.uncRoom.typing && window.uncRoom.wasm.peek(0x0204) !== 0, null, { timeout: 15000 }).catch(() => {});
     ok(await page.evaluate(() => window.uncRoom.wasm.peek(0x0204)) !== 0, 'and RUNs (BASIC is running)');
 
-    // AURORA from Browse, with the video board, to its title
-    await page.click('#b-browse');
-    await page.waitForSelector('[data-src="bundled"] [data-id="aurora"] [data-act="run"]');
-    await page.click('[data-src="bundled"] [data-id="aurora"] [data-act="run"]');
-    const aurora = await page.waitForFunction(() => {
-      const w = window.uncRoom.wasm;
-      if (!w.has_video_board()) return false;
-      const base = w.peek(0xC0A0) << 8;
-      let shown = 0;
-      for (let i = 0; i < 32; i++) if (w.peek(base + i * 4 + 3) & 0x80) shown++;
-      return shown >= 6 ? shown : false;
-    }, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => 0);
-    ok(aurora > 0 && await page.isChecked('#board'), 'AURORA runs from Browse with the video board, to its title', `${aurora} sprites on`);
-
-    // FROSTHALL from Browse, with the NIECE: its page shown, in sixteen colours
+    // FROSTHALL from Browse, with 64K and the NIECE: its page shown, in sixteen colours
     await page.click('#b-browse');
     await page.waitForSelector('[data-src="bundled"] [data-id="frosthall"] [data-act="run"]');
     await page.click('[data-src="bundled"] [data-id="frosthall"] [data-act="run"]');
@@ -293,19 +287,31 @@ async function main() {
       for (let i = 0; i < 168 * 320; i++) if (px[i] & 16) colours.add(px[i] & 15);
       return colours.size >= 5 ? colours.size : false;
     }, null, { timeout: 60000 }).then((h) => h.jsonValue(), () => 0);
-    ok(hall > 0 && await page.isChecked('#niece'), 'FROSTHALL runs from Browse with the NIECE, to its hall', `${hall} colours on the page`);
+    ok(hall > 0 && await page.isChecked('#niece') && await page.isChecked('#aunt') && await page.inputValue('#ram') === '64', 'FROSTHALL runs from Browse with 64K and the NIECE, to its hall', `${hall} colours on the page`);
 
     // Browse: faces for the bundled cassettes
     await page.click('#b-browse');
     await page.waitForFunction(() => document.querySelectorAll('[data-src="bundled"] img.on').length >= 5, null, { timeout: 30000 }).catch(() => {});
     const facesOn = await page.$$eval('[data-src="bundled"] img.on', (l) => l.length);
     ok(facesOn >= 5, 'Browse shows the bundled cassettes\' faces', `${facesOn}`);
+    // Online: the Portal's shelf, and a cassette from it into the deck
+    const shelf = path.join(ROOT, 'site', 'portal', 'index.json');
+    if (fs.existsSync(shelf)) {
+      const want = JSON.parse(fs.readFileSync(shelf, 'utf8')).cassettes;
+      const online = await page.$$eval('[data-src="online"] .br-card', (l) => l.length);
+      ok(online === want.length, 'Browse, Online shows the Portal\'s cassettes', `${online}`);
+      const first = want.find((c) => c.lang !== 'basic' && !c.machine.niece) || want[0];
+      await page.click(`[data-src="online"] [data-id="${first.id}"] [data-act=run]`);
+      const got = await page.waitForFunction((t) => window.uncRoom.deck && window.uncRoom.deck.cassette.title === t && !window.uncRoom.typing && window.uncRoom.wasm.tape_counter() >= window.uncRoom.wasm.tape_length(), first.title, { timeout: 30000 }).then(() => true, () => false);
+      ok(got, 'Run on one of them puts it in the deck and loads it', first.title);
+      await page.click('#b-browse');
+    }
     if (shotsDir) {
       fs.mkdirSync(shotsDir, { recursive: true });
       await page.waitForTimeout(2500);
       await page.screenshot({ path: path.join(shotsDir, 'browse-1440.png') });
       await page.keyboard.press('Escape');
-      await page.evaluate(() => { const b = window.UNC_BUNDLED.find((x) => x.id === 'snake'); window.uncRoom.setProject({ title: 'SNAKE', author: '', about: b.about, machine: { ram: 16, board: false }, files: { 'snake.s': b.source }, main: 'snake.s', extra: {}, created: null, lib: null }); });
+      await page.evaluate(() => { const b = window.UNC_BUNDLED.find((x) => x.id === 'snake'); window.uncRoom.setProject({ title: 'SNAKE', author: '', about: b.about, machine: { ram: 16 }, files: { 'snake.s': b.source }, main: 'snake.s', extra: {}, created: null, lib: null }); });
       await page.click('#b-run');
       await page.waitForTimeout(2000);
       await page.click('[data-pane="debugger"]');

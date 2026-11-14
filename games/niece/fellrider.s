@@ -1,6 +1,6 @@
-; FELLRIDER: a moped over the fells. For the UNC 64 with 64K and the NIECE, the
-; prototype graphics chip marked NV-1 (manual chapter 17). 64K because the tables are big.
-; United Northern Computers' laboratory, 1985. Needs 64K and the NIECE; no video board.
+; FELLRIDER: a moped over the fells, for the UNC 64: it needs the 64K memory expansion
+; (64K because the tables are big) and the NIECE, the graphics chip (manual chapter 15).
+; United Northern Computers, 1985. A 64K cassette.
 ;
 ; A summer on the fells with fifty cubic centimetres. Ride the moped as far as you can
 ; over hills that get rougher the further you go. Pick up the coins, and the gas cans
@@ -103,7 +103,7 @@
 ;   the ground's picture is a strip of the sheet 256 columns wide, a ring like the
 ;     heights. A new column is five FILLs on the sheet (SHEET), one a pattern; the
 ;     whole of the ground on the page is then ONE BLIT a frame, whose source starts at
-;     the camera's column and runs off the sheet's edge and round (chapter 17)
+;     the camera's column and runs off the sheet's edge and round (chapter 15)
 ;   two more strips behind it, drawn by the chip itself at the start from the same sine
 ;     tables: the sky with the far fells and their snow, and the near fells. Each is
 ;     one BLIT a frame, moved an eighth and a quarter as fast as the ground
@@ -163,7 +163,7 @@ V3      = $C0D0
 CUTOFF  = $C0D8
 FILTER  = $C0D9
 VOLUME  = $C0DA
-NCTRL   = $C100             ; the NIECE (chapter 17)
+NCTRL   = $C100             ; the NIECE (chapter 15)
 NSTATUS = $C101
 NGO     = $C103
 NVADDR  = $C104

@@ -1,6 +1,6 @@
-; CLOUDBERRY: a platformer that scrolls, for the UNC 64 (64K) with the NIECE, the
-; prototype graphics chip of chapter 17, the one marked NV-1. No video board needed.
-; United Northern Computers' laboratory, 1985. Not for sale.
+; CLOUDBERRY: a platformer that scrolls, for the UNC 64: it needs the 64K memory
+; expansion and the NIECE, the graphics chip (manual chapter 15).
+; United Northern Computers, 1985.
 ;
 ; Late summer on the fells, and the cloudberries are ripe. You're out with a pail,
 ; across the bog on its duckboards, through the birch wood and over the stones, to
@@ -135,7 +135,7 @@ SAW     = $02
 PULSE   = $04
 NOISE   = $08
 DRAWN   = $10           ; the wave table
-NCTRL   = $C100         ; the NIECE (chapter 17)
+NCTRL   = $C100         ; the NIECE (chapter 15)
 NSTATUS = $C101
 NGO     = $C103
 NVADDR  = $C104

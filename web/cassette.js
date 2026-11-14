@@ -7,7 +7,7 @@
 //   UNCCassette.drawFace(canvas, opts) -> draws the face (1004 x 638)
 //   UNCCassette.programs(tape)         -> what's on a tape: [{ name, type, load, length, entry, ok }]
 //
-// A cassette in memory: { title, author, about, machine: { ram, board, niece }, tape: Uint8Array,
+// A cassette in memory: { title, author, about, machine: { ram, niece, aunt }, tape: Uint8Array,
 // files: { path: text } | null, main, created, extra: { unknown fields, kept }, png: the
 // file's bytes when it came from one }.
 window.UNCCassette = (() => {
@@ -127,7 +127,9 @@ window.UNCCassette = (() => {
       title: String(j.title || programs(tape)[0]?.name || 'UNTITLED'),
       author: String(j.author || ''),
       about: String(j.about || ''),
-      machine: { ram: m.ram === 64 ? 64 : 16, board: !!m.board, niece: !!m.niece },
+      // (`aunt` is only there when the AUNT was taken out. An older cassette that asked for
+      // the video board keeps the note, so the Machine Room can say the board is gone.)
+      machine: { ram: m.ram === 64 ? 64 : 16, niece: !!m.niece, ...(m.aunt === false ? { aunt: false } : {}), ...(m.board ? { board: true } : {}) },
       tape,
       files,
       main: files && files[j.main] !== undefined ? j.main : files ? Object.keys(files)[0] : null,
@@ -142,7 +144,7 @@ window.UNCCassette = (() => {
   function fromTape(tape) {
     const first = programs(tape)[0];
     if (!first || first.ok === false && !first.name) throw new Error('not a UNC tape');
-    return { title: first.name || 'TAPE', author: '', about: '', machine: { ram: 16, board: false }, tape, files: null, main: null, created: null, extra: {}, png: null, blank: true };
+    return { title: first.name || 'TAPE', author: '', about: '', machine: { ram: 16 }, tape, files: null, main: null, created: null, extra: {}, png: null, blank: true };
   }
 
   function read(bytes, filename = '') {
@@ -161,8 +163,9 @@ window.UNCCassette = (() => {
   // ---------- writing ----------
   function toJSON(c) {
     const j = { format: FORMAT, version: VERSION, title: c.title, author: c.author || '', about: c.about || '' };
-    j.machine = { ram: c.machine?.ram === 64 ? 64 : 16, board: !!c.machine?.board };
+    j.machine = { ram: c.machine?.ram === 64 ? 64 : 16 };
     if (c.machine?.niece) j.machine.niece = true;
+    if (c.machine?.aunt === false) j.machine.aunt = false;
     j.tape = toBase64(c.tape);
     if (c.files && Object.keys(c.files).length) { j.files = c.files; j.main = c.main; }
     j.created = c.created || new Date().toISOString().replace(/\.\d+Z$/, 'Z');
@@ -214,7 +217,7 @@ window.UNCCassette = (() => {
     return t.trimEnd() + '…';
   }
 
-  // opts: { title, author, about, machine: { ram, board }, screen: a canvas or null,
+  // opts: { title, author, about, machine: { ram, niece }, screen: a canvas or null,
   //         style: { shell, face, ink } (default: from the title), blank: a blank tape's label }
   function drawFace(canvas, o) {
     canvas.width = W;
@@ -337,12 +340,11 @@ window.UNCCassette = (() => {
       ctx.textAlign = 'right';
       const ram = `${o.machine?.ram === 64 ? 64 : 16}K`;
       ctx.font = `40px ${FONTS.display}`;
-      const cards = [o.machine?.board ? 'VIDEO BOARD' : '', o.machine?.niece ? 'NIECE' : ''].filter(Boolean).join(' + ');
-      ctx.fillText(ram, 902, HUB + (cards ? 0 : 16));
-      if (cards) {
+      ctx.fillText(ram, 902, HUB + (o.machine?.niece ? 0 : 16));
+      if (o.machine?.niece) {
         ctx.font = `20px ${FONTS.display}`;
         ctx.letterSpacing = '1px';
-        ctx.fillText(`+ ${cards}`, 904, HUB + 32);
+        ctx.fillText('+ NIECE', 904, HUB + 32);
         ctx.letterSpacing = '0px';
       }
       ctx.textAlign = 'left';

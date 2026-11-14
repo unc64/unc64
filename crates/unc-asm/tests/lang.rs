@@ -54,24 +54,8 @@ fn the_io_registers_are_the_machines() {
         ("SHIFT_OUT", io::SHIFT_OUT),
         ("SHIFT_FLIP", io::SHIFT_FLIP),
         ("KEYS", io::KEYS),
-        ("SPRTAB", io::SPRTAB),
-        ("SPRBANK", io::SPRBANK),
-        ("SPRHIT", io::SPRHIT),
-        ("SPRHITBG", io::SPRHITBG),
-        ("SPRLINE", io::SPRLINE),
-        ("SCROLLX", io::SCROLLX),
-        ("SCROLLY", io::SCROLLY),
-        ("LAYER", io::LAYER),
-        ("LAYERPAGE", io::LAYERPAGE),
-        ("LAYERSX", io::LAYERSX),
-        ("LAYERSY", io::LAYERSY),
-        ("COLOURMODE", io::COLOURMODE),
-        ("COLOUR1", io::COLOUR1),
         ("TEXTROWS", io::TEXTROWS),
         ("CASE", io::CASE),
-        ("COLOUR2", io::COLOUR2),
-        ("COLOUR3", io::COLOUR3),
-        ("BOARD", io::BOARD),
         ("CUTOFF", io::CUTOFF),
         ("FILTER", io::FILTER),
         ("VOLUME", io::VOLUME),
@@ -82,7 +66,7 @@ fn the_io_registers_are_the_machines() {
     ] {
         assert_eq!(at(name), addr, "{name}");
     }
-    // the NIECE's (chapter 17): a prototype, not Rev A, but in the book
+    // the NIECE's (chapter 15)
     use unc_core::niece::{BASE, reg};
     for (name, r) in [
         ("NCTRL", reg::NCTRL),
@@ -121,7 +105,7 @@ fn the_io_registers_are_the_machines() {
     ] {
         assert_eq!(at(name), BASE + r, "{name}");
     }
-    assert_eq!(l.io.len(), 84, "a register in the manual the test doesn't know");
+    assert_eq!(l.io.len(), 68, "a register in the manual the test doesn't know");
     let table = l.io.iter().find(|r| r.name == "WAVETABLE").unwrap();
     assert_eq!(table.end, io::WAVETABLE + 31);
     let keys = l.io.iter().find(|r| r.name == "KEYS").unwrap();
@@ -190,7 +174,7 @@ fn json_has_every_part() {
 /// Every .s file in the repository, with its path.
 fn sources() -> Vec<(String, String)> {
     let mut out = Vec::new();
-    for dir in ["games", "games/board", "games/niece", "rom", "web/samples"] {
+    for dir in ["games", "games/niece", "rom", "web/samples"] {
         let Ok(rd) = std::fs::read_dir(root(dir)) else { continue };
         for e in rd.flatten() {
             let p = e.path();

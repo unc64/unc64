@@ -1,5 +1,5 @@
 //! FELLRIDER (games/niece/fellrider.s): a moped with real two-dimensional physics over
-//! scrolling fells, for the NIECE (manual chapter 17). Ridden through scripted keys on a
+//! scrolling fells, for the NIECE (manual chapter 15). Ridden through scripted keys on a
 //! booted 64K machine with the chip in; its state is read from the addresses the source's
 //! symbol table gives.
 //!
@@ -8,7 +8,7 @@
 //! is there to answer: whether a 1 MHz processor can do that, a scrolling ground and the
 //! drawing at 50 frames a second. So a meter watches every frame: the processor's work
 //! (`work` to `endwork`, split at `terrain` and `draw`), the chip's drawing (every command
-//! written to NGO, costed as chapter 17 costs it), and that each FLIP came at the very next
+//! written to NGO, costed as chapter 15 costs it), and that each FLIP came at the very next
 //! vertical blank.
 
 use unc_core::machine::CYCLES_PER_FRAME;

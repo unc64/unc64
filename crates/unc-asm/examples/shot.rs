@@ -2,7 +2,7 @@
 //! picture as a PPM, colours as the colour monitor shows them (manual Appendix A).
 //!
 //! `cargo run --release -p unc-asm --example shot -- SOURCE OUT.ppm [--frames N] [--ram 16|64]
-//! [--board] [--niece] [--press FRAME:CODE:FRAMES]... [--every N]`
+//! [--niece] [--press FRAME:CODE:FRAMES]... [--every N]`
 //!
 //! `--press 50:32:5` holds the key with code 32 (space) down from frame 50 for 5 frames.
 //! `--every N` also writes OUT-0000.ppm, OUT-000N.ppm ... as it goes.
@@ -40,7 +40,7 @@ pub fn ppm(m: &Machine) -> Vec<u8> {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (mut files, mut frames, mut ram, mut board, mut niece, mut every) = (Vec::new(), 100u32, RamSize::K16, false, false, 0u32);
+    let (mut files, mut frames, mut ram, mut niece, mut every) = (Vec::new(), 100u32, RamSize::K16, false, 0u32);
     let mut presses: Vec<(u32, u8, u32)> = Vec::new();
     let mut i = 0;
     while i < args.len() {
@@ -49,7 +49,6 @@ fn main() {
             "--frames" => { frames = next.parse().expect("--frames N"); i += 1 }
             "--every" => { every = next.parse().expect("--every N"); i += 1 }
             "--ram" => { ram = if next == "64" { RamSize::K64 } else { RamSize::K16 }; i += 1 }
-            "--board" => board = true,
             "--niece" => niece = true,
             "--press" => {
                 let p: Vec<u32> = next.split(':').map(|v| v.parse().expect("--press FRAME:CODE:FRAMES")).collect();
@@ -61,7 +60,7 @@ fn main() {
         i += 1;
     }
     let [src, out] = &files[..] else {
-        eprintln!("usage: shot SOURCE OUT.ppm [--frames N] [--ram 16|64] [--board] [--niece] [--press FRAME:CODE:FRAMES]... [--every N]");
+        eprintln!("usage: shot SOURCE OUT.ppm [--frames N] [--ram 16|64] [--niece] [--press FRAME:CODE:FRAMES]... [--every N]");
         std::process::exit(2);
     };
     let text = std::fs::read_to_string(src).expect("the source");
@@ -71,7 +70,7 @@ fn main() {
         }
         std::process::exit(1);
     });
-    let mut m = Machine::boot_with_board(ram, board);
+    let mut m = Machine::boot(ram);
     m.set_niece(niece);
     unc_asm::load(&mut m, &asm);
     for f in 0..frames {

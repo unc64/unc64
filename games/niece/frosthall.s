@@ -1,7 +1,6 @@
 ; FROSTHALL: a walk round a hall of timber, stone and ice, in three dimensions.
-; For the UNC 64 (64K) with the NIECE, the prototype graphics chip marked NV-1 (manual
-; chapter 17).
-; United Northern Computers' laboratory, 1984. Not for sale.
+; For the UNC 64: it needs the 64K memory expansion and the NIECE, the graphics chip
+; (manual chapter 15). United Northern Computers, 1984.
 ;
 ; You stand in the hall and look along it. Cursor keys or W A S D: UP walks on, DOWN
 ; walks back, LEFT and RIGHT turn. The panel says how many pictures a second you're
@@ -11,7 +10,7 @@
 ;      starts: 16 to 26 a second, and you'd be hard put to tell it from 1.
 ;   3  40 columns four pixels wide. Coarser: 21 to 32 a second.
 ;
-; There is no 3D in the NIECE. It copies rectangles and it does sums (chapter 17), and
+; There is no 3D in the NIECE. It copies rectangles and it does sums (chapter 15), and
 ; this program is what they add up to:
 ;
 ;   Rays. From where you stand, a ray goes out through a column of the picture and steps

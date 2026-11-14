@@ -25,8 +25,8 @@
   <button class="btn go run" id="b-run" type="button" title="Assemble (or type in) and run">Run <kbd>Ctrl+Enter</kbd></button>
   <div class="settings" aria-label="The machine">
     <label title="Changing it switches the machine off and on">RAM <select id="ram"><option value="16">16K</option><option value="64">64K</option></select></label>
-    <label title="Applies at power on: the machine is switched off and on"><input type="checkbox" id="board"> Video board</label>
-    <label title="The prototype graphics chip of chapter 17. Applies at power on: the machine is switched off and on"><input type="checkbox" id="niece"> NIECE</label>
+    <label title="The graphics chip of chapter 15. A part of its own: it works with 16K or 64K. Applies at power on: the machine is switched off and on"><input type="checkbox" id="niece"> NIECE</label>
+    <label title="The sound chip of chapter 12. In unless you take it out. Applies at power on: the machine is switched off and on"><input type="checkbox" id="aunt" checked> AUNT</label>
     <label><input type="checkbox" id="colour"> Colour</label>
     <select id="phosphor" aria-label="Monochrome screen colour" title="The monochrome screen's colour"></select>
     <label><input type="checkbox" id="mute"> Mute</label>
@@ -152,8 +152,8 @@
         <fieldset><legend>It needs</legend>
           <label><input type="radio" name="s-ram" value="16" checked> 16K</label>
           <label><input type="radio" name="s-ram" value="64"> 64K</label>
-          <label><input type="checkbox" id="s-board"> The video board</label>
           <label><input type="checkbox" id="s-niece"> The NIECE</label>
+          <label><input type="checkbox" id="s-aunt" checked> The AUNT</label>
         </fieldset>
         <label><input type="checkbox" id="s-src" checked> Include the source</label>
         <p class="note">The label shows the screen as it is now. The tape's name, for <code>LOAD "NAME"</code>: <b id="s-tapename"></b>.</p>
@@ -162,6 +162,7 @@
     </div>
     <div class="dlg-acts">
       <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
+      <button class="btn" id="s-portal" type="button" title="Downloads the .unc.png and opens the Portal's Submit page (unc64.com/portal) with it">Submit to the Portal</button>
       <button class="btn" id="s-tap" type="button">Download .tap</button>
       <button class="btn" id="s-png" type="button">Download .unc.png</button>
       <button class="btn go" id="s-lib" type="button">Save to library</button>

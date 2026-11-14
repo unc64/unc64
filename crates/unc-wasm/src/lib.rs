@@ -13,8 +13,6 @@ thread_local! {
     static OUTPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     static PIXELS: RefCell<Vec<u8>> = RefCell::new(vec![0; PIXELS_W * PIXELS_H]);
     static AUDIO: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };
-    /// Whether the next `power_on` puts the video board in (`set_video_board`).
-    static BOARD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Whether the next `power_on` puts the NIECE in (`set_niece`).
     static NIECE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// And the AUNT, the sound chip: in, unless `set_sound_chip(0)` takes it out.
@@ -71,29 +69,33 @@ pub extern "C" fn output_ptr() -> *const u8 {
     OUTPUT.with(|o| o.borrow().as_ptr())
 }
 
-/// Power-cycles the machine with 16 or 64 KB of RAM and lets the ROM boot. The video board
-/// is in if `set_video_board(1)` was called before, and the NIECE if `set_niece(1)` was.
+/// Power-cycles the machine with 16 or 64 KB of RAM and lets the ROM boot. The NIECE is in
+/// if `set_niece(1)` was called before: the chip and the memory are separate parts.
 #[unsafe(no_mangle)]
 pub extern "C" fn power_on(ram_kb: u32) {
-    let board = BOARD.with(|b| b.get());
     let sound = SOUND.with(|s| s.get());
     let niece = NIECE.with(|n| n.get());
     m(|m| {
-        *m = Machine::boot_with_board(if ram_kb >= 64 { RamSize::K64 } else { RamSize::K16 }, board);
+        *m = Machine::new(if ram_kb >= 64 { RamSize::K64 } else { RamSize::K16 });
         m.set_sound(sound);
         m.set_niece(niece);
+        // (in before the ROM starts, so its start-up message can say so)
+        m.reset();
+        for _ in 0..unc_core::machine::BOOT_FRAMES {
+            m.run_frame();
+        }
     });
 }
 
-/// Puts the NIECE, the prototype graphics chip, in (1) or takes it out (0) at the next
-/// `power_on` (manual chapter 17). No machine has it unless this says so. The machine
-/// running now doesn't change.
+/// Puts the NIECE, the graphics chip, in (1) or takes it out (0) at the next `power_on`
+/// (manual chapter 15). No machine has it unless this says so. The machine running now
+/// doesn't change.
 #[unsafe(no_mangle)]
 pub extern "C" fn set_niece(on: u32) {
     NIECE.with(|n| n.set(on != 0));
 }
 
-/// 1 if the machine running now has the NIECE in.
+/// 1 if the machine running now has the NIECE.
 #[unsafe(no_mangle)]
 pub extern "C" fn has_niece() -> u32 {
     m(|m| m.has_niece() as u32)
@@ -111,19 +113,6 @@ pub extern "C" fn set_sound_chip(on: u32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn has_sound_chip() -> u32 {
     m(|m| m.has_sound() as u32)
-}
-
-/// Puts the video board in (1) or takes it out (0) at the next `power_on` (manual chapter
-/// 15). The machine running now doesn't change.
-#[unsafe(no_mangle)]
-pub extern "C" fn set_video_board(on: u32) {
-    BOARD.with(|b| b.set(on != 0));
-}
-
-/// 1 if the machine running now has the video board in.
-#[unsafe(no_mangle)]
-pub extern "C" fn has_video_board() -> u32 {
-    m(|m| m.has_board() as u32)
 }
 
 #[unsafe(no_mangle)]
@@ -348,9 +337,8 @@ pub extern "C" fn screen_ptr() -> *const u8 {
 }
 
 /// The picture as the beam drew it (320 x 200 bytes, manual chapter 9), into the pixel
-/// buffer, which it returns. Without the video board 0 is paper and 1 ink; with it, each
-/// byte is a colour number 0-3. With the NIECE's page shown, a byte with bit 4 set is the
-/// page's pixel: the colour itself, 0-15, in its low four bits (manual chapter 17).
+/// buffer, which it returns: 0 is paper and 1 ink. With the NIECE's page shown, a byte with bit 4 set is the
+/// page's pixel: the colour itself, 0-15, in its low four bits (manual chapter 15).
 /// `line_colours_ptr` says what each of 0-3 shows on each line
 /// (`colour_of`, what they show now). `blink_on` is the cursor's blink for the lines the
 /// beam draws next.
@@ -367,14 +355,14 @@ pub extern "C" fn render(blink_on: u32) -> *const u8 {
 }
 
 /// 800 bytes: for each of the picture's 200 lines, the colours (0-15) of values 0-3 as the
-/// beam drew it: BACKGROUND, then white ink without the video board, COLOUR1-3 with it.
+/// beam drew it: BACKGROUND, then white ink three times.
 #[unsafe(no_mangle)]
 pub extern "C" fn line_colours_ptr() -> *const u8 {
     m(|m| m.line_colours_all().as_ptr() as *const u8)
 }
 
 /// The colour (0-15, manual Appendix A) of a value in `render`'s picture: 0 is BACKGROUND;
-/// without the video board anything else is white ink (1), and with it 1-3 are COLOUR1-3.
+/// anything else is white ink (1).
 #[unsafe(no_mangle)]
 pub extern "C" fn colour_of(n: u32) -> u32 {
     m(|m| m.colour_of(n as u8) as u32)
@@ -584,7 +572,6 @@ mod tests {
 
     #[test]
     fn the_deck_counts_and_loads_fast() {
-        set_video_board(0);
         power_on(16);
         put(b"main.s\0        .org $3000\nstart:  HLT\n");
         assemble_project_input();

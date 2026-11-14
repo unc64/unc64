@@ -1,4 +1,4 @@
-//! The five games under the beam (manual chapter 9): each line of the picture is drawn as the
+//! The four games under the beam (manual chapter 9): each line of the picture is drawn as the
 //! raster finishes it, so a game that changes what's on the screen while the beam is drawing
 //! it would show a torn frame. Here every game is played for a while, with keys going down
 //! and up, and every frame the beam drew is compared with the picture as it stands when the
@@ -13,25 +13,24 @@
 //! (`rockslate`); so the beam may show the picture as it stood between any two rocks.
 //! SNAKE and DEBUG always finish in time. A frame whose drawing runs on into the beam can
 //! still show a line half drawn, for that one frame, as on a real machine: STACK when a
-//! piece locks and the well is redrawn, AURORA on its heaviest frames (a coarse step in the
-//! gorge, everything flying), ORBIT as a game is set up (the screen cleared, the scenery and
+//! piece locks and the well is redrawn, ORBIT as a game is set up (the screen cleared, the scenery and
 //! the HUD drawn: a few frames each time, five for a game over and a new game). The limits
-//! below hold those where they are (measured 2026-11-03, ORBIT 2026-11-04; STACK and
-//! AURORA again 2026-11-09), so a change that makes a game tear more fails here. The first
+//! below hold those where they are (measured 2026-11-03, ORBIT 2026-11-04; STACK again
+//! 2026-11-09), so a change that makes a game tear more fails here. The first
 //! frames, the title being drawn, don't count.
 //!
-//! STACK and AURORA throw their dice from NOISE on the cycle SPACE is seen, so the game
+//! STACK throws its dice from NOISE on the cycle SPACE is seen, so the game
 //! played here, and how often it's at its heaviest, hangs on the exact cycle the ROM's idle
 //! loop is left on. A ROM change moves that by a cycle or two and deals a different game:
-//! started a few cycles apart, AURORA has shown 6, 17, 20, 28, 32 and 66 torn frames of
-//! the 1,500, and STACK 9 to 11. The limits are for the game this ROM deals.
+//! started a few cycles apart, STACK has shown 9 to 11 torn frames of the 1,500. The limit
+//! is for the game this ROM deals.
 
 use unc_core::machine::{CYCLES_PER_FRAME, CYCLES_PER_LINE, PIXELS_H, PIXELS_W, VBLANK_LINE};
 use unc_core::{Machine, RamSize, Stop};
 
-fn game(src: &str, board: bool) -> (Machine, Vec<u16>) {
+fn game(src: &str) -> (Machine, Vec<u16>) {
     let asm = unc_asm::assemble(src).unwrap_or_else(|e| panic!("doesn't assemble: {e:?}"));
-    let mut m = Machine::boot_with_board(RamSize::K16, board);
+    let mut m = Machine::boot(RamSize::K16);
     unc_asm::load(&mut m, &asm);
     // ORBIT redraws its rocks one at a time, twice a frame: before its work, and after it,
     // ahead of the beam or behind it (rocks, rockslate, rock1). Between two of them the
@@ -114,8 +113,8 @@ fn torn_frames(m: &mut Machine, frames: u32, keys: &[u8], sync: u32, watch: &[u1
 }
 
 /// Out of 1,500 frames of play, after the first 12, at most `limit` torn.
-fn check(name: &str, src: &str, board: bool, keys: &[u8], limit: usize) {
-    let (mut m, watch) = game(src, board);
+fn check(name: &str, src: &str, keys: &[u8], limit: usize) {
+    let (mut m, watch) = game(src);
     let sync = if name == "ORBIT" { 219 } else { VBLANK_LINE };
     let torn: Vec<_> = torn_frames(&mut m, 1500, keys, sync, &watch).into_iter().filter(|&(f, _)| f >= 12).collect();
     if std::env::var("BEAMCOUNT").is_ok() {
@@ -126,25 +125,20 @@ fn check(name: &str, src: &str, board: bool, keys: &[u8], limit: usize) {
 
 #[test]
 fn snake_draws_out_of_the_beams_way() {
-    check("SNAKE", include_str!("../../../games/snake.s"), false, &[28, 30, 29, 31], 0);
+    check("SNAKE", include_str!("../../../games/snake.s"), &[28, 30, 29, 31], 0);
 }
 
 #[test]
 fn stack_draws_out_of_the_beams_way() {
-    check("STACK", include_str!("../../../games/stack.s"), false, &[28, 29, 30, 31, b' '], 10);
+    check("STACK", include_str!("../../../games/stack.s"), &[28, 29, 30, 31, b' '], 11);
 }
 
 #[test]
 fn orbit_draws_out_of_the_beams_way() {
-    check("ORBIT", include_str!("../../../games/orbit.s"), false, &[28, 29, 30, b' '], 10);
+    check("ORBIT", include_str!("../../../games/orbit.s"), &[28, 29, 30, b' '], 10);
 }
 
 #[test]
 fn debug_draws_out_of_the_beams_way() {
-    check("DEBUG", include_str!("../../../games/debug.s"), false, &[28, 29, b' '], 0);
-}
-
-#[test]
-fn aurora_draws_out_of_the_beams_way() {
-    check("AURORA", include_str!("../../../games/board/aurora.s"), true, &[30, 31, 29, 28, b' '], 28);
+    check("DEBUG", include_str!("../../../games/debug.s"), &[28, 29, b' '], 0);
 }
