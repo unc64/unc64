@@ -325,7 +325,6 @@ start:  LDA NIECE
         LDA #0
         STA NTABLE
         STA LATE
-        STA NOLATE
         STA BEST
         STA BEST+1
         STA SPACED
@@ -345,6 +344,7 @@ start:  LDA NIECE
         JSR words
         LDA #1
         STA NCTRL           ; show the page
+        STA NOLATE          ; (the first frame starts wherever in a frame the start-up ended)
         LDA FRAME
         STA LASTF
 
@@ -477,7 +477,7 @@ rules:  LDA KEYS            ; SPACE, as it goes down
         JMP crashsnd
 @up:    SEC                 ; the engine ticking over
         LDA GAS
-        SBC #3
+        SBC #6
         STA GAS
         LDA GAS+1
         SBC #0
@@ -488,7 +488,7 @@ rules:  LDA KEYS            ; SPACE, as it goes down
         BEQ @done
         SEC                 ; and pulling
         LDA GAS
-        SBC #36
+        SBC #90
         STA GAS
         LDA GAS+1
         SBC #0
@@ -2389,7 +2389,7 @@ things: LDA #0
         JMP @next
 @can:   CLC
         LDA GAS+1
-        ADC #$70
+        ADC #$80
         BCC @fill
         LDA #$FF
         STA GAS
