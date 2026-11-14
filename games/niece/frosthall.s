@@ -1344,14 +1344,14 @@ picvh:  .rept 8, p
         .endr
 
 ; A wall's flags by how tall it is (0-31, 31 for anything taller), then the same for the
-; darker side: ZWRITE, and ink table 0 for 31 and up (four cells away or less), 1 down to
-; 14 (nine cells), 2 beyond; the darker side one more.
+; darker side: ZWRITE, and ink table 0 for 20 and up (six cells away or less), 1 down to
+; 9 (thirteen cells), 2 beyond; the darker side one more.
 wflags: .rept 64, i
-        .byte ZWRITE | [[[i & 31] < 31] + [[i & 31] < 14] + [i >> 5]] << 6
+        .byte ZWRITE | [[[i & 31] < 20] + [[i & 31] < 9] + [i >> 5]] << 6
         .endr
 ; A thing's, by its size.
 tflags: .rept 32, i
-        .byte KEY | ZTEST | [[i < 31] + [i < 14]] << 6
+        .byte KEY | ZTEST | [[i < 20] + [i < 9]] << 6
         .endr
 
 ; The ray through the leftmost column for each way you can face, 65,536 for 1: straight

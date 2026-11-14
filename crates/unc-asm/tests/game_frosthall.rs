@@ -339,6 +339,20 @@ fn pictures_a_second_at_1_mhz() {
 #[ignore = "prints what pictures cost around the hall: cargo test --test game_frosthall -- --ignored --nocapture"]
 fn what_a_picture_costs() {
     let mut h = Hall::boot();
+    // UNC_SHOTS=DIR also writes each view's page there, as mode 1 and mode 2 draw it
+    if let Ok(dir) = std::env::var("UNC_SHOTS") {
+        const PALETTE: [u32; 16] = [0x000000, 0xe8e4da, 0x9a3b2e, 0x5fb3a8, 0x7a3f8a, 0x4f9a4f, 0x2c3d9a, 0xe2c84a, 0xa8632a, 0x5a3e1a, 0xd0705f, 0x3a3a3a, 0x6b6b6b, 0x9fe08a, 0x6f8fd8, 0xa9a9a9];
+        for (i, (x, y, a)) in VIEWS.into_iter().enumerate() {
+            for mode in 1..=2 {
+                h.set("MODE", mode);
+                h.stand(x, y, a);
+                let page = h.look();
+                let mut out = b"P6 160 100 255\n".to_vec();
+                page.iter().for_each(|&c| out.extend_from_slice(&PALETTE[c as usize].to_be_bytes()[1..]));
+                std::fs::write(format!("{dir}/view{i}-mode{mode}.ppm"), out).unwrap();
+            }
+        }
+    }
     for mode in 1..=3 {
     h.set("MODE", mode);
     println!("mode {mode}");
