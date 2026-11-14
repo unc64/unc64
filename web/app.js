@@ -936,7 +936,7 @@ msg:    .text "HELLO, UNC 64!"
     Samples: { shell: '#cfc7b4', face: '#2b2018', ink: '#efe6cf' },
     BASIC: { shell: '#cfc7b4', face: '#2b3a6a', ink: '#f4f1e8' },
   };
-  const AUTHOR = { aurora: 'United Northern Computers', frosthall: 'United Northern Computers', cloudberry: 'United Northern Computers', design_starter: '8-Bit Monthly' };
+  const AUTHOR = { aurora: 'United Northern Computers', frosthall: 'United Northern Computers', cloudberry: 'United Northern Computers', fellrider: 'United Northern Computers', design_starter: '8-Bit Monthly' };
   const faces = new Map(); // key -> Promise<url>
   let shots = Promise.resolve();
   const bundledCas = (b) => ({

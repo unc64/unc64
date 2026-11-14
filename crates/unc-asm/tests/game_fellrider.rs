@@ -11,7 +11,7 @@
 //! written to NGO, costed as chapter 17 costs it), and that each FLIP came at the very next
 //! vertical blank.
 
-use unc_core::machine::{CYCLES_PER_FRAME, CYCLES_PER_LINE, VBLANK_LINE};
+use unc_core::machine::CYCLES_PER_FRAME;
 use unc_core::niece::{self, Command};
 use unc_core::{Machine, RamSize, Stop};
 
@@ -386,7 +386,7 @@ impl Game {
             "{what}: {} frames; work: worst {} cycles, mean {} of {BUDGET} (physics, rules, panel and sound: worst {}, mean {}; ground: worst {}, \
              mean {}; the picture's commands: worst {}, mean {}); commands a frame: most {}, mean {}; drawing a frame: most {} cycles \
              ({} pixels), mean {} cycles, done at worst {} cycles after work began; queue: deepest {} of 64; frame to frame: {} to {} cycles; \
-             lost {}",
+             lost {}; the five parts (places, ground, strips, forces, things), worst {:?}, mean {:?}",
             m.frames,
             m.worst,
             m.total / n,
@@ -405,7 +405,9 @@ impl Game {
             m.deepest,
             m.shortest,
             m.longest,
-            m.lost
+            m.lost,
+            m.worst_part,
+            m.total_part.map(|t| t / n)
         );
     }
 
@@ -429,16 +431,6 @@ impl Game {
     }
 }
 
-/// Cycles from now to the start of the next VBLANK line (a whole frame if it's now).
-#[allow(dead_code)]
-fn to_vblank(m: &Machine) -> u32 {
-    let at = VBLANK_LINE * CYCLES_PER_LINE;
-    match (at + CYCLES_PER_FRAME - m.mem.frame_cycle) % CYCLES_PER_FRAME {
-        0 => CYCLES_PER_FRAME,
-        n => n,
-    }
-}
-
 /// A deterministic dice for the long rides: xorshift32.
 struct Dice(u32);
 impl Dice {
@@ -450,7 +442,7 @@ impl Dice {
     }
 }
 
-// ---------- a trace, for comparing with the model the physics was worked out in ----------
+// ---------- a trace, for comparing with a model of the physics kept outside the game ----------
 
 /// FELL_TRACE=FILE and FELL_KEYS="60:0,40:2,..." (frames:PADS bits: 1 brake, 2 throttle,
 /// 4 lean back, 8 lean forward) writes the state after every frame of that ride.
@@ -575,6 +567,43 @@ fn it_assembles_and_says_which_machine_it_wants() {
     assert!(!SRC.contains(".include"), "one file");
     let top = asm.segments.iter().map(|s| s.start as usize + s.bytes.len()).max().unwrap();
     assert!(top <= 0xC000, "the program ends at ${top:04X}");
+}
+
+/// The start-up: the pictures uploaded, the scenery drawn, the body turned 32 times.
+#[test]
+fn it_is_ready_in_four_seconds() {
+    let mut g = Game::boot_niece(true);
+    let work = g.marks[0];
+    let cycles = g.m.run_until(work, 400 * BUDGET).unwrap();
+    eprintln!("start-up: {cycles} cycles");
+    assert!(cycles < 4_000_000, "{cycles} cycles");
+    assert!(!g.chip().lost);
+}
+
+/// LEFT at a standstill is backwards, gently, as far as the left end of the world; the
+/// ground comes in on that side as it goes.
+#[test]
+fn backwards_to_the_left_end() {
+    let mut g = Game::ride();
+    g.m.key(LEFT);
+    g.frames(100);
+    assert!(g.vx() < -0.8 && g.vx() > -1.6, "vx {}", g.vx());
+    assert!(g.spin(0) < 0.0);
+    g.until(200, "the left end", |g| g.x() == 64.0);
+    g.m.key_up(LEFT);
+    assert_eq!(g.get("STATE"), RIDE);
+    let cam = g.num("CAM", 0, 3);
+    assert_eq!(cam, 8);
+    for x in 0..168 {
+        assert_eq!((g.ground(x) * 256.0) as i64, height(x, 255));
+    }
+    // and forwards again, over ground made a second time
+    g.ride_until(3.0, 600, "forwards again", |g| g.x() > 500.0);
+    let cam = g.num("CAM", 0, 3);
+    for x in cam..cam + 160 {
+        assert_eq!((g.ground(x) * 256.0) as i64, height(x, 255), "column {x}");
+    }
+    assert_eq!(g.meter.lost, 0);
 }
 
 #[test]
@@ -1047,6 +1076,81 @@ fn the_body_is_drawn_at_its_pitch_and_the_wheels_on_their_springs() {
     assert!((hub - 7.0).abs() <= 1.0, "in the air: {hub}");
 }
 
+/// A spring at the end of its travel shows: the wheel is drawn squashed, 12 wide and 8 high.
+#[test]
+fn a_bottomed_spring_squashes_the_tyre() {
+    let mut g = Game::ride_flat();
+    g.frames(20);
+    let wheels = |g: &mut Game| -> Vec<(u16, u16)> {
+        let mut seen = Vec::new();
+        let work = g.marks[0];
+        g.step();
+        while g.m.cpu.pc != work {
+            let pc = g.m.cpu.pc;
+            if g.m.peek(pc) == STA_ABS && g.m.peek(pc + 1) == NGO as u8 && g.m.peek(pc + 2) == (NGO >> 8) as u8 && g.m.cpu.a == niece::cmd::BLIT {
+                let n = g.chip();
+                if n.sw == 10 && n.sh == 10 {
+                    seen.push((n.dw, n.dh));
+                }
+            }
+            g.step();
+        }
+        seen
+    };
+    assert_eq!(wheels(&mut g), [(10, 10), (10, 10)]);
+    g.place(128.0, REST - 45.0, 0.0);
+    let mut squashed = false;
+    for _ in 0..80 {
+        let w = wheels(&mut g);
+        let bottomed = g.squeeze(0) >= 4.5;
+        assert_eq!(w.contains(&(12, 8)), bottomed, "wheels {w:?} with the spring at {}", g.squeeze(0));
+        squashed |= bottomed;
+    }
+    assert!(squashed, "a drop of 45 pixels bottoms the springs");
+}
+
+// ---------- sound ----------
+
+/// The engine's note is the back tyre's speed, a wheel landing thumps, and no gas is no
+/// engine.
+#[test]
+fn the_engine_note_follows_the_revs() {
+    const V1: u16 = 0xC0C0;
+    const V2: u16 = 0xC0C8;
+    let freq = |g: &Game| g.m.peek(V1) as u32 | (g.m.peek(V1 + 1) as u32) << 8;
+    let mut g = Game::ride_flat();
+    g.frames(10);
+    assert_eq!(g.m.peek(0xC0DA) & 15, 15, "volume");
+    assert_eq!((g.m.peek(V1 + 3), g.m.peek(V1 + 4)), (2, 1), "a sawtooth, sounding");
+    let idle = freq(&g);
+    assert!((850..1000).contains(&idle), "ticking over at {idle}: about 55 Hz");
+    // in the air the tyre spins up fast, and the note with it
+    g.place(128.0, REST - 60.0, 0.0);
+    g.m.key(RIGHT);
+    let mut last = idle;
+    for _ in 0..15 {
+        g.frame();
+        assert!(freq(&g) > last, "the note rises with the tyre: {} after {last}", freq(&g));
+        last = freq(&g);
+    }
+    g.m.key_up(RIGHT);
+    let want = 920.0 + 260.0 + g.spin(0) * 256.0 * 4.0;
+    assert!((last as f64 - want).abs() < 60.0, "{last} for a tyre doing {}: {want}", g.spin(0));
+    // dropped level, it lands: the thump, pitched by how hard
+    let mut g = Game::ride_flat();
+    g.place(128.0, REST - 25.0, 0.0);
+    g.frames(2);
+    assert_eq!((g.m.peek(V2 + 1), g.m.peek(V2 + 4)), (0, 0), "no thump yet");
+    g.until(80, "it lands", |g| !g.airborne());
+    g.frames(2);
+    assert_eq!((g.m.peek(V2 + 3), g.m.peek(V2 + 4)), (8, 1), "noise, struck");
+    assert!(g.m.peek(V2 + 1) >= 10, "its pitch: {}", g.m.peek(V2 + 1));
+    // no gas: the engine stops
+    g.put("GAS", 2, 0);
+    g.frames(3);
+    assert_eq!(g.m.peek(V1 + 4), 0);
+}
+
 // ---------- the same every time ----------
 
 #[test]
@@ -1098,7 +1202,7 @@ fn a_long_ride_holds_fifty_frames_a_second() {
     let mut frames = 0;
     while frames < 6000 && g.get("STATE") == RIDE {
         // as fast as it will go on the easy ground, then as fast as the rider dares
-        let speed = if g.x() < 1500.0 { 4.0 } else { 2.2 + (dice.next() % 100) as f64 / 100.0 };
+        let speed = if g.x() < 1500.0 { 4.0 } else { 1.8 + (dice.next() % 100) as f64 / 100.0 };
         for _ in 0..25 {
             g.rider(speed);
             g.frame();
@@ -1113,6 +1217,8 @@ fn a_long_ride_holds_fifty_frames_a_second() {
         }
     }
     g.keys_up();
+    // (and the crash that ended it, if one did, and the words after it)
+    g.frames(150);
     g.report("a long ride");
     assert!(frames >= 1500 && g.x() > 3000.0, "{frames} frames to x = {}", g.x());
     assert!(jumps >= 3, "{jumps} jumps");
@@ -1120,10 +1226,10 @@ fn a_long_ride_holds_fifty_frames_a_second() {
     g.assert_fifty();
     let m = &g.meter;
     // the numbers in the header, with a little room
-    assert!(m.worst < 11_000, "the worst frame's work: {}", m.worst);
+    assert!(m.worst < 12_000, "the worst frame's work: {}", m.worst);
     assert!(m.total / m.frames < 8_000, "the mean frame's work: {}", m.total / m.frames);
     assert!(m.most_drawing < 9_000, "the most drawing in a frame: {} cycles", m.most_drawing);
-    assert!(m.latest_done < 13_000, "the chip was done {} cycles into the frame", m.latest_done);
+    assert!(m.latest_done < 14_500, "the chip was done {} cycles into the frame", m.latest_done);
     assert!(m.deepest <= 24, "the queue got {} deep", m.deepest);
 }
 

@@ -17,15 +17,16 @@
 ;   The body (frame, engine and rider together) is one rigid thing with a place (X, Y),
 ;     a velocity (VX, VY), a pitch angle TH and a rate of turning OM. Its mass is 1 and
 ;     its moment of inertia 40.74, a radius of gyration of 6.4 pixels: that number makes
-;     a force times an arm come out in the angle's own units with no division (`torque`).
+;     a force times an arm come out in the angle's own units with no division.
 ;   Two wheels hang from it, each on its own spring and damper, 8 pixels fore and aft of
 ;     the centre of mass and 7 below it at full stretch. A wheel has no weight of its
 ;     own, but it has spin: a speed at the tyre (SL, SH), and an inertia a quarter of the
 ;     moped's mass.
-;   Each step, for each wheel (`contact`): how far the tyre is into the ground is how far
+;   Each step, for each wheel (`contact`): how far the tyre is into the ground, straight
+;     down, is how far
 ;     its spring is squeezed (C). The spring pushes back along the ground's normal with
-;     K x C and the damper with D x how fast C is changing; a bump stop ten times stiffer
-;     takes over at the end of the travel. That push is the wheel's load, N.
+;     K x C and the damper with D x how fast C is changing; a bump stop seven times as
+;     stiff joins in at the end of the travel. That push is the wheel's load, N.
 ;   Grip is the load times MU, no more. The tyre's speed over the ground less the ground's
 ;     speed under it is its slip, and the ground pulls on the tyre along its tangent in
 ;     proportion to the slip, up to the grip. So an unloaded wheel spins or locks, a
@@ -40,8 +41,8 @@
 ;     the top 8 of them), forces are in 65536ths of a pixel per frame per frame, angles
 ;     in 65536ths of a circle. Gravity is 0.055. One step a frame, 50 a second, always:
 ;     forces from where things are, then speeds, then places (semi-implicit Euler).
-;   Every multiplication is the NIECE's arithmetic unit: about 62 of them a step with
-;     both wheels down. Sines are a table the assembler made, 1,024 to the circle.
+;   Every multiplication is the NIECE's arithmetic unit: 46 of them a step with both
+;     wheels down. Sines are a table the assembler made, 1,024 to the circle.
 ;   A wheel all but still, with no key held, is still, and a moped standing on two such
 ;     wheels stands: otherwise rounding would have it creep downhill on the flat.
 ;
@@ -60,11 +61,12 @@
 ;     one BLIT a frame, moved an eighth and a quarter as fast as the ground
 ;   the moped tilts, and the chip can't turn a picture. So: the wheels are round, and
 ;     are drawn where the springs put them (squashed, by BLIT's scaling, when a spring
-;     bottoms out). The fork, the swingarm and the shock are LINEs from the hubs to
-;     the frame, so the suspension shows working for nothing. Only the body and rider
-;     need turning, and they are turned once: at the start the processor draws them
-;     at 32 angles, half a circle, onto the sheet (`spin`), and FLIPX with FLIPY, which
-;     is a half turn, gives the other half. 64 angles, 5.6 degrees apart
+;     bottoms out). The fork, the swingarm, the shock and the front mudguard are LINEs
+;     from the hubs to the frame, so the suspension shows working for nothing. Only
+;     the body and rider need turning, and they are turned once: at the start the
+;     processor draws them at 32 angles, half a circle, onto the sheet (`spin`), and
+;     FLIPX with FLIPY, which is a half turn, gives the other half. 64 angles, 5.6
+;     degrees apart, and tables of where the frame's ends are at each
 ;   coins spin by being drawn narrower; the title is drawn twice its size, and its
 ;     shadow is the same picture through an ink table that is all black
 ;   the short registers (NDXS...) wherever a place fits a byte; every command waits
@@ -74,7 +76,24 @@
 ;     is the FLIP. One step of the physics to one frame, with no clock to watch
 ;
 ; Time, at 1 MHz (measured by crates/unc-asm/tests/game_fellrider.rs over a long ride):
-;;TIMING;;
+;   50 frames a second, held, with every frame's FLIP at the very next vertical blank.
+;   A frame's work is 7,400 of its 19,968 cycles on average and 10,900 at worst on a
+;   ride (11,850 in the one frame that writes the words when a run ends). Where they go:
+;     the forces, with the panel and the sound    3,800   (5,200 at worst)
+;     the keys, the rules and the places            350
+;     the ground: 555 a new column                1,100   at two pixels a frame (2,200 at four)
+;     the three strips' BLITs                       220
+;     the things, the moped and the dust          1,950   (3,000 at worst)
+;   The NIECE draws 31,000 pixels a frame (33,500 with the board of words up): 7,700
+;   of its cycles, two fifths of what it could. 26,800 of them are the three strips,
+;   and those are in the queue about 1,700 cycles into the frame (a step of the
+;   physics is places first, then forces, for that reason), so the chip is done
+;   when the processor is: 13,600 cycles after the frame began, at the latest.
+;   The queue gets 20 deep of its 64. LATE counts the frames that missed their
+;   vertical blank; the tests want 0.
+;   Not in that: a new run makes its 256 columns of ground before its first frame,
+;   seven frames with the last picture standing; and the start-up is 3.7 seconds,
+;   nearly all of it turning the body.
 ;
 ; Sound, the AUNT: voice 1 is the engine, its pitch the back wheel's speed; voice 2
 ; thumps when a wheel lands; voice 3 rings for a coin and gurgles for a can.
@@ -158,7 +177,7 @@ CLOUDX  = 204
 LOGOY   = 22                ; and the title, 54 x 7 at column 160
 
 ; ---------------------------------------------------------------- the physics' numbers
-; (scripts aren't needed to change these, but the tests pin how the moped behaves)
+; (the tests pin how the moped behaves: change these and expect to hear from them)
 GRAV    = 3604              ; 0.055 pixels a frame a frame, in 65536ths
 AXLE    = 8 * 256           ; hubs fore and aft of the centre of mass, pixels x 256
 HANG    = 7 * 256           ; and below it, with the spring at full stretch
@@ -179,8 +198,8 @@ CMAX    = 12                ; nothing is squeezed further than this, in whole pi
 NMAX    = 29000             ; nor pushed harder: 0.44, eight times the moped's weight
 SLIPMAX = 800
 KTYRE   = 38                ; pull for slip: 38/256 of the moped's weight for a pixel a frame
-DMAX    = 2500              ; the engine at a standstill: 0.038, two thirds of gravity
-DFADE   = 512               ;   less this for each pixel a frame the wheel is doing
+DMAX    = 2700              ; the engine at a standstill: 0.041, three quarters of gravity
+DFADE   = 640               ;   less this for each pixel a frame the wheel is doing
 BRAKE   = 2600 * 4          ; the brake, as a change of tyre speed (a wheel's inertia is 1/4)
 DREV    = 1200              ; backwards, gently
 SREV    = 384               ; under 1.5 pixels a frame LEFT is backwards, not a brake
@@ -364,6 +383,7 @@ phys:   JSR physics         ;   while the forces are worked out
         JSR hud
         JSR sound
 sprites:
+        JSR board
         JSR things
         JSR moped
         JSR dust
@@ -571,8 +591,11 @@ newrun: LDX #X0
         BPL @dust
         LDA #STARTX
         STA XL
-        LDA #BASE - 10      ; standing: the springs squeezed by its weight
+        LDA #BASE - 10      ; standing: the springs squeezed two pixels by its weight
         STA Y0+2
+        LDA #2
+        STA CPH
+        STA CPH+1
         LDA #$FF
         STA GAS
         STA GAS+1
@@ -607,8 +630,7 @@ newrun: LDX #X0
         RTS
 
 ; ---------------------------------------------------------------- the physics
-; One step: a frame. See the top of the file for what it is; sim.py in the tests' notes
-; does the same sums.
+; The forces of one step, and the speeds they make. See the top of the file.
 physics:
         LDA TH+1            ; the pitch's sine and cosine: 1,024 to the circle
         LSR A
@@ -881,12 +903,17 @@ contact:
         LDA CC+1
         SBC CPH,X
         STA DC+1
-        LDA CPL,X           ; landing: it was in the air
-        ORA CPH,X
+        LDA CPL,X           ; landing: it was in the air, and it's coming down at
+        ORA CPH,X           ;   five eighths of a pixel a frame or more
         BNE @was
-        LDA CC+1
-        BEQ @was
-        STA THUMP
+        LDY VY+2
+        BMI @was
+        BNE @thump
+        LDA VY+1
+        CMP #$A0
+        BCC @was
+@thump: INY
+        STY THUMP
 @was:   LDA CC
         STA CPL,X
         LDA CC+1
@@ -1276,8 +1303,8 @@ contact:
         LDA AYA+2
         SBC T6
         STA AYA+2
-        LDA CN              ; and its turning: N x CN + FT x CT (`torque`: with the moment
-        STA NMULB           ;   of inertia 40.74, the product's top three bytes are the
+        LDA CN              ; and its turning: N x CN + FT x CT (with the moment of
+        STA NMULB           ;   inertia 40.74, the product's top three bytes are the
         LDA CN+1            ;   change in OM, fraction and all)
         STA NMULB+1
         CLC
@@ -1445,11 +1472,11 @@ controls:
         LDA SH+1
         SBC #>SREV
         BPL @brake
-        CLC                 ; no: backwards, while the tyre's doing less than 3 SREV that way
+        CLC                 ; no: backwards, while the tyre's doing less than SREV that way
         LDA SL
-        ADC #<[3 * SREV]
+        ADC #<SREV
         LDA SH
-        ADC #>[3 * SREV]
+        ADC #>SREV
         BPL @back
         JMP @lean
 @back:  LDA #<[-DREV]
@@ -2564,6 +2591,19 @@ moped:  LDA Y0+2
         JSR goline
         INC NDXS
         JSR goline
+        CLC                 ; the front mudguard: it goes up and down with the wheel
+        LDA WXS+1
+        ADC mgx,X
+        STA NDXS
+        CLC
+        LDA WYS+1
+        ADC mgy,X
+        STA NDYS
+        LDA mgw,X
+        JSR linew
+        LDA mgh,X
+        JSR lineh
+        JSR goline
         LDA #KEY            ; the wheels: which of two pictures by how far each has turned
         STA NFLAGS
         LDA #WHEELX
@@ -2818,6 +2858,33 @@ random: LDA RNG
         EOR #$1D
 @r:     STA RNG
         RTS
+
+; ---- a blue board behind the words, on the title and when a run is over: white
+; letters on a sky that's half white are hard to read
+board:  LDX #0
+        LDA STATE
+        BEQ @up
+        CMP #OVER
+        BNE @none
+        LDX #4
+@up:    LDA #0
+        STA NFLAGS
+        STA NPATTERN
+        LDA #6
+        STA NCOLOUR
+        LDA boards,X
+        STA NDXS
+        LDA boards+1,X
+        STA NDYS
+        LDA boards+2,X
+        STA NDWS
+        LDA boards+3,X
+        STA NDHS
+        LDA #FILL
+        JSR go
+@none:  RTS
+boards: .byte 4, 30, 152, 15        ; the title's two rows of words
+        .byte 22, 18, 116, 23       ; a run's end: three
 
 ; ---- the title: twice its size, and its shadow first, through the black ink table
 title:  LDA #WHEELX
@@ -3738,8 +3805,8 @@ tanyh:  .rept 256, i
         .endr
 
 ; Where things are on the body at each of the 64 angles it's drawn at, from the centre
-; of mass: the picture's corner, the headstock, the swingarm's pivot and the shock's
-; top. A point u forward and v down the moped is (u cos + v sin, v cos - u sin).
+; of mass: the picture's corner, the headstock, the swingarm's pivot, the mudguard
+; (from the front hub) and the shock's top. A point u forward and v down the moped is (u cos + v sin, v cos - u sin).
 pcx:    .rept 64, i
         .byte [[[1 - sin(i * 4, 9)] >> 1] - 16] & $FF
         .endr
@@ -3757,6 +3824,18 @@ pvx:    .rept 64, i
         .endr
 pvy:    .rept 64, i
         .byte [[cos(i * 4, 16 * 3) - sin(i * 4, 16 * -1) + 8] >> 4] & $FF
+        .endr
+mgx:    .rept 64, i         ; the mudguard: from 3 behind the hub and 6 above it,
+        .byte [[cos(i * 4, 16 * -3) + sin(i * 4, 16 * -6) + 8] >> 4] & $FF
+        .endr
+mgy:    .rept 64, i
+        .byte [[cos(i * 4, 16 * -6) - sin(i * 4, 16 * -3) + 8] >> 4] & $FF
+        .endr
+mgw:    .rept 64, i         ;   7 pixels forward
+        .byte cos(i * 4, 7) & $FF
+        .endr
+mgh:    .rept 64, i
+        .byte [-sin(i * 4, 7)] & $FF
         .endr
 skx:    .rept 64, i
         .byte [[cos(i * 4, 16 * -6) + sin(i * 4, 16 * -2) + 8] >> 4] & $FF

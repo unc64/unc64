@@ -28,6 +28,7 @@ const ABOUT = {
   debug: 'Bugs march down the screen in formation. You\'re the cursor. Fix them.',
   aurora: 'Fly low over the fells at night, under the northern lights. The video board\'s demonstration cassette.',
   cloudberry: 'Run and jump across the fells for cloudberries: two long levels that scroll a pixel at a time. For the NIECE, the prototype graphics chip.',
+  fellrider: 'A moped over the fells, on real springs: coins, gas, and as far as you can get without landing on your head. For the NIECE, the prototype graphics chip.',
   frosthall: 'Walk round a hall of timber, stone and ice, in three dimensions, at 1 MHz. For the NIECE, the prototype graphics chip.',
   tracker: 'A three-voice tracker for the AUNT, the sound chip, with four tunes on it. RETURN plays, T is the next tune.',
 };
