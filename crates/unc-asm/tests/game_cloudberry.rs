@@ -1539,16 +1539,21 @@ const REST: u8 = 0;
 const OFF: u8 = 0x7E;
 
 #[test]
-fn the_tunes_are_written_as_the_player_reads_them() {
+fn the_one_tune_is_written_as_the_player_reads_it_and_has_no_snare_in_it() {
     let g = Game::boot();
     let hz = |n: u16| (g.at("FREQLO", n - 1) as f64 + 256.0 * g.at("FREQHI", n - 1) as f64) / 16.777;
     assert_eq!(hz(g.sym("A4")).round(), 440.0, "the note table: A is 440 Hz");
-    let string = [ins(&g, "STRING"), ins(&g, "SING")];
-    let mut grooves = Vec::new();
-    let mut tunes = Vec::new();
-    for (tune, loops_to, bars) in [("t_title", "title_loop", 24), ("t_day", "day_loop", 44), ("t_dusk", "dusk_loop", 44), ("t_clear", "", 2), ("t_life", "", 1), ("t_over", "", 2)] {
+    // one tune and three stingers, and nothing else: no tune of a level's own, no snare
+    for gone in ["t_day", "t_dusk", "day_loop", "dusk_loop", "T_DAY", "T_DUSK", "SNARE", "CRACK", "TOM", "HAT", "KICK", "BASS"] {
+        assert!(g.asm.symbol(gone).is_none(), "{gone} is still in the source");
+    }
+    let kit: Vec<u8> = ["STRING", "LEAD", "TRIANG", "BLIP", "THUMP", "RIM", "TSS", "OPEN"].iter().map(|n| ins(&g, n)).collect();
+    assert_eq!(kit, [1, 2, 3, 4, 5, 6, 7, 8], "eight instruments");
+    let string = ins(&g, "STRING");
+    for (tune, loops_to, bars) in [("t_title", "title_loop", 24), ("t_clear", "", 2), ("t_life", "", 1), ("t_over", "", 2)] {
         let (lines, end) = order(&g, tune);
         assert_eq!(end, if loops_to.is_empty() { 0 } else { g.sym(loops_to) }, "{tune}: where its end goes");
+        assert_eq!(g.m.peek(g.sym(tune)), 7, "{tune}: 107 beats a minute");
         let mut looped = 0;
         for l in &lines {
             let p: Vec<_> = (0..3).map(|v| pattern(&g, l.pats[v], l.ins)).collect();
@@ -1558,9 +1563,14 @@ fn the_tunes_are_written_as_the_player_reads_them() {
             if loops_to.is_empty() || l.at >= end {
                 looped += rows(&p[0]) / 16;
             }
+            // who plays what: the tune on a lead, the percussion on hats and the rim, the
+            // bass on the kick and the blip. No row anywhere is a snare
+            assert!([ins(&g, "STRING"), ins(&g, "LEAD"), ins(&g, "TRIANG")].contains(&l.ins));
+            assert!(p[1].iter().filter(|n| n.1 != REST).all(|n| [ins(&g, "TSS"), ins(&g, "OPEN"), ins(&g, "RIM")].contains(&n.3)), "{tune}: the percussion's kit");
+            assert!(p[2].iter().filter(|n| n.1 != REST && n.1 != OFF).all(|n| [ins(&g, "BLIP"), ins(&g, "THUMP")].contains(&n.3)), "{tune}: the bass voice's kit");
         }
         assert_eq!(looped, bars, "{tune}: bars before it goes round, the way in not counted");
-        eprintln!("{tune}: {} lines, {looped} bars, {} frames a row", lines.len(), g.m.peek(g.sym(tune)));
+        eprintln!("{tune}: {} lines, {looped} bars", lines.len());
         if loops_to.is_empty() {
             continue;
         }
@@ -1569,59 +1579,39 @@ fn the_tunes_are_written_as_the_player_reads_them() {
         let way_in: Vec<_> = (0..3).map(|v| pattern(&g, lines[0].pats[v], lines[0].ins)).collect();
         assert!(rows(&way_in[0]) <= 64);
         assert!(way_in.iter().all(|p| p.iter().any(|n| n.0 < 16 && n.1 != REST && n.1 != OFF)), "{tune}: a voice waits");
-        // A is on the string; its first line is said again on another instrument (or an
-        // octave up) from the same patterns; B is other patterns and another instrument again
+        // A is on the string; it is said again a pulse an octave up from the same patterns; B
+        // is other patterns on a third instrument
         let a = &lines[1];
-        assert!(string.contains(&a.ins), "{tune}: the tune starts on the string");
-        let again = lines[2..].iter().find(|l| l.pats[0] == a.pats[0] && l.ins != a.ins).unwrap_or_else(|| panic!("{tune}: A is never said on another instrument"));
-        assert!(!string.contains(&again.ins));
+        assert_eq!(a.ins, string, "{tune}: the tune starts on the string");
+        let again = lines[2..].iter().find(|l| l.pats[0] == a.pats[0] && l.ins != a.ins).expect("A on another instrument");
+        assert_eq!((again.ins, again.up), (ins(&g, "LEAD"), 12));
         let b = lines[2..].iter().find(|l| l.pats[0] != a.pats[0] && l.pats[0] != lines[2].pats[0] && l.ins != a.ins && l.ins != again.ins).expect("a B section");
-        assert!(lines.iter().filter(|l| l.pats[0] == a.pats[0]).count() >= 2);
-        // the tune is a bar that moves and a bar that waits: of A's first four bars, the
-        // second and the fourth each hold a note eight rows or more, and the first has four
-        // notes or more... or, for the slow one, it is long, long, short-short all the way
+        assert_eq!(b.ins, ins(&g, "TRIANG"));
+        // the tune is a bar that moves and a bar that waits
         let lead = pattern(&g, a.pats[0], a.ins);
         let bar = |k: u32| lead.iter().filter(|n| n.0 / 16 == k && n.1 != REST && n.1 != OFF).collect::<Vec<_>>();
         for k in [1, 3] {
             assert!(bar(k).iter().any(|n| n.2 >= 8), "{tune}: bar {} of the tune has no long note", k + 1);
         }
-        let lengths: std::collections::BTreeSet<u8> = lead.iter().map(|n| n.2).collect();
-        assert!(lengths.len() >= 3, "{tune}: the tune's notes are all {lengths:?} rows long");
-        assert!(bar(0).len() >= 3 && bar(0).len() > bar(1).len());
-        // the bass plays the bar's chord: the same riff every bar of A, moved to its root
+        assert!(bar(0).len() >= 4 && bar(0).len() > bar(1).len());
+        // the bass: one riff, the same every bar, moved to the bar's chord, a chord a bar. It
+        // stops for nothing: where a snare used to be, on the second and fourth beats (rows
+        // 4 and 12), it plays through
         let bass = pattern(&g, a.pats[2], 0);
         let riff = |k: u32| bass.iter().filter(|n| n.0 / 16 == k).map(|n| (n.0 % 16, n.3)).collect::<Vec<_>>();
-        assert_eq!(riff(0), riff(1), "{tune}: the bass's rhythm, bar by bar");
+        assert_eq!(riff(0), riff(1), "the bass's rhythm, bar by bar");
         assert_eq!(riff(0), riff(2));
-        let root = |k: u32| bass.iter().find(|n| n.0 == k * 16).unwrap().1;
-        let roots: std::collections::BTreeSet<u8> = (0..4).map(root).collect();
-        assert_eq!(roots.len(), 4, "{tune}: a chord a bar, four bars");
-        // the grooves: where the percussion voice hits and with what, and the same for the
-        // drums inside the bass, in A's first bar
+        let (blip, thump) = (ins(&g, "BLIP"), ins(&g, "THUMP"));
+        assert_eq!(riff(0), [(0, thump), (3, blip), (4, blip), (6, blip), (8, thump), (10, blip), (12, blip), (14, blip)]);
+        assert!(bass.iter().all(|n| n.1 != REST && n.1 != OFF), "the bass rests");
+        let roots: std::collections::BTreeSet<u8> = (0..4).map(|k| bass.iter().find(|n| n.0 == k * 16).unwrap().1).collect();
+        assert_eq!(roots.len(), 4, "a chord a bar, four bars");
+        // the percussion: hats, and the rim on the second and fourth beats
         let perc = pattern(&g, a.pats[1], 0);
-        let groove: Vec<(u32, u8)> = perc.iter().filter(|n| n.0 < 16 && n.1 != REST).map(|n| (n.0, n.3)).collect();
-        assert!(groove.len() >= 6, "{tune}: {groove:?}");
-        grooves.push((tune, groove, riff(0)));
-        tunes.push((tune, lead.iter().map(|n| (n.1, n.2)).collect::<Vec<_>>(), b.ins));
-        if tune != "t_title" {
-            // a quiet stretch: a line whose percussion pattern is silence, on a held triangle
-            let quiet = lines.iter().find(|l| pattern(&g, l.pats[1], 0).iter().all(|n| n.1 == REST)).unwrap_or_else(|| panic!("{tune}: the drums never stop"));
-            assert_eq!(quiet.ins, ins(&g, "TRIANG"));
-            assert!(pattern(&g, quiet.pats[0], 0).iter().all(|n| n.2 >= 4));
-            assert!(again.up == 12 || tune == "t_dusk");
-        }
+        let rim: Vec<u32> = perc.iter().filter(|n| n.3 == ins(&g, "RIM") && n.1 != REST).map(|n| n.0 % 16).collect();
+        assert_eq!(rim, [4, 12, 4, 12, 4, 12, 4, 12]);
+        assert_eq!(perc.iter().filter(|n| n.0 < 16 && n.1 != REST).count(), 10);
     }
-    // no two tunes share a groove, in the percussion or in the bass
-    for (i, a) in grooves.iter().enumerate() {
-        for b in &grooves[i + 1..] {
-            assert_ne!(a.1, b.1, "{} and {} have the same percussion", a.0, b.0);
-            assert_ne!(a.2, b.2, "{} and {} have the same bass riff", a.0, b.0);
-            let (ka, kb): (std::collections::BTreeSet<u8>, std::collections::BTreeSet<u8>) = (a.2.iter().map(|n| n.1).collect(), b.2.iter().map(|n| n.1).collect());
-            assert_ne!(ka, kb, "{} and {}: the bass voice's instruments", a.0, b.0);
-        }
-    }
-    assert!(tunes[0].1 != tunes[1].1 && tunes[1].1 != tunes[2].1 && tunes[0].1 != tunes[2].1);
-    assert_ne!(g.m.peek(g.sym("t_day")), g.m.peek(g.sym("t_dusk")), "and their speeds");
 }
 
 /// A frame of what the chip was told, and of the player's own account of it.
@@ -1651,24 +1641,38 @@ fn hear(g: &Game) -> Heard {
 }
 
 #[test]
-fn level_ones_tune_from_its_first_bar_to_its_second_time_round() {
-    let mut g = Game::boot();
-    g.press(SPACE);
-    g.until(60, "level 1", |g| g.get("STATE") == PLAY);
-    let (lines, end) = order(&g, "t_day");
-    assert_eq!((ordp(&g), g.get("MSPD"), g.get("TUNEON")), (lines[0].at, 6, 1));
+fn the_tune_starts_on_the_title_and_plays_on_through_the_levels() {
+    let mut g = Game::boot_niece(true);
+    g.until(400, "the tune", |g| g.get("TUNEON") == 1);
+    let (lines, end) = order(&g, "t_title");
+    assert_eq!((ordp(&g), g.get("MSPD")), (lines[0].at, 7));
     let mut heard = Vec::new();
-    for _ in 0..(2 + 44 + 5) * 16 * 6 {
+    let mut started = None;
+    // the title for ten bars; SPACE; level 1, standing at its start, to the tune's second
+    // time round and a little more
+    for f in 0..(2 + 24 + 6) * 16 * 7u32 {
+        if f == 10 * 112 {
+            g.m.key(SPACE);
+        }
+        if f == 10 * 112 + 3 {
+            g.m.key_up(SPACE);
+        }
         g.frame();
         heard.push(hear(&g));
-        assert_eq!((g.get("STATE"), g.get("LIVES"), g.get("TUNEON")), (PLAY, 3, 1));
+        if started.is_none() && g.get("STATE") == PLAY {
+            started = Some(heard.len());
+        }
+        assert_eq!(g.get("TUNEON"), 1);
     }
+    let started = started.expect("a game");
+    assert_eq!((g.get("STATE"), g.get("LEVEL"), g.get("LIVES")), (PLAY, 0, 3));
     // all three voices in the first bar
     for v in 0..3 {
-        let on = heard[..96].iter().filter(|h| h.v[v].2).count();
+        let on = heard[..112].iter().filter(|h| h.v[v].2).count();
         assert!(on >= 20, "voice {} has its gate on for {on} frames of the first bar", v + 1);
     }
-    // the order: every line in turn, and from the last to the first after the way in
+    // the order: every line in turn and round to the first after the way in, and the game
+    // starting in the middle of it changed nothing: the tune went on from where it was
     let mut visited: Vec<u16> = Vec::new();
     for h in &heard {
         if visited.last() != Some(&h.line) {
@@ -1679,45 +1683,51 @@ fn level_ones_tune_from_its_first_bar_to_its_second_time_round() {
     want.push(end);
     want.push(lines[2].at);
     assert_eq!(visited, want, "the order");
-    // any two seconds: the tune and the bass are both sounding, and so is the percussion
-    // except in the quiet stretch, where it is meant to be out
-    let quiet = lines.iter().find(|l| pattern(&g, l.pats[1], 0).iter().all(|n| n.1 == REST)).unwrap().at;
+    assert_eq!(heard[started].line, heard[started - 30].line, "the same line of the order before and after the level was unpacked");
+    assert!(heard[started].line != lines[0].at);
+    // any two seconds, the title or the level: all three voices sounding. (While the level
+    // is unpacked the voices are let go: that's ten frames.)
     for (i, w) in heard.windows(100).enumerate() {
-        for v in [0, 2] {
+        for v in 0..3 {
             let on = w.iter().filter(|h| h.v[v].2).count();
-            assert!(on >= 15, "frames {i} to {}: voice {} has its gate on for {on} frames in 100", i + 100, v + 1);
+            assert!(on >= 10, "frames {i} to {}: voice {} has its gate on for {on} frames in 100", i + 100, v + 1);
         }
-        if w.iter().all(|h| h.line != quiet) {
-            let hits = w.windows(2).filter(|p| p[1].age[1] < p[0].age[1] && p[1].note[1] != 0).count();
-            assert!(hits >= 5, "frames from {i}: {hits} hits of percussion in two seconds");
-        }
+        let hits = w.windows(2).filter(|p| p[1].age[1] < p[0].age[1] && p[1].note[1] != 0).count();
+        assert!(hits >= 6, "frames from {i}: {hits} hits of percussion in two seconds");
     }
-    assert!(heard.iter().filter(|h| h.line == quiet).all(|h| h.note[1] == 0 || !h.v[1].2 || h.age[1] > 20), "the quiet stretch has drums in it");
-    // voice 1 is the string, then a pulse an octave up, the trill, a triangle
-    let leads: Vec<u8> = lines.iter().map(|l| l.ins).collect();
-    for name in ["STRING", "LEAD", "TRILL", "TRIANG"] {
-        assert!(leads.contains(&ins(&g, name)), "{name} never has the tune");
-    }
+    // voice 1 is the string, then a pulse, then a triangle
     let waves: std::collections::BTreeSet<u8> = heard.iter().filter(|h| h.v[0].2).map(|h| h.v[0].1).collect();
     assert_eq!(waves.into_iter().collect::<Vec<_>>(), [W_TRI, W_PULSE, W_DRAWN]);
-    // the bass is under the tune: its pulse notes against voice 1's, the middle of each
-    let mut bass: Vec<u16> = heard.iter().filter(|h| h.v[2].2 && h.v[2].1 == W_PULSE && h.ins[2] == ins(&g, "BASS")).map(|h| h.v[2].0).collect();
+    // the bass is under the tune
+    let mut bass: Vec<u16> = heard.iter().filter(|h| h.v[2].2 && h.v[2].1 == W_PULSE && h.age[2] > 6).map(|h| h.v[2].0).collect();
     let mut tune: Vec<u16> = heard.iter().filter(|h| h.v[0].2).map(|h| h.v[0].0).collect();
     bass.sort();
     tune.sort();
     assert!(bass[bass.len() * 9 / 10] < tune[tune.len() / 10], "the bass up to {} and the tune down to {}", bass[bass.len() * 9 / 10], tune[tune.len() / 10]);
+    // the bass voice's noise is the pick and nothing more: one frame of it in each note, its
+    // second, and none anywhere else. (The snare that was in the riff is gone.)
+    let notes = (1..heard.len()).filter(|&f| heard[f].note[2] != 0 && heard[f].age[2] == 1 && heard[f - 1].age[2] != 0).count();
+    let noise: Vec<usize> = (0..heard.len()).filter(|&f| heard[f].v[2].1 == W_NOISE).collect();
+    assert!(notes > 200, "{notes} bass notes");
+    assert!(noise.iter().all(|&f| heard[f].age[2] == 2), "noise on the bass voice that isn't a note's second frame");
+    assert!((noise.len() as i64 - notes as i64).abs() <= 3, "{} frames of noise for {notes} notes", noise.len());
+    eprintln!("the bass voice: {notes} notes and {} frames of noise in {} frames, {:.1}%", noise.len(), heard.len(), noise.len() as f64 * 100.0 / heard.len() as f64);
+    // and into level 2: the hut's few notes came between, so there the tune starts afresh
+    g.until(100, "he lands", |g| g.get("GROUND") == 1);
+    g.to_level_two();
+    assert_eq!((g.get("TUNEON"), g.get("TUNEN"), g.get("MSPD")), (1, 0, 7));
+    assert!(lines.iter().any(|l| l.at == ordp(&g)));
     assert_eq!(g.get("LATE"), 0);
 }
 
 #[test]
 fn every_sound_is_made_as_the_trackers_instrument_makes_it() {
-    // The tracker's recipes, read off the chip a frame at a time while level 1's tune plays
-    // from its top through A on the string and A on the pulse.
-    let mut g = Game::boot();
-    g.press(SPACE);
-    g.until(60, "level 1", |g| g.get("STATE") == PLAY);
+    // The tracker's recipes, read off the chip a frame at a time while the tune plays from
+    // its top through A on the string and A on the pulse.
+    let mut g = Game::boot_niece(true);
+    g.until(400, "the tune", |g| g.get("TUNEON") == 1);
     let mut heard = vec![hear(&g)];
-    for _ in 0..(2 + 16) * 96 {
+    for _ in 0..(2 + 16) * 112 {
         g.frame();
         heard.push(hear(&g));
     }
@@ -1727,30 +1737,29 @@ fn every_sound_is_made_as_the_trackers_instrument_makes_it() {
         (1..heard.len() - 12).filter(|&f| heard[f].ins[v] == i && heard[f].note[v] != 0 && heard[f].age[v] == 1 && heard[f - 1].age[v] != 0).collect()
     };
     let wave = |v: usize, f: usize, n: usize| -> Vec<u8> { heard[f..f + n].iter().map(|h| h.v[v].1).collect() };
-    // a bass note: its second frame is noise, three octaves up: the pick
-    let bass = starts(2, "BASS");
-    assert!(bass.len() > 100, "{} bass notes", bass.len());
-    for &f in &bass {
-        assert_eq!(wave(2, f, 3), [W_PULSE, W_NOISE, W_PULSE], "a bass note's first three frames, at frame {f}");
-        assert!(heard[f + 1].v[2].0 > heard[f].v[2].0.saturating_mul(6) || heard[f + 1].v[2].0 > 60000);
+    // a bass note: a frame of noise for the pick, a blip an octave up, and the note
+    let blip = starts(2, "BLIP");
+    assert!(blip.len() > 80, "{} bass notes", blip.len());
+    for &f in &blip {
+        assert_eq!(wave(2, f, 4), [W_PULSE, W_NOISE, W_PULSE, W_PULSE], "a bass note's first four frames, at frame {f}");
+        let (up, note) = (heard[f + 2].v[2].0 as i32, heard[f + 3].v[2].0 as i32);
+        assert!((up - 2 * note).abs() <= 2, "the blip is an octave over the note: {up} and {note}");
     }
-    // the snare, inside the bass voice: noise, noise, the pulse an octave up, noise
-    let snare = starts(2, "SNARE");
-    assert!(snare.len() >= 30);
-    for &f in &snare {
-        assert_eq!(wave(2, f, 4), [W_NOISE, W_NOISE, W_PULSE, W_NOISE], "the snare at frame {f}");
-        assert!(!heard[f + 2].v[2].2, "its gate is on for two frames: the rest is its release");
+    // the kick: a triangle two octaves up, a frame of noise, and a pulse falling onto the note
+    let thump = starts(2, "THUMP");
+    assert!(thump.len() >= 30);
+    for &f in &thump {
+        assert_eq!(wave(2, f, 6), [W_TRI, W_NOISE, W_PULSE, W_PULSE, W_PULSE, W_PULSE], "the kick at frame {f}");
+        let p: Vec<u16> = heard[f + 2..f + 6].iter().map(|h| h.v[2].0).collect();
+        assert!(p[0] > p[1] && p[1] > p[2] && p[2] > p[3], "falling: {p:?}");
     }
-    // a tom: pulse, noise, noise, the pulse an octave away and back
-    let tom = starts(1, "TOM");
-    assert!(tom.len() >= 30);
-    for &f in &tom {
-        assert_eq!(wave(1, f, 5), [W_PULSE, W_NOISE, W_NOISE, W_PULSE, W_PULSE], "a tom at frame {f}");
-        assert_eq!(heard[f + 3].v[1].0 / 2, heard[f + 4].v[1].0.min(heard[f + 3].v[1].0 / 2), "an octave apart");
-    }
-    assert!(starts(1, "HAT").iter().all(|&f| wave(1, f, 2) == [W_NOISE, W_NOISE]));
+    // hats are two frames of noise with the gate on; the rim is a stick, a skin, a rattle
+    assert!(starts(1, "TSS").iter().all(|&f| wave(1, f, 2) == [W_NOISE, W_NOISE] && !heard[f + 2].v[1].2));
+    let rim = starts(1, "RIM");
+    assert!(rim.len() >= 30);
+    assert!(rim.iter().all(|&f| wave(1, f, 5) == [W_NOISE, W_TRI, W_TRI, W_NOISE, W_NOISE]));
     // the string: the wave table is drawn again as the note ages, every frame at first.
-    // Over a note a bar long, 20 different drawings or more, each one of the tape's
+    // Over a note of 70 frames, 20 different drawings or more, each one of the tape's
     let long = starts(0, "STRING").into_iter().find(|&f| (1..70).all(|k| heard[f + k].age[0] == heard[f].age[0] + k as u8)).expect("a long note on the string");
     let drawings: std::collections::BTreeSet<[u8; 32]> = heard[long..long + 70].iter().map(|h| h.table).collect();
     assert!(drawings.len() >= 20, "{} drawings of the wave table in a note of 70 frames", drawings.len());
@@ -1761,12 +1770,10 @@ fn every_sound_is_made_as_the_trackers_instrument_makes_it() {
         assert!((0..32).any(|k| (0..32).all(|i| g.m.peek(waves_at + k * 32 + i) == d[i as usize])));
     }
     assert!(heard[long..long + 70].iter().all(|h| h.v[0].1 == W_DRAWN && h.v[0].2));
-    // the first is nearly a square (the string driven past the table's ends), the last nearly
-    // itself: far fewer steps at the rails
     let rails = |t: &[u8; 32]| t.iter().filter(|&&b| b == 0 || b == 255).count();
     assert!(rails(&heard[long].table) >= 24 && rails(&heard[long + 69].table) < rails(&heard[long].table));
     // the pulse lead: every note has an attack of its own, because the one before was let go
-    // two frames before it; its width runs all the time; its vibrato comes late
+    // two frames before it; its vibrato comes late
     let lead = starts(0, "LEAD");
     assert!(lead.len() >= 30, "{} notes on the pulse", lead.len());
     let mut let_go = 0;
@@ -1786,10 +1793,10 @@ fn every_sound_is_made_as_the_trackers_instrument_makes_it() {
 }
 
 #[test]
-fn the_pulse_width_runs_and_the_titles_bass_goes_through_the_filter() {
+fn the_pulse_width_runs_and_the_bass_goes_through_the_filter() {
     let mut g = Game::boot();
-    // the title's bass voice: thump and blip through the low-pass, whose corner never stands
-    // still; its hats go round it
+    // the bass voice goes through the low-pass, whose corner never stands still; the hats
+    // and the tune go round it
     let (mut corners, mut through) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
     for _ in 0..400 {
         g.frame();
@@ -1799,11 +1806,9 @@ fn the_pulse_width_runs_and_the_titles_bass_goes_through_the_filter() {
     assert!(corners.len() > 60 && *corners.iter().next().unwrap() >= 104 && *corners.iter().last().unwrap() <= 191, "{corners:?}");
     assert!(through.contains(&4) && through.iter().all(|m| m & 3 == 0), "voice 3 and only voice 3: {through:?}");
     assert_eq!(g.m.peek(0xC0DA), 0x1C, "volume 12, low-pass");
-    // level 1's pulse lead: the width moves every frame of every note
-    g.press(SPACE);
-    g.until(60, "level 1", |g| g.get("STATE") == PLAY);
+    // the pulse lead: the width moves every frame of every note
     let lead = ins(&g, "LEAD");
-    g.until(2000, "A on the pulse", |g| g.get("VINS") / 8 == lead && g.get("VNOTE") != 0);
+    g.until(3000, "A on the pulse", |g| g.get("VINS") / 8 == lead && g.get("VNOTE") != 0);
     let mut widths = vec![g.m.peek(0xC0C2)];
     for _ in 0..300 {
         g.frame();
@@ -1813,51 +1818,6 @@ fn the_pulse_width_runs_and_the_titles_bass_goes_through_the_filter() {
     }
     let still = widths.windows(2).filter(|w| w[0] == w[1]).count();
     assert!(still * 10 < widths.len(), "the width stood still for {still} frames of {}", widths.len());
-    assert_eq!(g.m.peek(0xC0D9) & 7, 0, "nothing of level 1's goes through the filter");
-}
-
-#[test]
-fn the_evening_and_the_title_have_their_own_tunes() {
-    let mut g = Game::boot();
-    let within = |g: &Game, tune: &str| order(g, tune).0.iter().any(|l| l.at == ordp(g));
-    // the title: all three voices in its first bars, and round to just after the way in
-    assert!(within(&g, "t_title") && g.get("TUNEON") == 1);
-    assert_eq!(g.get("MSPD"), 7);
-    let (lines, end) = order(&g, "t_title");
-    let mut visited = Vec::new();
-    for _ in 0..27 * 16 * 7 {
-        g.frame();
-        if visited.last() != Some(&ordp(&g)) {
-            visited.push(ordp(&g));
-        }
-    }
-    assert_eq!(end, lines[1].at);
-    assert_eq!(visited[visited.len() - 2..], [lines.last().unwrap().at, lines[1].at], "{visited:04X?}");
-    // level 1's
-    g.press(SPACE);
-    g.until(60, "level 1", |g| g.get("STATE") == PLAY);
-    g.frames(20);
-    assert!(within(&g, "t_day") && !within(&g, "t_title"));
-    // level 2's: slower, other notes, and all three voices from its first bar
-    g.until(100, "he lands", |g| g.get("GROUND") == 1);
-    g.to_level_two();
-    assert!(within(&g, "t_dusk") && !within(&g, "t_day"));
-    assert_eq!((g.get("MSPD"), g.get("TUNEON")), (8, 1));
-    let mut gates = [0; 3];
-    for _ in 0..128 {
-        g.frame();
-        for v in 0..3 {
-            gates[v as usize] += voice(&g, v).2 as u32;
-        }
-    }
-    assert!(gates.iter().all(|&n| n >= 16), "{gates:?}");
-    // its bass is a triangle with the kick in it
-    let mut bass_waves = std::collections::BTreeSet::new();
-    for _ in 0..300 {
-        g.frame();
-        bass_waves.insert(voice(&g, 2).1);
-    }
-    assert_eq!(bass_waves.into_iter().collect::<Vec<_>>(), [W_TRI, W_NOISE]);
 }
 
 #[test]
@@ -1869,16 +1829,16 @@ fn the_hut_a_lost_life_and_game_over_each_have_a_few_notes_that_end() {
     g.m.key(RIGHT);
     g.until(100, "into the pool", |g| g.get("STATE") == DYING);
     g.m.key_up(RIGHT);
-    assert_eq!((ordp(&g), g.get("TUNEON"), g.get("MSPD")), (g.sym("t_life") + 2, 1, 6));
+    assert_eq!((ordp(&g), g.get("TUNEON"), g.get("TUNEN")), (g.sym("t_life") + 2, 1, g.sym("T_LIFE") as u8));
     let mut notes = std::collections::BTreeSet::new();
-    for _ in 0..25 {
+    for _ in 0..45 {
         g.frame();
         notes.insert(g.get("VNOTE"));
     }
     assert!(notes.len() >= 3, "{notes:?}");
     g.until(100, "back", |g| g.get("STATE") == PLAY);
     g.frame();
-    assert_eq!((ordp(&g), g.get("TUNEON"), g.get("MSPD")), (g.sym("t_day") + 2, 1, 6));
+    assert_eq!((ordp(&g), g.get("TUNEON"), g.get("TUNEN")), (g.sym("t_title") + 2, 1, 0), "the tune, from its start");
     // the hut: two bars, and then nothing but the clock's ticks
     let door = (0..256).find(|&c| g.flags(c, 8) == 0x10).expect("a door");
     g.stand(door * 8 - 40, GROUND_Y);
@@ -1887,7 +1847,7 @@ fn the_hut_a_lost_life_and_game_over_each_have_a_few_notes_that_end() {
     g.m.key_up(RIGHT);
     assert_eq!((ordp(&g), g.get("TUNEON")), (g.sym("t_clear") + 2, 1));
     let frames = g.until(250, "its end", |g| g.get("TUNEON") == 0);
-    assert!((185..=195).contains(&frames), "{frames} frames of it");
+    assert!((218..=228).contains(&frames), "{frames} frames of it");
     assert!(!voice(&g, 0).2 && !voice(&g, 2).2, "voices 1 and 3 let go");
     g.until(400, "the count", |g| g.get("CT") == 1);
     g.frames(20);
@@ -1898,11 +1858,15 @@ fn the_hut_a_lost_life_and_game_over_each_have_a_few_notes_that_end() {
     g.stand(300, GROUND_Y);
     g.hold(RIGHT, 60);
     g.until(200, "game over", |g| g.get("STATE") == OVER);
-    assert_eq!((ordp(&g), g.get("TUNEON"), g.get("MSPD")), (g.sym("t_over") + 2, 1, 8));
+    assert_eq!((ordp(&g), g.get("TUNEON")), (g.sym("t_over") + 2, 1));
     let frames = g.until(300, "its end", |g| g.get("TUNEON") == 0);
-    assert!((250..=260).contains(&frames), "{frames} frames of it");
+    assert!((218..=228).contains(&frames), "{frames} frames of it");
     g.frames(5);
     assert!((0..3).all(|v| !voice(&g, v).2), "all three let go");
+    // and from game over the title starts the tune again
+    g.until(600, "the title", |g| g.get("STATE") == TITLE);
+    g.frames(3);
+    assert_eq!((g.get("TUNEON"), g.get("TUNEN")), (1, 0));
     assert_eq!(g.get("LATE"), 0);
 }
 
@@ -2041,9 +2005,8 @@ fn the_player_is_cheap_enough() {
     assert!(total / frames < 1100 && worst < 2700, "{} and {worst}", total / frames);
 }
 
-/// The tunes for a person to listen to, as WAVs (mono, 16 bits, 44.1 kHz), a whole time round
-/// each and a little more: the title, level 1 standing still, and level 2. With each, the
-/// chip's registers a frame at a time, 25 bytes a frame as crates/unc-asm/examples/record.rs
+/// The tune for a person to listen to, as a WAV (mono, 16 bits, 44.1 kHz): the way in, a
+/// whole time round and six bars of the second. With it, the chip's registers a frame at a time, 25 bytes a frame as crates/unc-asm/examples/record.rs
 /// writes them: `CLOUDBERRY_SHOTS=dir cargo test --release -p unc-asm --test game_cloudberry
 /// recordings -- --ignored`.
 #[test]
@@ -2084,12 +2047,7 @@ fn recordings() {
     }
     let mut g = Game::boot_niece(true);
     g.until(400, "the title", |g| g.get("TUNEON") == 1);
-    record(&mut g, (2 + 24 + 4) * 16 * 7, &format!("{dir}/tune-title.wav"));
-    g.press(SPACE);
-    g.until(60, "level 1", |g| g.get("STATE") == PLAY);
-    record(&mut g, (2 + 44 + 4) * 16 * 6, &format!("{dir}/tune-day.wav"));
-    g.to_level_two();
-    record(&mut g, (2 + 44 + 4) * 16 * 8, &format!("{dir}/tune-dusk.wav"));
+    record(&mut g, (2 + 24 + 6) * 16 * 7, &format!("{dir}/tune.wav"));
 }
 
 /// Pictures of the game for a person to look at, as PPMs:

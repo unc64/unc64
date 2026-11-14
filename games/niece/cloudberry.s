@@ -63,38 +63,38 @@
 ; frame, a whole number, and the camera goes exactly as he does, so nothing
 ; judders (`camera`).
 ;
-; What it shows of the AUNT: six tunes of its own, played once a frame by the
-; MUSIC TRACKER's player cut down to what they use (`music`), on the tracker's
+; What it shows of the AUNT: one tune, "Before the Rain", which starts on the
+; title and plays on through both levels, and a few notes each for the hut, a
+; lost life and game over. They are played once a frame by the MUSIC TRACKER's
+; player cut down to what they use (`music`), on eight of the tracker's
 ; instruments, recipe for recipe (`the instruments`, near the end), from patterns
 ; written a bar to a line with the notes by name (`the tunes`).
+;   C minor, 107 beats a minute, a chord a bar and four bars round: Cm Ab Fm G.
+;     Two bars in, then 24 that go round: the tune twice, and a second section
+;     on Ab Bb Cm Cm, Ab Bb Eb G
 ;   the three voices are the tune, the percussion and the bass. Nothing plays
-;     chords: the bass carries them, one riff a tune, the same every bar on the
-;     bar's chord, a chord a bar and four bars round, with the snare (or the
-;     kick) inside it
+;     chords: the bass carries them, one riff the same every bar on the bar's
+;     chord, a kick that lands on the note and the note blipping its octave,
+;     through the filter as its corner sweeps. The percussion is quiet hats and
+;     a rim on the second and fourth beats; there is no snare
 ;   the tune is on the string: the wave table drawn again as the note ages,
-;     square at the strike and itself as it dies, 32 drawings a note. When a
-;     stretch comes round again it is on a pulse whose width runs, often an
-;     octave up; the second section is a trill, a whistle or a triangle; and in
-;     a quiet stretch the drums stop and a triangle holds over the bass
+;     square at the strike and itself as it dies, 32 drawings a note. The second
+;     time it is on a pulse whose width runs, an octave up; the second section
+;     is a held triangle
 ;   every note is an event: let go two frames before the next, a frame of
-;     noise at the start of a bass note for the pick, a vibrato that comes late;
-;     a drum is a pulse, noise and the pulse again an octave away, in a tenth
-;     of a second
-;   the title is in C minor at 107 beats a minute, its bass through the filter
-;     as the corner sweeps; level 1 in D dorian at 125; level 2 in A minor at
-;     93. Each has its own bass riff and its own percussion. The levels' tunes
-;     are 44 bars before they go round, to just after the way in
+;     noise at the start of a bass note for the pick, a vibrato that comes late
 ;   the effects, the jump, the berry, the lemming and the bad news, borrow
 ;     voice 2 from the percussion for a fifth of a second at most
 ;
 ; Time, at 1 MHz. Paced by the FLIP: one step of the game a frame, 50 a second;
 ; `work` to `endwork` is one frame's work. Walking each level from its start to
-; its hut, a frame's work is 5,000 cycles of the 19,968 on average and 8,450 at
-; the worst (a new column of tiles, ten things on the page, a landing and a new
-; row of the tune all at once): 500 the sky, 800 moving him, 400 the backdrop's
-; four BLITs, 600 a new column when there is one, up to 2,900 the berries and the
-; creatures, 200 drawing him, 200 the score, and the sound 1,000, or 2,500 on a
-; row where three notes start and the string's wave table is drawn. The NIECE has 49,800 pixels to draw in a level's fullest
+; its hut, a frame's work is 4,900 cycles of the 19,968 on average and 8,000 at
+; the worst, 8,100 on the fullest page (a new column of tiles, ten things on the
+; page, a landing and a new row of the tune all at once): 500 the sky, 800 moving
+; him, 400 the backdrop's four BLITs, 600 a new column when there is one, up to
+; 2,900 the berries and the creatures, 200 drawing him, 200 the score, and the
+; sound 1,000, or 2,500 on a row where three notes start and the string's wave
+; table is drawn. The NIECE has 49,800 pixels to draw in a level's fullest
 ; frame, of the 79,872 it can: 16,000 of sky, 16,000 of backdrop, 15,360 of
 ; level, and the rest things (the title, with its words' boxes, is 51,900). It's
 ; done 12,500 cycles after the vertical blank, 13,000 on the title, and the queue
@@ -109,9 +109,9 @@
 ; Without the NIECE ($C14F doesn't read $17), CLOUDBERRY says so and waits.
 ;
 ; Memory:
-;   $0000-$00A7  variables (the fast page; the ROM's $D0-$FE untouched)
+;   $0000-$00A8  variables (the fast page; the ROM's $D0-$FE untouched)
 ;   $0400-$07E7  the text screen: the score and the words
-;   $0800-       code, tables, the words, the tunes, the two levels, the pictures
+;   $0800-       code, tables, the words, the tune, the two levels, the pictures
 ;   after them   the things, and the level unpacked: 12 pages, a row each (.res)
 ; On the sheet, under the two pages: the fells at line 200, the clouds at 232, the
 ; ring at 256, the tiles at 352, the pictures of things at 384, the hills at 464.
@@ -2215,8 +2215,8 @@ boxes:  LDX NBOX
 
 ; ---------------------------------------------------------------- sound
 ; The AUNT's three voices have a job each: voice 1 is the tune, voice 2 the
-; percussion, voice 3 the bass, which carries the harmony and has the snare
-; (or the kick) inside it. Nothing plays chords. The player and its
+; percussion, voice 3 the bass, which carries the harmony and has the kick
+; inside it. Nothing plays chords. The player and its
 ; instruments are the MUSIC TRACKER's, cut down to what these tunes use: see
 ; `the instruments`, near the end.
 
@@ -2354,7 +2354,7 @@ noises: LDA JSND
 ; and WAVE are written. Then the string's wave table, if a note of it is
 ; young; and the filter's corner, which goes up and down by itself.
 ;
-; With the effects it costs COSTMEAN cycles a frame on average and COSTWORST at the
+; With the effects it costs 1,000 cycles a frame on average and 2,500 at the
 ; worst: a row where three notes start and the wave table is redrawn (its 32
 ; steps are 480 cycles by themselves).
 music:  LDA TUNEON
