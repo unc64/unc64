@@ -63,15 +63,32 @@
 ; frame, a whole number, and the camera goes exactly as he does, so nothing
 ; judders (`camera`).
 ;
-; Sound: the AUNT. Voice 1 the jump, voice 2 berries and bad news, voice 3 a tune.
+; What it shows of the AUNT: six tunes of its own, played by a small player
+; called once a frame (`music`), from patterns written a bar to a line with the
+; notes by name (`the tunes`, near the end). The title has a waltz in G, the
+; day a jig in D with a B part in D mixolydian, the evening a slower tune in E
+; dorian; each level's is 32 bars before it goes round. The hut, a lost life
+; and game over have a bar or two each.
+;   voice 1 is the tune, on three instruments: a fiddle (a pulse whose width
+;     goes to and fro), a squeeze-box (the wave table, drawn at the start from
+;     four sines) and a whistle (a triangle), with a vibrato on notes that last
+;   voice 2 is the bass: a sawtooth through the filter, low-pass with a little
+;     resonance, whose corner falls from 775 Hz to 240 as each note sounds
+;   voice 3 is the fourth and fifth players: the chord, a note of it a frame,
+;     and for a few frames at a time the kick, the snare (noise, with a
+;     triangle's knock in it) or the hat
+;   and the effects, the jump, the berry, the lemming and the bad news, borrow
+;     voice 3 for a quarter of a second at most; the chord is struck again the
+;     frame they end
 ;
 ; Time, at 1 MHz. Paced by the FLIP: one step of the game a frame, 50 a second;
 ; `work` to `endwork` is one frame's work. Walking each level from its start to
-; its hut, a frame's work is 4,000 cycles of the 19,968 on average and 7,000 at
-; the worst (a new column of tiles, ten things on the page and a landing all at
-; once): 500 the sky, 800 moving him, 400 the backdrop's four BLITs, 600 a new
-; column when there is one, up to 2,900 the berries and the creatures, 200 drawing
-; him, 200 the score. The NIECE has 49,800 pixels to draw in a level's fullest
+; its hut, a frame's work is 4,200 cycles of the 19,968 on average and 7,100 at
+; the worst, 7,300 on the fullest page (a new column of tiles, ten things on the
+; page, a landing and a new row of the tune all at once): 500 the sky, 800 moving
+; him, 400 the backdrop's four BLITs, 600 a new column when there is one, up to
+; 2,900 the berries and the creatures, 200 drawing him, 200 the score, and the
+; sound 270, or 1,170 on a row where three notes start. The NIECE has 49,800 pixels to draw in a level's fullest
 ; frame, of the 79,872 it can: 16,000 of sky, 16,000 of backdrop, 15,360 of
 ; level, and the rest things (the title, with its words' boxes, is 51,900). It's
 ; done 12,500 cycles after the vertical blank, 13,000 on the title, and the queue
@@ -86,9 +103,9 @@
 ; Without the NIECE ($C14F doesn't read $17), CLOUDBERRY says so and waits.
 ;
 ; Memory:
-;   $0000-$007A  variables (the fast page; the ROM's $D0-$FE untouched)
+;   $0000-$0095  variables (the fast page; the ROM's $D0-$FE untouched)
 ;   $0400-$07E7  the text screen: the score and the words
-;   $0800-       code, tables, the words, the two levels, the pictures
+;   $0800-       code, tables, the words, the tunes, the two levels, the pictures
 ;   after them   the things, and the level unpacked: 12 pages, a row each (.res)
 ; On the sheet, under the two pages: the fells at line 200, the clouds at 232, the
 ; ring at 256, the tiles at 352, the pictures of things at 384, the hills at 464.
@@ -103,7 +120,15 @@ KEYS    = $C060         ; the keyboard matrix, rows 0-8 (chapter 11)
 V1      = $C0C0         ; the AUNT's three voices (chapter 12)
 V2      = $C0C8
 V3      = $C0D0
-VOLUME  = $C0DA
+CUTOFF  = $C0D8         ; the filter's corner
+FILTER  = $C0D9         ; bits 0-2: the voices through it; bits 4-7 resonance
+VOLUME  = $C0DA         ; bits 0-3 volume, bit 4 low-pass
+WAVETABLE = $C0E0       ; a waveform of one's own, 32 steps
+TRI     = $01           ; a voice's WAVE
+SAW     = $02
+PULSE   = $04
+NOISE   = $08
+DRAWN   = $10           ; the wave table
 NCTRL   = $C100         ; the NIECE (chapter 17)
 NSTATUS = $C101
 NGO     = $C103
@@ -169,6 +194,9 @@ E_BERRY = 1             ; ETYPE
 E_LEM   = 2
 E_MIDGE = 3
 E_FLAT  = 4             ; a lemming that's been jumped on
+CUTTOP  = 150           ; the bass's filter: where its corner starts, 775 Hz,
+CUTLOW  = 96            ; where it stops, 240 Hz,
+CUTSTEP = 6             ; and how fast it gets there
 SOLID   = $80           ; a tile's flags: bit 7 so that BMI finds it
 ONEWAY  = $40           ; holds him up, but he can come up through it
 GOAL    = $10           ; the hut's door
@@ -271,15 +299,15 @@ NBERRY  = $5B           ; how many the level has, two digits
 TIMEV   = $5D           ; three digits
 TIMEC   = $60
 SCORE   = $61           ; five digits
-JSND    = $66           ; the sounds: frames left
+JSND    = $66           ; the effects: frames left of a slide up, and its pitch,
 JF      = $67
-BSND    = $68
-HSND    = $69
+BSND    = $68           ; of a berry's notes,
+HSND    = $69           ; and of bad news, and its pitch
 HF      = $6A
-TUNEP   = $6B           ; the tune: which, where in it, frames to the next note
-TUNEI   = $6D
-TUNET   = $6E
-TUNEON  = $6F
+ORDP    = $6B           ; the tune: the line of its order that's playing,
+MSPD    = $6D           ; frames a row,
+MTICK   = $6E           ; frames left of this row,
+TUNEON  = $6F           ; and 0 once it has stopped
 LC      = $70           ; `loadlevel`: chunk, row, column, character
 LR      = $71
 LCOL    = $72
@@ -291,7 +319,24 @@ WASG    = $77
 SKYF    = $78           ; NFLAGS for the clouds and fells and for the near hills: an
 HILLF   = $79           ; ink table each, for the evening
 PSXH    = $7A           ; not 0: he's off the page (the camera is on its way)
-FPEND   = $7B
+MPT     = $7B           ; `music`: the pattern being read
+VP      = $7D           ; where each voice is in its pattern: three pointers
+VDUR    = $83           ; rows left of each voice's note
+VNOTE   = $86           ; voice 1's and voice 2's notes (0: resting)
+VINS    = $88           ; and their instruments
+LAGE    = $8A           ; voice 1: frames since its note began,
+LFL     = $8B           ; the note's FREQ,
+LFH     = $8C
+LVIB    = $8D           ; how far the vibrato goes either side of it,
+PWV     = $8E           ; and the pulse's width, and which way it's going
+PWD     = $8F
+CUT     = $90           ; voice 2: the filter's corner
+CHROOT  = $91           ; voice 3: the chord's lowest note (0: none), its kind,
+CHTYPE  = $92
+ARPI    = $93           ; which of its three notes this frame,
+DRUMP   = $94           ; where in a drum's table (0: no drum),
+V3RES   = $95           ; and 1 if the chord wants striking again
+FPEND   = $96
 
 ; ---------------------------------------------------------------- start
         .org $0800
@@ -367,6 +412,7 @@ work:   LDA FRAME
 @n4:    JSR st_over
 @flip:  JSR hud
         JSR noises
+aftersound:
         LDA #FLIP
         JSR go
 endwork:
@@ -728,13 +774,19 @@ st_dying:
         STA HITS
         LDA #PLAY
         STA STATE
+        LDA LEVEL               ; and the level's tune from its start
+        ASL A
+        CLC
+        ADC #T_DAY
+        JMP tunestart
 @rts:   RTS
 @over:  LDA #OVER
         STA STATE
         LDA #0
         STA OT
         STA OTH
-        STA TUNEON
+        LDA #T_OVER
+        JSR tunestart
         JSR hush
         LDX #M_OVER
         JSR say
@@ -821,6 +873,7 @@ space:  LDA KEYS
         RTS
 
 totitle:
+        JSR silence
         JSR hush
         JSR hudoff
         LDA #0
@@ -833,10 +886,7 @@ totitle:
         STA PY
         LDA #TITLE
         STA STATE
-        LDA #<tune1
-        STA TUNEP
-        LDA #>tune1
-        STA TUNEP+1
+        LDA #T_TITLE
         JSR tunestart
         LDX #M_NAME
         JSR say
@@ -859,6 +909,7 @@ newgame:
         BPL @sc
 
 startlevel:
+        JSR silence             ; (unpacking takes a few frames)
         JSR hush
         LDX #M_READY
         JSR say
@@ -879,10 +930,10 @@ startlevel:
         STA HITS
         LDA #PLAY
         STA STATE
-        LDA #<tune1
-        STA TUNEP
-        LDA #>tune1
-        STA TUNEP+1
+        LDA LEVEL               ; T_DAY, or T_DUSK
+        ASL A
+        CLC
+        ADC #T_DAY
         JSR tunestart
         JSR hush
         JSR hudline
@@ -949,10 +1000,7 @@ toclear:
         BNE @say
         LDX #M_WON
 @say:   JSR say
-        LDA #<tune2
-        STA TUNEP
-        LDA #>tune2
-        STA TUNEP+1
+        LDA #T_CLEAR
         JMP tunestart
 
 ; ---------------------------------------------------------------- the keys
@@ -1396,7 +1444,9 @@ cols:   LDA PXH
         RTS
 
 ; Into the bog, or off the bottom of the fell.
-fell:   JSR s_hurt
+fell:   LDA #T_LIFE
+        JSR tunestart
+        JSR s_hurt
         LDA #0
         STA HITS
         STA VXL
@@ -1432,7 +1482,10 @@ hurt:   JSR s_hurt
         LDX #1
 @kx:    STX VXH
         RTS
-@last:  LDA #0
+@last:  LDA #T_LIFE
+        JSR tunestart
+        JSR s_hurt              ; (the tune's start let voice 3 go)
+        LDA #0
         STA HITS
         STA VXL
         STA VXH
@@ -2153,47 +2206,59 @@ boxes:  LDX NBOX
 @rts:   RTS
 
 ; ---------------------------------------------------------------- sound
-; Voice 1 is his: the jump, a note sliding up. Voice 2 is what happens to
-; him: a berry's two high notes, a lemming's squeak, the bad news sliding
-; down. Voice 3 plays the tune. All three die away by themselves (sustain
-; 0), so a sound is a pitch and the gate off and on.
-sound:  LDA #15
+; The AUNT's three voices have a job each. Voice 1 is the tune: a fiddle (a
+; pulse whose width goes to and fro), a squeeze-box (the wave table, drawn at
+; the start) or a whistle (a triangle), each with a vibrato once a note is a
+; quarter of a second old. Voice 2 is the bass: a sawtooth through the
+; filter, whose corner comes down as each note sounds, so a note is plucked.
+; Voice 3 does three things by turns. It plays the chords, a note of the
+; chord a frame, which the ear takes for all three at once; when the drums
+; have a beat it is the drum for a few frames, noise or a falling triangle;
+; and when something happens to the picker it is that, for a quarter of a
+; second at most, and then the chord again.
+
+; All quiet, and the chip set up: the filter low-pass with voice 2 through it,
+; and the squeeze-box's wave: a note with its second, third and fifth
+; harmonics, as the assembler's sines draw it.
+sound:  LDA #$1F                ; as loud as it goes, low-pass
         STA VOLUME
-        LDA #128
-        STA V1+2
-        STA V2+2
-        LDA #48
-        STA V3+2
-        LDA #4                  ; pulse
-        STA V1+3
-        LDA #1                  ; triangle
-        STA V2+3
-        LDA #4
-        STA V3+3
-        LDA #$07
-        STA V1+5
-        LDA #$08
-        STA V2+5
-        LDA #$09
-        STA V3+5
+        LDA #$52                ; voice 2 through the filter, ringing a little
+        STA FILTER
+        LDX #31
+@wave:  LDA reed,X
+        STA WAVETABLE,X
+        DEX
+        BPL @wave
         LDA #0
-        STA V1+6
-        STA V2+6
-        STA V3+6
-        LDA #6                  ; the tune stays under the rest
-        STA V3+7
+        STA TUNEON
+
+; The three voices let go.
+silence:
+        LDA #0
+        STA V1+4
+        STA V2+4
+        STA V3+4
+        STA VNOTE
+        STA VNOTE+1
         RTS
 
+; ---------------------------------------------------------------- what happens to him
+; The jump is a note sliding up, a landing and a lemming under his boots
+; shorter ones; a berry is two high notes; bad news slides down. They take
+; voice 3 from the music, envelope and all, for as long as JSND, BSND or HSND
+; counts, and `music` gives it back.
 s_jump: LDA #$10
         LDX #7
 slide:  STA JF
-        STA V1+1
         STX JSND
         LDA #0
-        STA V1
-        STA V1+4
-        LDA #1
-        STA V1+4
+        STA BSND
+        STA HSND
+        LDY #PULSE
+        LDA #$07
+        JSR sfxon
+        LDA JF
+        STA V3+1
         RTS
 s_land: LDA #$06
         LDX #2
@@ -2204,35 +2269,54 @@ s_stomp:
         BNE slide
 
 s_berry:
-        LDA #5
+        LDA #9
         STA BSND
         LDA #$56
-s_blip: STA V2+1
+        BNE blip
+s_blip: PHA                     ; a single high note, A its pitch
+        LDA #3
+        STA BSND
+        PLA
+blip:   PHA
         LDA #0
+        STA JSND
         STA HSND
-        STA V2
-        STA V2+4
-        LDA #1
-        STA V2+3
-        STA V2+4
+        LDY #TRI
+        LDA #$08
+        JSR sfxon
+        PLA
+        STA V3+1
         RTS
 
-s_hurt: LDA #16
+s_hurt: LDA #11
         STA HSND
         LDA #0
+        STA JSND
         STA BSND
-        STA V2+4
+        LDY #SAW
+        LDA #$0A
+        JSR sfxon
         LDA #$28
         STA HF
-        STA V2+1
-        LDA #2                  ; a sawtooth
-        STA V2+3
-        LDA #1
-        STA V2+4
+        STA V3+1
         RTS
 
-; Once a frame: the slides, the berry's second note, and the tune's next
-; note when it's due.
+; Voice 3 for an effect: waveform Y, attack and decay A, dying away by
+; itself, and struck.
+sfxon:  STA V3+5
+        STY V3+3
+        LDA #0
+        STA V3+4
+        STA V3+6
+        STA V3+7
+        STA V3
+        LDA #$80
+        STA V3+2
+        LDA #1
+        STA V3+4
+        RTS
+
+; Once a frame: the slides and the berry's second note, and then the music.
 noises: LDA JSND
         BEQ @nj
         DEC JSND
@@ -2240,59 +2324,404 @@ noises: LDA JSND
         CLC
         ADC #3
         STA JF
-        STA V1+1
+        STA V3+1
 @nj:    LDA BSND
         BEQ @nb
         DEC BSND
+        LDA BSND
+        CMP #5
         BNE @nb
         LDA #$73
-        JSR s_blip
+        JSR blip
 @nb:    LDA HSND
-        BEQ @nh
+        BEQ music
         DEC HSND
         LDA HF
         SEC
         SBC #2
         STA HF
-        STA V2+1
-@nh:    LDA TUNEON
-        BEQ @rts
-        DEC TUNET
-        BNE @rts
-        LDA #9
-        STA TUNET
-        LDY TUNEI
-        LDA (TUNEP),Y
-        CMP #$FE
-        BCC @note
-        BEQ @stop
-        LDY #0                  ; $FF: round again
-        LDA (TUNEP),Y
-@note:  INY
-        STY TUNEI
-        TAX
-        LDA #0
-        STA V3+4
-        TXA
-        BEQ @rts                ; a rest
-        LDA notelo-1,X
-        STA V3
-        LDA notehi-1,X
         STA V3+1
+
+; ---------------------------------------------------------------- the player
+; A tune is its speed (frames a row) and an order: a line for each stretch of
+; it, naming three patterns, one a voice. A pattern is notes, each with how
+; many rows it lasts, with now and then a change of instrument or of chord in
+; among them. The three patterns of a line are as long as each other, and
+; when voice 1's ends the next line starts. The order ends with where to go
+; on from, or with nowhere: then the tune stops.
+;
+; With the effects it costs 270 cycles a frame on average, and 1,170 at the
+; worst: a row where all three voices start a note and a pattern ends.
+music:  LDA TUNEON
+        BNE @on
+        RTS
+@on:    DEC MTICK
+        BNE @frame
+        LDA MSPD                ; a new row
+        STA MTICK
+        LDX #0
+        JSR rowv
+        LDA TUNEON
+        BNE @more
+        RTS                     ; that was the tune's end
+@more:  LDX #1
+        JSR rowv
+        LDX #2
+        JSR rowv
+
+@frame: LDA VNOTE               ; voice 1
+        BEQ @bass
+        INC LAGE
+        LDA VDUR                ; let go two frames before the note's end, so
+        CMP #1                  ; the next one starts clean
+        BNE @held
+        LDA MTICK
+        CMP #2
+        BNE @held
+        LDA #0
+        STA V1+4
+@held:  CLC                     ; the pulse's width, to and fro between a
+        LDA PWV                 ; quarter and three quarters
+        ADC PWD
+        STA PWV
+        STA V1+2
+        CMP #$C0
+        BCS @turn
+        CMP #$40
+        BCS @vib
+@turn:  SEC
+        LDA #0
+        SBC PWD
+        STA PWD
+@vib:   LDA LAGE                ; the vibrato: up, back, down, back, two
+        CMP #14                 ; frames each, a 128th of the pitch
+        BCC @bass
+        LSR A
+        AND #3
+        CMP #1
+        BEQ @up
+        CMP #3
+        BEQ @down
+        LDA LFL
+        STA V1
+        LDA LFH
+        STA V1+1
+        JMP @bass
+@up:    CLC
+        LDA LFL
+        ADC LVIB
+        STA V1
+        LDA LFH
+        ADC #0
+        STA V1+1
+        JMP @bass
+@down:  SEC
+        LDA LFL
+        SBC LVIB
+        STA V1
+        LDA LFH
+        SBC #0
+        STA V1+1
+
+@bass:  LDA VNOTE+1             ; voice 2
+        BEQ @v3
+        LDA VDUR+1
+        CMP #1
+        BNE @sweep
+        LDA MTICK
+        CMP #2
+        BNE @sweep
+        LDA #0
+        STA V2+4
+@sweep: LDA CUT                 ; the filter's corner comes down
+        CMP #CUTLOW + 1
+        BCC @v3
+        SBC #CUTSTEP
+        STA CUT
+        STA CUTOFF
+
+@v3:    LDA JSND                ; voice 3: has an effect got it?
+        ORA BSND
+        ORA HSND
+        BEQ @ours
+        LDA #1                  ; then the chord wants striking afresh after
+        STA V3RES
+        LDA #0
+        STA DRUMP
+        RTS
+@ours:  LDY DRUMP               ; a drum: this frame's waveform and pitch
+        BEQ @arp
+        LDA drumtab,Y
+        BEQ @drumend
+        STA V3+3
+        LDA drumtab+1,Y
+        STA V3+1
+        INY
+        INY
+        STY DRUMP
+        RTS
+@drumend:
+        STA DRUMP
+        INC V3RES
+@arp:   LDA CHROOT
+        BNE @chord
+        LDA V3RES               ; no chord: quiet
+        BEQ @rts
+        LDA #0
+        STA V3RES
+        STA V3+4
+@rts:   RTS
+@chord: LDA V3RES
+        BEQ @step
+        LDA #0                  ; back from a drum or an effect, or a new
+        STA V3RES               ; chord: the chord's own sound, struck
+        STA V3+4
+        LDA #PULSE
+        STA V3+3
+        LDA #$38
+        STA V3+2
+        LDA #$09
+        STA V3+5
+        LDA #$84
+        STA V3+6
+        LDA #5
+        STA V3+7
+        LDA #1
+        STA V3+4
+@step:  LDX ARPI                ; the chord's next note
+        INX
+        CPX #3
+        BCC @ok
+        LDX #0
+@ok:    STX ARPI
+        TXA
+        CLC
+        ADC CHTYPE
+        TAX
+        LDA chords,X
+        CLC
+        ADC CHROOT
+        TAY
+        LDA freqlo-1,Y
+        STA V3
+        LDA freqhi-1,Y
+        STA V3+1
+        RTS
+
+; A row has gone by for voice X. If its note is over, the next thing in its
+; pattern: instruments and chords until there's a note, and then the note.
+rowv:   DEC VDUR,X
+        BEQ @next
+        RTS
+@next:  TXA
+        ASL A
+        TAY
+        LDA VP,Y
+        STA MPT
+        LDA VP+1,Y
+        STA MPT+1
+@read:  LDY #0
+        LDA (MPT),Y
+        CMP #END
+        BNE @notend
+        CPX #0
+        BNE @wait
+        JSR nextpos             ; voice 1's pattern is over: the next line
+        LDX #0
+        LDA TUNEON
+        BNE @next
+        RTS
+@wait:  LDA #1                  ; (a pattern shorter than voice 1's waits)
+        STA VDUR,X
+        RTS
+@notend:
+        BPL @note
+        CPX #2
+        BEQ @chord
+        AND #$7F                ; an instrument
+        STA VINS,X
+        LDA #1
+        JSR @on
+        JMP @read
+@chord: AND #$3F                ; a chord: which kind, and its lowest note
+        STA CHTYPE
+        INY
+        LDA (MPT),Y
+        STA CHROOT
+        LDA #1
+        STA V3RES
+        LDA #2
+        JSR @on
+        JMP @read
+@note:  STA T0
+        INY
+        LDA (MPT),Y
+        STA VDUR,X
+        LDA #2
+        JSR @on
+        TXA
+        ASL A
+        TAY
+        LDA MPT
+        STA VP,Y
+        LDA MPT+1
+        STA VP+1,Y
+        LDA T0
+        CPX #1
+        BEQ bassnote
+        BCS drumnote
+        JMP leadnote
+@on:    CLC
+        ADC MPT
+        STA MPT
+        BCC @same
+        INC MPT+1
+@same:  RTS
+
+; Voice 2 starts note A, or rests.
+bassnote:
+        STA VNOTE+1
+        TAY
+        BEQ @rest
+        LDA freqlo-1,Y
+        STA V2
+        LDA freqhi-1,Y
+        STA V2+1
+        LDY VINS+1
+        LDA ins,Y
+        STA V2+3
+        LDA ins+1,Y
+        STA V2+5
+        LDA ins+2,Y
+        STA V2+6
+        LDA ins+3,Y
+        STA V2+2
+        LDA ins+4,Y
+        STA V2+7
+        LDA #CUTTOP             ; the filter open, to close as it sounds
+        STA CUT
+        STA CUTOFF
+        LDA #0
+        STA V2+4
+        LDA #1
+@rest:  STA V2+4
+        RTS
+
+; Voice 3: a drum, unless an effect has the voice. (A rest carries on with
+; the chord.)
+drumnote:
+        SEC
+        SBC #KICK
+        BCC @rts
+        TAY
+        LDA JSND
+        ORA BSND
+        ORA HSND
+        BNE @rts
+        LDA drumat,Y
+        STA DRUMP
+        LDA drumtrim,Y
+        STA V3+7
+        LDA #0
+        STA V3
+        STA V3+4
+        STA V3+5
+        LDA #$F0                ; as loud as it starts until its table ends
+        STA V3+6
         LDA #1
         STA V3+4
 @rts:   RTS
-@stop:  LDA #0
-        STA TUNEON
+
+; Voice 1 starts note A, or rests.
+leadnote:
+        STA VNOTE
+        TAY
+        BEQ @rest
+        LDA freqlo-1,Y
+        STA LFL
+        STA V1
+        ASL A
+        LDA freqhi-1,Y
+        STA LFH
+        STA V1+1
+        ROL A
+        STA LVIB                ; a 128th of the pitch
+        LDY VINS
+        LDA ins,Y
+        STA V1+3
+        LDA ins+1,Y
+        STA V1+5
+        LDA ins+2,Y
+        STA V1+6
+        LDA ins+3,Y
+        STA V1+2
+        STA PWV
+        LDA ins+4,Y
+        STA V1+7
+        LDA #0
+        STA LAGE
+        STA V1+4
+        LDA #1
+@rest:  STA V1+4
         RTS
 
-tunestart:
-        LDA #0
-        STA TUNEI
-        LDA #1
-        STA TUNET
-        STA TUNEON
+; The order's next line, or wherever its end says to go on from.
+nextpos:
+        CLC
+        LDA ORDP
+        ADC #6
+        STA ORDP
+        BCC @look
+        INC ORDP+1
+@look:  LDY #1
+        LDA (ORDP),Y
+        BNE setpos              ; a line: no pattern is in the fast page
+        LDY #3
+        LDA (ORDP),Y
+        BNE @back
+        STA TUNEON              ; nowhere: the tune is over
+        JMP silence
+@back:  TAX
+        DEY
+        LDA (ORDP),Y
+        STA ORDP
+        STX ORDP+1
+setpos: LDY #5
+@copy:  LDA (ORDP),Y
+        STA VP,Y
+        DEY
+        BPL @copy
         RTS
+
+; Tune A (one of the T_ numbers) from its start.
+tunestart:
+        TAX
+        LDA tunes,X
+        STA ORDP
+        LDA tunes+1,X
+        STA ORDP+1
+        LDY #0
+        LDA (ORDP),Y
+        STA MSPD
+        INC ORDP
+        BNE @same
+        INC ORDP+1
+@same:  JSR silence
+        STA CHROOT
+        STA DRUMP
+        STA VINS                ; the fiddle, until a pattern says otherwise
+        LDA #BASS & $7F
+        STA VINS+1
+        LDA #3
+        STA PWD
+        LDA #1
+        STA V3RES
+        STA MTICK
+        STA TUNEON
+        STA VDUR
+        STA VDUR+1
+        STA VDUR+2
+        BNE setpos
 
 ; ---------------------------------------------------------------- a level
 ; A level is 256 columns of 12 tiles, written at the end of this file as
@@ -2952,16 +3381,6 @@ duskink:
 ; to black, light green to green, white to light grey.
 darkink:
         .byte 0, 15, 2, 3, 4, 11, 6, 7, 8, 0, 10, 11, 12, 5, 14, 15
-
-; The tune's notes: A3 C4 D4 E4 G4 A4 C5 D5 E5 G5, as FREQ (Hz x 16.777).
-notelo: .byte <3691, <4389, <4927, <5530, <6577, <7382, <8779, <9854, <11060, <13153
-notehi: .byte >3691, >4389, >4927, >5530, >6577, >7382, >8779, >9854, >11060, >13153
-tune1:  .byte 6, 0, 7, 6, 5, 0, 4, 0, 5, 6, 7, 8, 9, 0, 0, 0
-        .byte 9, 0, 8, 7, 8, 0, 6, 0, 7, 6, 5, 4, 6, 0, 0, 0
-        .byte 4, 0, 5, 6, 7, 0, 6, 5, 4, 0, 2, 4, 5, 0, 0, 0
-        .byte 6, 0, 7, 8, 9, 8, 7, 6, 5, 4, 5, 7, 6, 0, 0, 0
-        .byte $FF
-tune2:  .byte 4, 6, 7, 9, 7, 9, 10, 0, 10, 0, 0, $FE
 ; ---------------------------------------------------------------- the words
 ; Each is its row and column on the text screen, how many letters, and the letters.
 M_NONE1 = 0
@@ -3012,6 +3431,471 @@ m_over: .byte 10, 15, 9
 m_again:.byte 13, 9, 22
         .text "SPACE FOR ANOTHER WALK"
 hudtxt: .text " BERRIES 00/00  LIVES 3  TIME 000  00000"
+
+; The notes: a number each, 1 for the C two octaves under middle C up to 60, the B
+; nearly five octaves over it. Cs is C sharp. 0 is a rest.
+REST    = 0
+C2      = 1
+Cs2     = 2
+D2      = 3
+Ds2     = 4
+E2      = 5
+F2      = 6
+Fs2     = 7
+G2      = 8
+Gs2     = 9
+A2      = 10
+As2     = 11
+B2      = 12
+C3      = 13
+Cs3     = 14
+D3      = 15
+Ds3     = 16
+E3      = 17
+F3      = 18
+Fs3     = 19
+G3      = 20
+Gs3     = 21
+A3      = 22
+As3     = 23
+B3      = 24
+C4      = 25
+Cs4     = 26
+D4      = 27
+Ds4     = 28
+E4      = 29
+F4      = 30
+Fs4     = 31
+G4      = 32
+Gs4     = 33
+A4      = 34
+As4     = 35
+B4      = 36
+C5      = 37
+Cs5     = 38
+D5      = 39
+Ds5     = 40
+E5      = 41
+F5      = 42
+Fs5     = 43
+G5      = 44
+Gs5     = 45
+A5      = 46
+As5     = 47
+B5      = 48
+C6      = 49
+Cs6     = 50
+D6      = 51
+Ds6     = 52
+E6      = 53
+F6      = 54
+Fs6     = 55
+G6      = 56
+Gs6     = 57
+A6      = 58
+As6     = 59
+B6      = 60
+
+; What a note is to the AUNT: FREQ is its pitch in Hz x 16.777. A row an octave.
+freqlo: .byte <1097, <1163, <1232, <1305, <1383, <1465, <1552, <1644, <1742, <1845, <1955, <2071       ; C2 to B2
+        .byte <2195, <2325, <2463, <2610, <2765, <2930, <3104, <3288, <3484, <3691, <3910, <4143       ; C3 to B3
+        .byte <4389, <4650, <4927, <5220, <5530, <5859, <6207, <6577, <6968, <7382, <7821, <8286       ; C4 to B4
+        .byte <8779, <9301, <9854, <10440, <11060, <11718, <12415, <13153, <13935, <14764, <15642, <16572       ; C5 to B5
+        .byte <17557, <18601, <19708, <20879, <22121, <23436, <24830, <26306, <27871, <29528, <31284, <33144       ; C6 to B6
+freqhi: .byte >1097, >1163, >1232, >1305, >1383, >1465, >1552, >1644, >1742, >1845, >1955, >2071       ; C2 to B2
+        .byte >2195, >2325, >2463, >2610, >2765, >2930, >3104, >3288, >3484, >3691, >3910, >4143       ; C3 to B3
+        .byte >4389, >4650, >4927, >5220, >5530, >5859, >6207, >6577, >6968, >7382, >7821, >8286       ; C4 to B4
+        .byte >8779, >9301, >9854, >10440, >11060, >11718, >12415, >13153, >13935, >14764, >15642, >16572       ; C5 to B5
+        .byte >17557, >18601, >19708, >20879, >22121, >23436, >24830, >26306, >27871, >29528, >31284, >33144       ; C6 to B6
+
+; ---------------------------------------------------------------- the tunes
+; The instruments of voices 1 and 2: waveform, attack and decay, sustain and
+; release, pulse width, and sixteenths off its level. A pattern changes
+; instrument with one of these.
+FIDDLE  = $80
+REED    = $85
+WHISTLE = $8A
+BASS    = $8F
+ins:    .byte PULSE, $18, $A8, $50, 0   ; the fiddle
+        .byte DRAWN, $28, $C8, $80, 0   ; the squeeze-box
+        .byte TRI, $3A, $C9, $80, 0     ; the whistle
+        .byte SAW, $08, $A7, $80, 2     ; the bass, which the filter plucks
+
+; The squeeze-box's wave, 32 steps: a note and three of its harmonics.
+reed:   .rept 32, i
+        .byte 128 + sin(i * 8, 64) + sin(i * 16, 28) + sin(i * 24, 20) + sin(i * 40, 10)
+        .endr
+
+; The chords voice 3 runs up, a note a frame: semitones over the lowest.
+MAJOR   = $C0
+MINOR   = $C3
+chords: .byte 0, 4, 7
+        .byte 0, 3, 7
+
+; The drums: a waveform and a pitch (FREQ's high byte) for each frame, to a
+; 0. The kick is a click and a triangle falling, the snare noise with a knock
+; in it, the hat two frames of high noise, quieter.
+KICK    = $70
+SNARE   = $71
+HAT     = $72
+drumtab:
+        .byte 0, 0
+dkick:  .byte NOISE, $30, TRI, $0E, TRI, $09, TRI, $06, TRI, $04, 0
+dsnare: .byte NOISE, $60, TRI, $10, NOISE, $48, NOISE, $38, NOISE, $30, 0
+dhat:   .byte NOISE, $C0, NOISE, $C0, 0
+drumat: .byte dkick - drumtab, dsnare - drumtab, dhat - drumtab
+drumtrim:
+        .byte 0, 2, 9
+
+T_TITLE = 0
+T_DAY   = 2
+T_DUSK  = 4
+T_CLEAR = 6
+T_LIFE  = 8
+T_OVER  = 10
+tunes:  .word t_title, t_day, t_dusk, t_clear, t_life, t_over
+
+; In a pattern: a note and how many rows it lasts (REST for a silence, or on
+; voice 3 for the chord carrying on; KICK, SNARE and HAT on voice 3); an
+; instrument, for voices 1 and 2; MAJOR or MINOR and the chord's lowest note,
+; for voice 3 (0: no chord); END. A line of the source is a bar.
+END     = $FF
+
+; ---- The title: "Over the Water". G major, three in a bar, a row a quaver
+; at 9 frames: 111 crotchets a minute. Two bars of whistle alone, then
+; sixteen bars round and round.
+t_title:
+        .byte 9
+        .word tl_solo, tb_rest, tv_rest
+title_loop:
+        .word tl_1, tb_1, tv_1          ; bars 1-4: G G C D
+        .word tl_2, tb_2, tv_2          ; 5-8: G Em C-D G
+        .word tl_3, tb_1, tv_1          ; 9-12
+        .word tl_4, tb_2, tv_2          ; 13-16
+        .word 0, title_loop
+
+tl_solo: .byte WHISTLE
+        .byte D5,2, G5,2, B5,2
+        .byte A5,1, B5,1, A5,2, G5,2
+        .byte END
+tb_rest: .byte REST,12, END
+tv_rest: .byte MAJOR,0, REST,12, END
+
+tl_1:   .byte D5,2, G5,2, B5,2
+        .byte A5,1, B5,1, A5,2, G5,2
+        .byte E5,2, G5,2, C6,2
+        .byte B5,1, A5,1, Fs5,2, D5,2
+        .byte END
+tl_2:   .byte D5,2, G5,2, B5,2
+        .byte B5,1, C6,1, B5,2, G5,2
+        .byte E5,1, G5,1, E5,2, Fs5,2
+        .byte G5,6
+        .byte END
+tl_3:   .byte B5,2, D6,2, B5,2
+        .byte G5,2, B5,1, A5,1, G5,2
+        .byte C6,2, G5,2, E5,2
+        .byte Fs5,2, A5,2, D6,2
+        .byte END
+tl_4:   .byte D6,1, B5,1, G5,2, B5,2
+        .byte E5,2, G5,2, B5,2
+        .byte C6,2, A5,2, Fs5,2
+        .byte G5,4, D5,2
+        .byte END
+
+tb_1:   .byte G2,2, D3,2, D3,2
+        .byte G2,2, D3,2, D3,2
+        .byte C3,2, G2,2, G2,2
+        .byte D2,2, A2,2, A2,2
+        .byte END
+tb_2:   .byte G2,2, D3,2, D3,2
+        .byte E2,2, B2,2, B2,2
+        .byte C3,2, C3,2, D3,2
+        .byte G2,6
+        .byte END
+
+tv_1:   .byte MAJOR,G3, REST,2, HAT,2, HAT,2
+        .byte REST,2, HAT,2, HAT,2
+        .byte MAJOR,C4, REST,2, HAT,2, HAT,2
+        .byte MAJOR,D4, REST,2, HAT,2, HAT,2
+        .byte END
+tv_2:   .byte MAJOR,G3, REST,2, HAT,2, HAT,2
+        .byte MINOR,E4, REST,2, HAT,2, HAT,2
+        .byte MAJOR,C4, REST,2, HAT,2, MAJOR,D4, HAT,2
+        .byte MAJOR,G3, REST,2, HAT,2, HAT,2
+        .byte END
+
+; ---- Level 1, the day: "The Full Pail". A jig in D, six quavers in a bar,
+; a row a quaver at 8 frames: 125 dotted crotchets a minute. Two bars of
+; the band without the fiddle, then 32 bars: the A part twice on the fiddle
+; (D major), the B part twice on the squeeze-box, where the C chords make it
+; D mixolydian.
+t_day:  .byte 8
+        .word dl_rest, db_in, dv_in
+day_loop:
+        .word dl_a1, db_a1, dv_a1       ; A, bars 1-4: D D G A
+        .word dl_a2, db_a2, dv_a2       ; 5-8: D Bm G-A D
+        .word dl_a3, db_a1, dv_a1       ; 9-12
+        .word dl_a4, db_a2, dv_a2       ; 13-16
+        .word dl_b1, db_b1, dv_b1       ; B, bars 17-20: D C D C
+        .word dl_b2, db_b2, dv_b2       ; 21-24: G D Em-A D
+        .word dl_b3, db_b1, dv_b1       ; 25-28
+        .word dl_b4, db_b3, dv_b3       ; 29-32: G D G-A D
+        .word 0, day_loop
+
+dl_rest: .byte REST,12, END
+db_in:  .byte D2,2, D2,1, A2,2, A2,1
+        .byte D2,2, D2,1, A2,1, Fs2,1, D2,1
+        .byte END
+dv_in:  .byte MAJOR,D4, KICK,2, HAT,1, SNARE,2, HAT,1
+        .byte KICK,2, HAT,1, SNARE,1, SNARE,1, SNARE,1
+        .byte END
+
+dl_a1:  .byte FIDDLE
+        .byte Fs5,1, A5,1, A5,1, Fs5,1, E5,1, D5,1
+        .byte E5,1, Fs5,1, D5,1, A4,2, D5,1
+        .byte B4,1, D5,1, G5,1, G5,1, Fs5,1, E5,1
+        .byte Cs5,1, E5,1, A5,1, E5,2, Cs5,1
+        .byte END
+dl_a2:  .byte Fs5,1, A5,1, A5,1, Fs5,1, E5,1, D5,1
+        .byte D5,1, Fs5,1, B5,1, A5,1, Fs5,1, D5,1
+        .byte B4,1, D5,1, G5,1, Cs5,1, E5,1, A4,1
+        .byte D5,3, D5,2, A4,1
+        .byte END
+dl_a3:  .byte Fs5,1, A5,1, A5,1, Fs5,1, E5,1, D5,1
+        .byte E5,1, Fs5,1, G5,1, A5,2, Fs5,1
+        .byte G5,1, B5,1, G5,1, D5,1, E5,1, G5,1
+        .byte A5,1, G5,1, E5,1, Cs5,2, E5,1
+        .byte END
+dl_a4:  .byte Fs5,1, A5,1, D6,1, A5,1, Fs5,1, D5,1
+        .byte B5,1, A5,1, Fs5,1, D5,2, Fs5,1
+        .byte G5,1, E5,1, G5,1, A5,1, E5,1, Cs5,1
+        .byte D5,2, A4,1, D5,3
+        .byte END
+dl_b1:  .byte REED
+        .byte A5,2, Fs5,1, A5,2, Fs5,1
+        .byte G5,2, E5,1, G5,1, E5,1, C5,1
+        .byte A5,2, Fs5,1, D5,1, Fs5,1, A5,1
+        .byte G5,1, E5,1, C5,1, E5,3
+        .byte END
+dl_b2:  .byte D5,1, G5,1, B5,1, D6,1, B5,1, G5,1
+        .byte A5,1, Fs5,1, D5,1, Fs5,2, A5,1
+        .byte G5,1, E5,1, B4,1, Cs5,1, E5,1, G5,1
+        .byte Fs5,3, D5,3
+        .byte END
+dl_b3:  .byte A5,2, Fs5,1, A5,2, Fs5,1
+        .byte G5,2, E5,1, G5,1, E5,1, C5,1
+        .byte A5,1, B5,1, A5,1, Fs5,1, D5,1, Fs5,1
+        .byte E5,1, C5,1, E5,1, G5,2, E5,1
+        .byte END
+dl_b4:  .byte B5,1, G5,1, D5,1, G5,1, B5,1, D6,1
+        .byte D6,1, A5,1, Fs5,1, A5,1, Fs5,1, D5,1
+        .byte B4,1, D5,1, G5,1, E5,1, Cs5,1, E5,1
+        .byte D5,6
+        .byte END
+
+db_a1:  .byte D2,2, D2,1, A2,2, A2,1
+        .byte D2,2, D2,1, A2,2, A2,1
+        .byte G2,2, G2,1, D3,2, D3,1
+        .byte A2,2, A2,1, E3,2, E3,1
+        .byte END
+db_a2:  .byte D2,2, D2,1, A2,2, A2,1
+        .byte B2,2, B2,1, Fs3,2, Fs3,1
+        .byte G2,2, G2,1, A2,2, A2,1
+        .byte D2,2, D2,1, A2,1, Fs2,1, D2,1
+        .byte END
+db_b1:  .byte D2,2, D2,1, A2,2, A2,1
+        .byte C3,2, C3,1, G2,2, G2,1
+        .byte D2,2, D2,1, A2,2, A2,1
+        .byte C3,2, C3,1, G2,2, G2,1
+        .byte END
+db_b2:  .byte G2,2, G2,1, D3,2, D3,1
+        .byte D2,2, D2,1, A2,2, A2,1
+        .byte E2,2, E2,1, A2,2, A2,1
+        .byte D2,3, D2,3
+        .byte END
+db_b3:  .byte G2,2, G2,1, D3,2, D3,1
+        .byte D2,2, D2,1, A2,2, A2,1
+        .byte G2,2, G2,1, A2,2, A2,1
+        .byte D2,6
+        .byte END
+
+dv_a1:  .byte MAJOR,D4, KICK,2, HAT,1, SNARE,2, HAT,1
+        .byte KICK,2, HAT,1, SNARE,2, HAT,1
+        .byte MAJOR,G3, KICK,2, HAT,1, SNARE,2, HAT,1
+        .byte MAJOR,A3, KICK,2, HAT,1, SNARE,2, HAT,1
+        .byte END
+dv_a2:  .byte MAJOR,D4, KICK,2, HAT,1, SNARE,2, HAT,1
+        .byte MINOR,B3, KICK,2, HAT,1, SNARE,2, HAT,1
+        .byte MAJOR,G3, KICK,2, HAT,1, MAJOR,A3, SNARE,2, HAT,1
+        .byte MAJOR,D4, KICK,2, HAT,1, SNARE,1, SNARE,1, SNARE,1
+        .byte END
+dv_b1:  .byte MAJOR,D4, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,C4, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,D4, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,C4, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte END
+dv_b2:  .byte MAJOR,G3, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,D4, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte MINOR,E4, KICK,1, HAT,1, HAT,1, MAJOR,A3, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,D4, KICK,3, SNARE,2, SNARE,1
+        .byte END
+dv_b3:  .byte MAJOR,G3, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,D4, KICK,1, HAT,1, HAT,1, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,G3, KICK,1, HAT,1, HAT,1, MAJOR,A3, SNARE,1, HAT,1, HAT,1
+        .byte MAJOR,D4, KICK,3, SNARE,1, SNARE,1, SNARE,1
+        .byte END
+
+; ---- Level 2, the evening: "The Long Light". E dorian (the C sharps over
+; the A chords), four in a bar, a row a quaver at 7 frames: 107 crotchets a
+; minute. A bar of the band, then 32 bars: the A part twice on the
+; whistle, the B part twice on the squeeze-box.
+t_dusk: .byte 7
+        .word kl_rest, kb_in, kv_in
+dusk_loop:
+        .word kl_a1, kb_a1, kv_a1       ; A, bars 1-4: Em Em D Em
+        .word kl_a2, kb_a2, kv_a2       ; 5-8: Em G D-A Em
+        .word kl_a3, kb_a1, kv_a1       ; 9-12
+        .word kl_a4, kb_a2, kv_a2       ; 13-16
+        .word kl_b1, kb_b1, kv_b1       ; B, bars 17-20: G D A Em
+        .word kl_b2, kb_b1, kv_b1       ; 21-24
+        .word kl_b3, kb_b1, kv_b1       ; 25-28
+        .word kl_b4, kb_b2, kv_b2       ; 29-32: G D D-A Em
+        .word 0, dusk_loop
+
+kl_rest: .byte REST,8, END
+kb_in:  .byte E2,3, E2,1, B2,2, E2,2
+        .byte END
+kv_in:  .byte MINOR,E4, REST,4, HAT,2, HAT,1, HAT,1
+        .byte END
+
+kl_a1:  .byte WHISTLE
+        .byte E5,2, G5,1, B5,1, A5,2, G5,2
+        .byte Fs5,1, G5,1, A5,2, B5,4
+        .byte A5,2, Fs5,1, D5,1, Fs5,2, A5,2
+        .byte G5,1, Fs5,1, E5,2, E5,4
+        .byte END
+kl_a2:  .byte E5,2, G5,1, B5,1, D6,2, B5,2
+        .byte A5,1, B5,1, G5,2, D5,2, G5,2
+        .byte Fs5,2, A5,2, E5,2, Cs5,2
+        .byte E5,6, B4,2
+        .byte END
+kl_a3:  .byte E5,2, G5,1, B5,1, A5,2, G5,2
+        .byte Fs5,2, A5,2, B5,2, D6,2
+        .byte D6,1, Cs6,1, A5,2, Fs5,2, A5,2
+        .byte B5,3, G5,1, E5,4
+        .byte END
+kl_a4:  .byte E5,2, G5,1, B5,1, D6,2, B5,2
+        .byte B5,2, G5,2, D5,1, G5,1, B5,2
+        .byte A5,2, Fs5,2, E5,1, Cs5,1, E5,2
+        .byte E5,8
+        .byte END
+kl_b1:  .byte REED
+        .byte B5,3, A5,1, G5,2, D5,2
+        .byte A5,3, G5,1, Fs5,2, D5,2
+        .byte E5,2, Cs5,1, E5,1, A5,2, Cs6,2
+        .byte B5,4, G5,2, E5,2
+        .byte END
+kl_b2:  .byte D6,2, B5,2, G5,2, B5,2
+        .byte A5,2, Fs5,2, D5,2, Fs5,2
+        .byte E5,1, Fs5,1, G5,1, A5,1, B5,2, Cs6,2
+        .byte B5,6, E5,2
+        .byte END
+kl_b3:  .byte B5,3, A5,1, G5,2, D5,2
+        .byte A5,3, G5,1, Fs5,2, D5,2
+        .byte Cs6,2, A5,2, E5,2, A5,2
+        .byte G5,2, B5,2, E6,4
+        .byte END
+kl_b4:  .byte D6,1, B5,1, G5,2, B5,1, G5,1, D5,2
+        .byte Fs5,2, A5,2, D6,2, A5,2
+        .byte Fs5,2, D5,2, E5,2, Cs5,2
+        .byte E5,8
+        .byte END
+
+kb_a1:  .byte E2,3, E2,1, B2,2, E2,2
+        .byte E2,3, E2,1, B2,2, E2,2
+        .byte D2,3, D2,1, A2,2, D2,2
+        .byte E2,3, E2,1, B2,2, E2,2
+        .byte END
+kb_a2:  .byte E2,3, E2,1, B2,2, E2,2
+        .byte G2,3, G2,1, D3,2, G2,2
+        .byte D2,2, D2,2, A2,2, A2,2
+        .byte E2,3, E2,1, B2,2, E2,2
+        .byte END
+kb_b1:  .byte G2,3, G2,1, D3,2, G2,2
+        .byte D2,3, D2,1, A2,2, D2,2
+        .byte A2,3, A2,1, E3,2, A2,2
+        .byte E2,3, E2,1, B2,2, E2,2
+        .byte END
+kb_b2:  .byte G2,3, G2,1, D3,2, G2,2
+        .byte D2,3, D2,1, A2,2, D2,2
+        .byte D2,2, D2,2, A2,2, A2,2
+        .byte E2,8
+        .byte END
+
+kv_a1:  .byte MINOR,E4, KICK,2, HAT,2, SNARE,2, HAT,2
+        .byte KICK,2, HAT,2, SNARE,2, HAT,2
+        .byte MAJOR,D4, KICK,2, HAT,2, SNARE,2, HAT,2
+        .byte MINOR,E4, KICK,2, HAT,2, SNARE,2, HAT,2
+        .byte END
+kv_a2:  .byte MINOR,E4, KICK,2, HAT,2, SNARE,2, HAT,2
+        .byte MAJOR,G3, KICK,2, HAT,2, SNARE,2, HAT,2
+        .byte MAJOR,D4, KICK,2, HAT,2, MAJOR,A3, SNARE,2, HAT,2
+        .byte MINOR,E4, KICK,2, HAT,2, SNARE,2, SNARE,1, SNARE,1
+        .byte END
+kv_b1:  .byte MAJOR,G3, KICK,2, HAT,1, HAT,1, SNARE,2, HAT,2
+        .byte MAJOR,D4, KICK,2, HAT,1, HAT,1, SNARE,2, HAT,2
+        .byte MAJOR,A3, KICK,2, HAT,1, HAT,1, SNARE,2, HAT,2
+        .byte MINOR,E4, KICK,2, HAT,1, HAT,1, SNARE,2, HAT,2
+        .byte END
+kv_b2:  .byte MAJOR,G3, KICK,2, HAT,1, HAT,1, SNARE,2, HAT,2
+        .byte MAJOR,D4, KICK,2, HAT,1, HAT,1, SNARE,2, HAT,2
+        .byte MAJOR,D4, KICK,2, HAT,2, MAJOR,A3, SNARE,2, HAT,2
+        .byte MINOR,E4, KICK,4, SNARE,2, SNARE,1, SNARE,1
+        .byte END
+
+; ---- The hut: two bars of D, up the chord, at 6 frames a row.
+t_clear:
+        .byte 6
+        .word sc_l, sc_b, sc_v
+        .word 0, 0
+sc_l:   .byte FIDDLE
+        .byte D5,1, Fs5,1, A5,1, D6,2, A5,1
+        .byte D6,6
+        .byte END
+sc_b:   .byte D2,3, A2,3
+        .byte D3,6
+        .byte END
+sc_v:   .byte MAJOR,D4, SNARE,1, SNARE,1, SNARE,1, KICK,3
+        .byte KICK,6
+        .byte END
+
+; ---- A life: one bar, down a D minor chord to the C sharp that wants to
+; be somewhere else.
+t_life: .byte 6
+        .word sl_l, sl_b, sl_v
+        .word 0, 0
+sl_l:   .byte FIDDLE
+        .byte A5,1, F5,1, D5,1, Cs5,3
+        .byte END
+sl_b:   .byte A2,3, A2,3
+        .byte END
+sl_v:   .byte MAJOR,0, SNARE,3, KICK,3
+        .byte END
+
+; ---- Game over: two bars of E minor, down, on the whistle, at 8 frames.
+t_over: .byte 8
+        .word so_l, so_b, so_v
+        .word 0, 0
+so_l:   .byte WHISTLE
+        .byte B5,2, G5,2, E5,2
+        .byte D5,1, B4,1, E4,4
+        .byte END
+so_b:   .byte E2,6
+        .byte B2,2, E2,4
+        .byte END
+so_v:   .byte MINOR,E4, KICK,6
+        .byte KICK,6
+        .byte END
 
 ; ---------------------------------------------------------------- the levels
 ; A character a tile: # grass, = peat, R r rock, m moss on rock, - a duckboard and b a
