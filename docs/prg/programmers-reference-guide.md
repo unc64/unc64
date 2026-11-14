@@ -3569,12 +3569,35 @@ So the page can be drawn five times over in a frame, and storing the dozen regis
 | `$C10A-$C10B` | NDY | The top edge, the same way. |
 | `$C10C-$C10D` | NDW | The width, 0 to 65,535. |
 | `$C10E-$C10F` | NDH | The height, 0 to 65,535. |
-| `$C115` | NCOLOUR | The colour FILL and LINE draw in, 0-15. |
+| `$C115` | NCOLOUR | Bits 0-3: the colour FILL and LINE draw in, 0-15. Bits 4-7: FILL's second colour, for a pattern. |
+| `$C11D` | NPATTERN | FILL's pattern. 0 at reset: all one colour. |
 | `$C116` | NFLAGS | See below. |
 
 The destination is a rectangle on the page that's being drawn on: (0, 0) is the page's top left pixel and (159, 99) its bottom right, whichever page it is. The rectangle can start off the page (NDX and NDY can be negative) and be far bigger than it; only the part on the page is drawn. All registers are 0 at reset, and they keep their values from one command to the next, so a program only stores the ones that change.
 
 **FILL** (1) draws the rectangle in NCOLOUR. A width or height of 0 draws nothing.
+
+With NPATTERN not 0, FILL mixes two colours. The pattern is four pixels wide and two lines high: bits 7 to 4 are the four pixels of the even lines, left to right, and bits 3 to 0 those of the odd lines. A 1 is drawn in the second colour, NCOLOUR's high four bits, and a 0 in the first. It repeats across and down from the top left corner of the page (or of the sheet, with SHEET), wherever the rectangle is, so two fills side by side join up without a seam. `%01011010` is a chequerboard, which from a chair's distance is a seventeenth colour; `%10000000` is one pixel in eight. A patterned FILL costs what a plain one does.
+
+```text
+        LDA #14 << 4 | 6    ; light blue on blue
+        STA NCOLOUR
+        LDA #%01011010      ; every other pixel, the lines staggered
+        STA NPATTERN
+        LDA #FILL
+        STA NGO
+```
+
+**The short way in.** Most things on a 160 × 100 page are within a byte of its corner, and storing two bytes for each of four numbers is half of what a small picture costs to ask for. Four more registers set both bytes with one store:
+
+| Address | Register | Write |
+|---|---|---|
+| `$C119` | NDXS | NDX, from a signed byte: -128 to 127. The high byte becomes 0 or `$FF` to match. |
+| `$C11A` | NDYS | NDY, the same way. |
+| `$C11B` | NDWS | NDW, 0 to 255: the high byte becomes 0. |
+| `$C11C` | NDHS | NDH, the same way. |
+
+They're the same four numbers, not new ones: NDX reads what NDXS set, and each short register reads its number's low byte. So a picture half off the left edge is `LDA #-6`, `STA NDXS`, and nothing is left in a high byte for the next command to trip over.
 
 **LINE** (3) draws a line in NCOLOUR from (NDX, NDY) to (NDX + NDW, NDY + NDH), both ends included. Here NDW and NDH are signed, so a line can go up and to the left: -30 is `$E2`, `$FF`. The line has one pixel for each step along its longer side, each at the nearest place on the other (a half rounds to the right, or down). Its cost is its whole length, longer side plus one, in pixels, on the page or not.
 
@@ -3876,7 +3899,7 @@ Both read better than this paragraph: `games/niece/moths.s` and `games/niece/fro
 
 ### What it doesn't do
 
-It doesn't know what a wall is, or a ship, or a floor. It has no sprites that stay where they're put, no collisions and no interrupts: FRAME and the VBLANK interrupt (chapters 9 and 10) are the computer's, as before. It copies rectangles and it does sums. What they add up to is the program's business.
+It doesn't know what a wall is, or a ship, or a floor. It has no sprites that stay where they're put, no collisions and no interrupts (and BLIT has no pattern: a picture is its own): FRAME and the VBLANK interrupt (chapters 9 and 10) are the computer's, as before. It copies rectangles and it does sums. What they add up to is the program's business.
 
 ---
 
@@ -4044,10 +4067,15 @@ The NIECE (chapter 17) draws in all sixteen at once: each pixel of its page is o
 | `$C111-$C112` | NSY | As written | The source's top edge, 0-511 | 17 |
 | `$C113` | NSW | As written | The source's width | 17 |
 | `$C114` | NSH | As written | The source's height | 17 |
-| `$C115` | NCOLOUR | As written | FILL's and LINE's colour, 0-15 | 17 |
+| `$C115` | NCOLOUR | As written | Bits 0-3: FILL's and LINE's colour. Bits 4-7: FILL's second colour | 17 |
 | `$C116` | NFLAGS | As written | Bit 0 KEY, 1 FLIPX, 2 FLIPY, 3 ZTEST, 4 ZWRITE, 5 SHEET, 6-7 the ink table | 17 |
 | `$C117` | NDEPTH | As written | The command's depth, 0-255 | 17 |
 | `$C118` | NTABLE | As written | The ink table at NINK, 0-3 | 17 |
+| `$C119` | NDXS | NDX's low byte | NDX from a signed byte | 17 |
+| `$C11A` | NDYS | NDY's low byte | NDY from a signed byte | 17 |
+| `$C11B` | NDWS | NDW's low byte | NDW, 0-255 | 17 |
+| `$C11C` | NDHS | NDH's low byte | NDH, 0-255 | 17 |
+| `$C11D` | NPATTERN | As written | FILL's pattern: 4 pixels by 2 lines, a 1 the second colour | 17 |
 | `$C120-$C12F` | NINK | As written | The ink table: sixteen colours | 17 |
 | `$C130-$C131` | NMULA | As written | A signed 16-bit number | 17 |
 | `$C132-$C133` | NMULB | As written | Another | 17 |

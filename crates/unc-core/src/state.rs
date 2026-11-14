@@ -13,7 +13,7 @@
 //! | 66 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, TEXTROWS with CASE in its bit 7 (version 5 on), the timer and speaker, the shifter |
 //! | 1, or 16 with the board | The video board (version 2 on): 0 if it isn't in; 1 and its 15 bytes of registers (`VideoBoard::save`) if it is |
 //! | 122 | The sound chip (version 4 on): 1 and its 121 bytes (`Chip::save`); or one byte, 0, if a host took it out |
-//! | 1, or 1 + 65,898 and 42 a queued command | The NIECE (version 6 on): 0 if it isn't in; 1 and `Niece::save` if it is: its registers, ink tables, depth line, queue and its 64K |
+//! | 1, or 1 + 65,899 and 43 a queued command | The NIECE (version 6 on): 0 if it isn't in; 1 and `Niece::save` if it is: its registers, ink tables, depth line, queue and its 64K |
 //! | 4 | The computer's side of the tape interface: motor, data latch, byte ready, overrun |
 //! | 4 | Cycles into the current frame |
 //! | 312 | The border on each raster line of the last frame (for the picture) |

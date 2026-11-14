@@ -88,7 +88,7 @@ fn the_id_and_the_registers_at_switch_on() {
         assert_eq!(m.peek(N + reg::NINK + i), i as u8, "every ink table starts as itself");
     }
     // the gaps
-    for r in [0x19, 0x1F, 0x3E, 0x46, 0x4E] {
+    for r in [0x1E, 0x1F, 0x3E, 0x46, 0x4E] {
         assert_eq!(m.peek(N + r), 0xFF);
     }
     assert_eq!(m.peek(N + niece::SPAN), 0xFF, "past the chip");
@@ -108,7 +108,7 @@ fn registers_read_back_what_was_written() {
     m.poke(N + reg::NSY + 1, 0xFF);
     assert_eq!(m.peek(N + reg::NSY + 1), 1, "NSY has nine bits");
     m.poke(N + reg::NCOLOUR, 0xF7);
-    assert_eq!(m.peek(N + reg::NCOLOUR), 7);
+    assert_eq!(m.peek(N + reg::NCOLOUR), 0xF7, "two colours: FILL's second in the high four bits");
     m.poke(N + reg::NKEY, 0x1C);
     assert_eq!(m.peek(N + reg::NKEY), 12);
     m.poke(N + reg::NCTRL, 0xFF);
@@ -543,4 +543,62 @@ fn a_reset_empties_the_chip_and_a_save_state_keeps_it() {
     assert!(m.has_niece(), "a reset keeps the chip in");
     assert_eq!(m.peek(N + reg::NCTRL), 0);
     assert_eq!(px(&m, 160, 0), 0);
+}
+
+#[test]
+fn the_short_registers_set_both_bytes_at_once() {
+    let mut m = machine();
+    dest(&mut m, 0x1234, 0x1234, 0x1234, 0x1234);
+    m.poke(N + reg::NDXS, 0xFE);
+    m.poke(N + reg::NDYS, 0x7F);
+    m.poke(N + reg::NDWS, 200);
+    m.poke(N + reg::NDHS, 0);
+    let word = |m: &Machine, r: u16| m.peek(N + r) as u16 | (m.peek(N + r + 1) as u16) << 8;
+    assert_eq!(word(&m, reg::NDX), 0xFFFE, "signed: -2");
+    assert_eq!(word(&m, reg::NDY), 0x007F);
+    assert_eq!(word(&m, reg::NDW), 200, "a size isn't signed");
+    assert_eq!(word(&m, reg::NDH), 0);
+    assert_eq!((m.peek(N + reg::NDXS), m.peek(N + reg::NDWS)), (0xFE, 200), "they read the low bytes");
+    // a box hanging off the top left corner, in four stores
+    m.poke(N + reg::NDXS, (-3i8) as u8);
+    m.poke(N + reg::NDYS, (-3i8) as u8);
+    m.poke(N + reg::NDWS, 5);
+    m.poke(N + reg::NDHS, 5);
+    m.poke(N + reg::NCOLOUR, 9);
+    assert_eq!(go(&mut m, cmd::FILL), 4 + 1);
+    assert_eq!((px(&m, 1, 101), px(&m, 2, 101), px(&m, 1, 102)), (9, 0, 0));
+}
+
+#[test]
+fn a_patterned_fill_mixes_two_colours() {
+    let mut m = machine();
+    // a chequerboard of blue and light blue: 0101 on even lines, 1010 on odd
+    m.poke(N + reg::NCOLOUR, 14 << 4 | 6);
+    m.poke(N + reg::NPATTERN, 0b0101_1010);
+    assert_eq!(m.peek(N + reg::NPATTERN), 0b0101_1010);
+    dest(&mut m, 0, 0, 160, 100);
+    assert_eq!(go(&mut m, cmd::FILL), 4004, "it costs what a plain fill does");
+    for (x, y) in [(0, 0), (1, 0), (2, 0), (3, 0), (0, 1), (1, 1), (158, 98), (159, 99)] {
+        assert_eq!(px(&m, x, 100 + y), if (x + y) % 2 == 1 { 14 } else { 6 }, "({x}, {y})");
+    }
+    // the pattern is laid from the page's corner, not the rectangle's: a second fill joins up
+    m.poke(N + reg::NCOLOUR, 7 << 4 | 2);
+    dest(&mut m, 3, 1, 5, 3);
+    go(&mut m, cmd::FILL);
+    for (x, y) in [(3, 1), (4, 1), (7, 3)] {
+        assert_eq!(px(&m, x, 100 + y), if (x + y) % 2 == 1 { 7 } else { 2 }, "({x}, {y})");
+    }
+    // one pixel in four, on even lines only
+    m.poke(N + reg::NPATTERN, 0b1000_0000);
+    dest(&mut m, 0, 0, 8, 2);
+    go(&mut m, cmd::FILL);
+    let row = |m: &Machine, y: i32| (0..8).map(|x| px(m, x, 100 + y)).collect::<Vec<u8>>();
+    assert_eq!(row(&m, 0), [7, 2, 2, 2, 7, 2, 2, 2]);
+    assert_eq!(row(&m, 1), [2; 8]);
+    // LINE draws in the first colour, and with no pattern so does FILL
+    m.poke(N + reg::NPATTERN, 0);
+    dest(&mut m, 0, 50, 3, 0);
+    go(&mut m, cmd::LINE);
+    go(&mut m, cmd::FILL);
+    assert_eq!(row(&m, 50)[..4], [2, 2, 2, 2]);
 }

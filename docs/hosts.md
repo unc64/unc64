@@ -40,7 +40,7 @@ The format, numbers low byte first:
 | 18 | The processor: A, X, Y, SP, PC, P, the cycle count, whether it's running, halted or jammed (and on what), and the IRQ line |
 | 66 + keys held | The I/O: VMODE, the raster compare, the interrupt registers, FRAME, KBD and the keys held, the keyboard matrix, the colours, CHARSET, BITMAP, TEXTROWS, the timer, the speaker, the shifter |
 | 1, or 16 | The video board: 0 if it isn't in; 1 and its 15 bytes of registers (SPRTAB, SPRBANK, the collision and line registers, the scrolls, the layer, COLOURMODE and the colours) if it is. Its sprite table and images are in RAM |
-| 1, or 65,899 and 42 a queued command | The NIECE (manual chapter 17): 0 if it isn't in; 1 and its registers, ink tables, depth line, queue and 64K of sheet if it is |
+| 1, or 65,900 and 43 a queued command | The NIECE (manual chapter 17): 0 if it isn't in; 1 and its registers, ink tables, depth line, queue and 64K of sheet if it is |
 | 4 | The computer's side of the tape interface: the motor, TAPEDATA, byte ready, overrun |
 | 4 | Cycles into the current frame |
 | 312 | The border colour on each line of the last frame (for the picture) |

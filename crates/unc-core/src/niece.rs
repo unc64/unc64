@@ -59,6 +59,11 @@ pub mod reg {
     pub const NFLAGS: u16 = 0x16;
     pub const NDEPTH: u16 = 0x17;
     pub const NTABLE: u16 = 0x18;
+    pub const NDXS: u16 = 0x19;
+    pub const NDYS: u16 = 0x1A;
+    pub const NDWS: u16 = 0x1B;
+    pub const NDHS: u16 = 0x1C;
+    pub const NPATTERN: u16 = 0x1D;
     pub const NINK: u16 = 0x20;
     pub const NMULA: u16 = 0x30;
     pub const NMULB: u16 = 0x32;
@@ -117,7 +122,10 @@ pub struct Command {
     pub sy: u16,
     pub sw: u8,
     pub sh: u8,
+    /// NCOLOUR: the colour in the low four bits, FILL's second colour in the high four.
     pub colour: u8,
+    /// NPATTERN: which pixels of a FILL take the second colour.
+    pub pattern: u8,
     pub flags: u8,
     pub depth: u8,
     pub key: u8,
@@ -144,6 +152,7 @@ pub struct Niece {
     pub sw: u8,
     pub sh: u8,
     pub colour: u8,
+    pub pattern: u8,
     pub flags: u8,
     pub depth_reg: u8,
     pub table: u8,
@@ -178,6 +187,7 @@ impl Default for Niece {
             sw: 0,
             sh: 0,
             colour: 0,
+            pattern: 0,
             flags: 0,
             depth_reg: 0,
             table: 0,
@@ -308,6 +318,12 @@ impl Niece {
             reg::NFLAGS => self.flags,
             reg::NDEPTH => self.depth_reg,
             reg::NTABLE => self.table,
+            // the short ways in read the low bytes they write
+            reg::NDXS => self.dx as u8,
+            reg::NDYS => self.dy as u8,
+            reg::NDWS => self.dw as u8,
+            reg::NDHS => self.dh as u8,
+            reg::NPATTERN => self.pattern,
             0x20..=0x2F => self.inks[self.table as usize][(r - reg::NINK) as usize],
             0x30..=0x31 => word(self.mula as u16, reg::NMULA),
             0x32..=0x33 => word(self.mulb as u16, reg::NMULB),
@@ -360,8 +376,14 @@ impl Niece {
             0x12 => set(&mut self.sy, true, value & 1),
             reg::NSW => self.sw = value,
             reg::NSH => self.sh = value,
-            reg::NCOLOUR => self.colour = value & 15,
+            reg::NCOLOUR => self.colour = value,
             reg::NFLAGS => self.flags = value,
+            // one store for both bytes: a signed place, -128 to 127, and a size up to 255
+            reg::NDXS => self.dx = value as i8 as i16,
+            reg::NDYS => self.dy = value as i8 as i16,
+            reg::NDWS => self.dw = value as u16,
+            reg::NDHS => self.dh = value as u16,
+            reg::NPATTERN => self.pattern = value,
             reg::NDEPTH => self.depth_reg = value,
             reg::NTABLE => self.table = value & 3,
             0x20..=0x2F => self.inks[self.table as usize][(r - reg::NINK) as usize] = value & 15,
@@ -397,6 +419,7 @@ impl Niece {
             sw: self.sw,
             sh: self.sh,
             colour: self.colour,
+            pattern: self.pattern,
             flags: self.flags,
             depth: self.depth_reg,
             key: self.key,
@@ -452,10 +475,14 @@ impl Niece {
                 if y1 == y0 {
                     return;
                 }
+                // the pattern is 4 pixels by 2 lines, laid from the target's top left corner
+                // whatever the rectangle, so two fills side by side join up
+                let (first, second) = (c.colour & 15, c.colour >> 4);
                 for x in x0..x1 {
                     if self.column(c, x) {
                         for y in y0..y1 {
-                            self.plot(x, t.top + y, c.colour);
+                            let bit = c.pattern >> (7 - (x & 3) - 4 * (y & 1)) & 1;
+                            self.plot(x, t.top + y, if bit != 0 { second } else { first });
                         }
                     }
                 }
@@ -496,7 +523,7 @@ impl Niece {
                 for k in 0..=n {
                     let (x, y) = (c.dx as i32 + at(k, ex), c.dy as i32 + at(k, ey));
                     if (0..t.w).contains(&x) && (0..t.h).contains(&y) && self.column(c, x) {
-                        self.plot(x, t.top + y, c.colour);
+                        self.plot(x, t.top + y, c.colour & 15);
                     }
                 }
             }
@@ -507,7 +534,7 @@ impl Niece {
     /// `idle` is the part of the machine's clock a save state doesn't keep (`Machine::idle_cycles`):
     /// the cycles in the queue are saved without it, as the processor's own count is.
     pub(crate) fn save(&self, w: &mut Writer, idle: u64) {
-        for v in [self.ctrl, self.lost as u8, self.page, self.key, self.sx, self.sw, self.sh, self.colour, self.flags, self.depth_reg, self.table] {
+        for v in [self.ctrl, self.lost as u8, self.page, self.key, self.sx, self.sw, self.sh, self.colour, self.flags, self.depth_reg, self.table, self.pattern] {
             w.u8(v);
         }
         for v in [self.vaddr, self.dx as u16, self.dy as u16, self.dw, self.dh, self.sy, self.mula as u16, self.mulb as u16, self.divd] {
@@ -521,7 +548,7 @@ impl Niece {
         w.u64(self.free_at.saturating_sub(idle));
         w.u8(self.queue.len() as u8);
         for c in &self.queue {
-            for v in [c.op, c.sx, c.sw, c.sh, c.colour, c.flags, c.depth, c.key] {
+            for v in [c.op, c.sx, c.sw, c.sh, c.colour, c.flags, c.depth, c.key, c.pattern] {
                 w.u8(v);
             }
             for v in [c.dx as u16, c.dy as u16, c.dw, c.dh, c.sy] {
@@ -535,12 +562,12 @@ impl Niece {
 
     pub(crate) fn restore(r: &mut Reader) -> Result<Self, String> {
         let mut n = Niece::default();
-        let b = r.bytes(11)?;
+        let b = r.bytes(12)?;
         n.ctrl = b[0] & CTRL_SHOW;
         n.lost = b[1] & 1 != 0;
         n.page = b[2] & 1;
         n.key = b[3] & 15;
-        (n.sx, n.sw, n.sh, n.colour, n.flags, n.depth_reg, n.table) = (b[4], b[5], b[6], b[7] & 15, b[8], b[9], b[10] & 3);
+        (n.sx, n.sw, n.sh, n.colour, n.flags, n.depth_reg, n.table, n.pattern) = (b[4], b[5], b[6], b[7], b[8], b[9], b[10] & 3, b[11]);
         n.vaddr = r.u16()?;
         n.dx = r.u16()? as i16;
         n.dy = r.u16()? as i16;
@@ -562,14 +589,14 @@ impl Niece {
             return Err("save state: the NIECE's queue is too long".into());
         }
         for _ in 0..queued {
-            let b = r.bytes(8)?;
+            let b = r.bytes(9)?;
             if !(cmd::FILL..=cmd::FLIP).contains(&b[0]) {
                 return Err(format!("save state: NIECE command {}", b[0]));
             }
             let (dx, dy, dw, dh, sy) = (r.u16()? as i16, r.u16()? as i16, r.u16()?, r.u16()?, r.u16()? & 0x1FF);
             let mut ink: [u8; 16] = r.bytes(16)?.try_into().unwrap();
             ink.iter_mut().for_each(|c| *c &= 15);
-            n.queue.push_back(Command { op: b[0], sx: b[1], sw: b[2], sh: b[3], colour: b[4] & 15, flags: b[5], depth: b[6], key: b[7] & 15, dx, dy, dw, dh, sy, ink, at: r.u64()? });
+            n.queue.push_back(Command { op: b[0], sx: b[1], sw: b[2], sh: b[3], colour: b[4], flags: b[5], depth: b[6], key: b[7] & 15, pattern: b[8], dx, dy, dw, dh, sy, ink, at: r.u64()? });
         }
         n.vram.copy_from_slice(r.bytes(VRAM)?);
         Ok(n)

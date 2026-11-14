@@ -1207,6 +1207,8 @@ pub(crate) fn assemble_core(src: &str, resolve: Resolver) -> Core {
     let mut pending: Vec<(Src, String, String, i64)> = Vec::new();
     let mut lines: Vec<Line> = Vec::new();
     let mut modes: Vec<Option<Mode>> = Vec::new();
+    // The address after each line, as pass 1 left it.
+    let mut ends: Vec<i64> = Vec::new();
     let mut spans: Vec<Span> = Vec::new();
     let mut queue: VecDeque<Src> = lines_of(src, None, 0).collect();
     let mut scope = String::new();
@@ -1297,6 +1299,7 @@ pub(crate) fn assemble_core(src: &str, resolve: Resolver) -> Core {
             pc = pc.clamp(0, 0x10000);
         }
         lines.push(Line { src: s, label, body });
+        ends.push(pc);
         modes.push(mode);
         spans.push(span);
     }
@@ -1388,6 +1391,7 @@ pub(crate) fn assemble_core(src: &str, resolve: Resolver) -> Core {
         };
         let errors = if pass1_failed { &mut later } else { &mut errors };
         let warning = l.body.exprs().iter().find_map(|e| lint(e));
+        let failed = result.is_err();
         let bytes = match result {
             Ok(b) => b,
             Err(message) => {
@@ -1439,6 +1443,11 @@ pub(crate) fn assemble_core(src: &str, resolve: Resolver) -> Core {
             asm.lines.push(LineInfo { line: s.no, addr: pc as u16, len: bytes.len() as u16, file });
             pc += bytes.len() as i64;
             seg.bytes.extend(bytes);
+        }
+        // A line that couldn't be encoded still takes the room pass 1 gave it: the lines after
+        // it are where the labels say they are, so `*` in a later `.assert` isn't short by it.
+        if failed {
+            pc = ends[idx];
         }
         if let Some(v) = moved_to {
             if !seg.bytes.is_empty() {

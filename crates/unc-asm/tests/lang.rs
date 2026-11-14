@@ -104,6 +104,11 @@ fn the_io_registers_are_the_machines() {
         ("NFLAGS", reg::NFLAGS),
         ("NDEPTH", reg::NDEPTH),
         ("NTABLE", reg::NTABLE),
+        ("NDXS", reg::NDXS),
+        ("NDYS", reg::NDYS),
+        ("NDWS", reg::NDWS),
+        ("NDHS", reg::NDHS),
+        ("NPATTERN", reg::NPATTERN),
         ("NINK", reg::NINK),
         ("NMULA", reg::NMULA),
         ("NMULB", reg::NMULB),
@@ -116,7 +121,7 @@ fn the_io_registers_are_the_machines() {
     ] {
         assert_eq!(at(name), BASE + r, "{name}");
     }
-    assert_eq!(l.io.len(), 79, "a register in the manual the test doesn't know");
+    assert_eq!(l.io.len(), 84, "a register in the manual the test doesn't know");
     let table = l.io.iter().find(|r| r.name == "WAVETABLE").unwrap();
     assert_eq!(table.end, io::WAVETABLE + 31);
     let keys = l.io.iter().find(|r| r.name == "KEYS").unwrap();
