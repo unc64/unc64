@@ -1,4 +1,5 @@
-//! The NIECE, the Northern Image Engine, Colour Experimental: a prototype graphics chip, not
+//! The NIECE, the Northern Image Engine, Colour Experimental (the chip is marked NV-1, for
+//! Northern Video): a prototype graphics chip, not
 //! part of System Rev A. The spec is docs/prg/programmers-reference-guide.md, chapter 17, and
 //! Appendix B for the registers (`$C100-$C14F`, `reg` here holds the offsets).
 //!

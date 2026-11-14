@@ -3478,7 +3478,7 @@ From machine language, the monitor is `JMP $FF24` (chapter 13). It uses `$D0-$DF
 
 ## 17. The NIECE
 
-The NIECE isn't in any UNC you can buy. It's a prototype, the **Northern Image Engine, Colour Experimental**: a graphics chip from the laboratory, on a card of its own, and only a handful exist. It isn't part of System Rev A, and what this chapter says can still change. If your machine has one, this is what it does.
+The NIECE isn't in any UNC you can buy. It's a prototype, the **Northern Image Engine, Colour Experimental**: a graphics chip from the laboratory, on a card of its own, and only a handful exist. The chip itself is marked NV-1, for Northern Video, the part of the laboratory that made it. It isn't part of System Rev A, and what this chapter says can still change. If your machine has one, this is what it does.
 
 The video chip and the video board (chapter 15) show what's in the computer's memory. The NIECE works the other way round. It has 64K of memory of its own, which the processor can't see, and it does its own drawing: you tell it *what* to draw, in a few registers, and it draws. It fills boxes, draws lines, and copies a picture from one place to another at any size, bigger or smaller, in sixteen colours. The processor never touches a pixel, so a 1 MHz processor is enough to decide what a whole screen of them should be.
 

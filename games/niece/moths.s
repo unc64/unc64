@@ -1,5 +1,5 @@
 ; MOTHS: a fixed shooter for the UNC 64 (64K) with the NIECE, the prototype
-; graphics chip of chapter 17. United Northern Computers' laboratory, 1985.
+; graphics chip of chapter 17, the one marked NV-1. United Northern Computers' laboratory, 1985.
 ; No video board needed: every moving thing is drawn by the NIECE.
 ;
 ; A summer night at the edge of the wood. You carry the lantern along the path,

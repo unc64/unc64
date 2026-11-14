@@ -1,5 +1,6 @@
 ; FROSTHALL: a walk round a hall of timber, stone and ice, in three dimensions.
-; For the UNC 64 (64K) with the NIECE, the prototype graphics chip (manual chapter 17).
+; For the UNC 64 (64K) with the NIECE, the prototype graphics chip marked NV-1 (manual
+; chapter 17).
 ; United Northern Computers' laboratory, 1984. Not for sale.
 ;
 ; You stand in the hall and look along it. Cursor keys or W A S D: UP walks on, DOWN
