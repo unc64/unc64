@@ -59,8 +59,17 @@ struct Run {
 /// Whether a listing uses the video board: it's in chapter 15. Those listings run on a
 /// machine with the board in.
 fn uses_board(src: &str) -> bool {
+    in_chapter(src, "\n## 15. ")
+}
+
+/// Whether a listing uses the NIECE: it's in chapter 17. Those run with the chip in.
+fn uses_niece(src: &str) -> bool {
+    in_chapter(src, "\n## 17. ")
+}
+
+fn in_chapter(src: &str, heading: &str) -> bool {
     let text = manual();
-    let from = text.find("\n## 15. ").expect("chapter 15");
+    let from = text.find(heading).expect("the chapter");
     let to = from + 1 + text[from + 1..].find("\n## ").unwrap();
     listings_in(&text[from..to]).iter().any(|l| l == src)
 }
@@ -72,6 +81,7 @@ fn run(src: &str, key: Option<u8>, frames: u32) -> Run {
     let asm = unc_asm::assemble(src).unwrap_or_else(|e| panic!("listing doesn't assemble: {e:?}\n{src}"));
     assert!(asm.start().is_some(), "listing has a start");
     let mut m = Machine::boot_with_board(RamSize::K16, uses_board(src));
+    m.set_niece(uses_niece(src));
     unc_asm::load(&mut m, &asm);
     if let Some(k) = key {
         m.key(k);
@@ -430,6 +440,10 @@ fn every_listing_in_the_manual_assembles_and_runs() {
             check_scroller(src);
         } else if has("Parallax: a message scrolls") {
             check_parallax(src);
+        } else if has("The NIECE's first picture") {
+            check_niece_first(src);
+        } else if has("A picture on the sheet, drawn at three sizes") {
+            check_niece_faces(src);
         } else {
             panic!("listing has no check in tests/manual.rs; add one:\n{title}");
         }
@@ -648,6 +662,58 @@ fn check_parallax(src: &str) {
     }
     let dots = |px: &[u8]| px[40 * W..48 * W].to_vec();
     assert!((0..60).any(|t| dots(&frames[t].0) == dots(&frames[t + 1].0)), "not every frame");
+}
+
+// ---- Chapter 17: the NIECE. These listings run with the chip in (`uses_niece`). ----
+
+/// The colour the NIECE's page shows at its pixel (x, y), in the picture as it stands.
+fn page(m: &Machine, x: usize, y: usize) -> u8 {
+    let px = picture(m);
+    let p = px[y * 2 * W + x * 2];
+    assert!(p & unc_core::machine::NIECE_PIXEL != 0, "({x}, {y}) shows the page");
+    assert_eq!(px[(y * 2 + 1) * W + x * 2 + 1], p, "each pixel is 2 x 2");
+    p & 15
+}
+
+fn check_niece_first(src: &str) {
+    let r = run(src, None, 3);
+    assert_eq!(r.stop, Stop::Halted);
+    let m = &r.m;
+    assert_eq!(m.peek(0xC101), 1, "idle, page 1 shown");
+    assert_eq!(page(m, 0, 0), 14);
+    assert_eq!(page(m, 159, 59), 14);
+    assert_eq!(page(m, 80, 99), 5);
+    assert_eq!(page(m, 120, 10), 7);
+    assert_eq!(page(m, 135, 25), 7);
+    assert_eq!(page(m, 136, 25), 14);
+    // the path: both ends, and on its way
+    assert_eq!(page(m, 0, 99), 1);
+    assert_eq!(page(m, 159, 60), 1);
+    assert_eq!((0..100).filter(|&y| page(m, 80, y) == 1).count(), 1);
+    // without the chip it halts with nothing done
+    let asm = unc_asm::assemble(src).unwrap();
+    let mut plain = unc_asm::boot(RamSize::K16, &asm);
+    assert_eq!(plain.run_frame(), Stop::Halted);
+    assert!(plain.screen_text().contains("READY."), "the screen wasn't cleared");
+}
+
+fn check_niece_faces(src: &str) {
+    let r = run(src, None, 3);
+    assert_eq!(r.stop, Stop::Halted);
+    let m = &r.m;
+    const FACE: [&[u8; 8]; 8] = [b"00777700", b"07777770", b"77977977", b"77777777", b"79777797", b"77999977", b"07777770", b"00777700"];
+    for (x0, y0, size) in [(4usize, 46usize, 8usize), (20, 38, 24), (60, 10, 80)] {
+        for j in 0..size {
+            for i in 0..size {
+                let c = FACE[j * 8 / size][i * 8 / size] - b'0';
+                assert_eq!(page(m, x0 + i, y0 + j), if c == 0 { 6 } else { c }, "size {size}, ({i}, {j})");
+            }
+        }
+    }
+    assert_eq!(page(m, 0, 0), 6);
+    // the picture is on the sheet at (0, 200)
+    let n = m.mem.niece.as_ref().unwrap();
+    assert_eq!((n.pixel(2, 202), n.pixel(0, 200), n.pixel(7, 207)), (9, 0, 0));
 }
 
 /// unc64.com/llms-full.txt is the manual for AI agents, as the PDF prints it (the workshop

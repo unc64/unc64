@@ -29,4 +29,8 @@ Not fixed by a revision: the Rust APIs (semver, as usual), the Machine Room, the
 
 Once Rev A is frozen, they only add. New hardware comes the way the video board did: a card or chip with an id register, absent on a Rev A machine. A later revision can add opcodes in free slots, registers in free I/O space, ROM calls at new addresses (`$FF27` and up) and BASIC keywords after `$A7`. It can't change anything Rev A fixes.
 
+## The NIECE: a prototype
+
+The NIECE (manual chapter 17) is a graphics chip that isn't part of any revision yet: a prototype card with an id register (NIECE, `$C14F`, reads `$17`), absent unless a host puts it in (`Machine::set_niece`). It adds registers in free I/O space, `$C100-$C14F`, and nothing else: a machine without it is a Rev A machine, bit for bit, and `rev_a.txt` doesn't pin it. Its registers, its commands, what they cost and its arithmetic unit can all still change; `crates/unc-core/tests/niece.rs` holds them to what chapter 17 says.
+
 When the emulator and the manual disagree, the manual wins, unless the behaviour has shipped and programs rely on it. Then it becomes documented behaviour.

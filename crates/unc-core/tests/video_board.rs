@@ -511,7 +511,7 @@ fn save_states_keep_the_board_and_its_registers() {
     m.run_frame();
     assert_eq!(m.peek(io::SPRHIT), 3);
     let saved = m.save_state();
-    assert_eq!(saved[4], 5, "version 5");
+    assert_eq!(saved[4], 6, "version 6");
     let mut other = Machine::boot(RamSize::K64);
     other.load_state(&saved).unwrap();
     assert!(other.has_board());
@@ -530,9 +530,18 @@ fn version_1_and_2_states_still_load() {
     let now = Machine::boot(RamSize::K16).save_state();
     // the board's byte comes after the I/O, at 90 with no key held, then the sound chip's
     // byte and its 121
-    assert_eq!((now[4], now[90], now[91]), (5, 0, 1));
+    assert_eq!((now[4], now[90], now[91]), (6, 0, 1));
+    // version 5: no NIECE's byte (after the sound chip's 122); it loads without one
+    let mut v5 = now.clone();
+    assert_eq!(v5.remove(91 + 122), 0);
+    v5[4] = 5;
+    let mut m = Machine::boot_with_board(RamSize::K64, true);
+    m.set_niece(true);
+    m.load_state(&v5).unwrap();
+    assert!(!m.has_niece(), "version 5: no NIECE");
+    assert_eq!(m.save_state(), now);
     // version 4: no TEXTROWS (byte 36, after the bitmap's page); it loads with four rows
-    let mut v4 = now.clone();
+    let mut v4 = v5.clone();
     assert_eq!(v4.remove(36), 4);
     v4[4] = 4;
     let mut m = Machine::boot_with_board(RamSize::K64, true);

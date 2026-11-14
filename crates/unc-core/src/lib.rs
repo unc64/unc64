@@ -7,6 +7,7 @@ pub mod cpu;
 pub mod isa;
 pub mod keys;
 pub mod machine;
+pub mod niece;
 pub mod shifter;
 pub mod sound;
 pub mod state;

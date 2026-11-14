@@ -45,6 +45,7 @@ This book is the specification of the machine: System Rev A. The emulator in `cr
 - [14. Tape](#14-tape)
 - [15. The video board](#15-the-video-board)
 - [16. The monitor](#16-the-monitor)
+- [17. The NIECE](#17-the-niece)
 - [Appendix A. Screen codes and colours](#appendix-a-screen-codes-and-colours)
 - [Appendix B. Memory map and I/O registers](#appendix-b-memory-map-and-io-registers)
 - [Appendix C. Instruction set](#appendix-c-instruction-set)
@@ -3475,6 +3476,414 @@ From machine language, the monitor is `JMP $FF24` (chapter 13). It uses `$D0-$DF
 
 ---
 
+## 17. The NIECE
+
+The NIECE isn't in any UNC you can buy. It's a prototype, the **Northern Image Engine, Colour Experimental**: a graphics chip from the laboratory, on a card of its own, and only a handful exist. It isn't part of System Rev A, and what this chapter says can still change. If your machine has one, this is what it does.
+
+The video chip and the video board (chapter 15) show what's in the computer's memory. The NIECE works the other way round. It has 64K of memory of its own, which the processor can't see, and it does its own drawing: you tell it *what* to draw, in a few registers, and it draws. It fills boxes, draws lines, and copies a picture from one place to another at any size, bigger or smaller, in sixteen colours. The processor never touches a pixel, so a 1 MHz processor is enough to decide what a whole screen of them should be.
+
+It also has an **arithmetic unit**, which multiplies and divides in no time at all. The two belong together: the sums that say where things go are the other half of drawing them.
+
+### Is it there?
+
+| Address | Register | Read |
+|---|---|---|
+| `$C14F` | NIECE | `$17`: the NIECE. Writing does nothing. |
+
+Without the chip, every address from `$C100` to `$C14F` reads `$FF` and ignores what you write. The ROM doesn't know the NIECE: the start-up message says nothing about it, and BASIC has no words for it, though `PEEK` and `POKE` reach its registers like any others. A program looks for itself:
+
+```text
+        LDA $C14F
+        CMP #$17
+        BNE noniece
+```
+
+### The sheet and the two pages
+
+The NIECE's memory is one big picture, the **sheet**: 256 pixels wide and 512 lines high. Every pixel is four bits, a colour from 0 to 15, the same sixteen as BORDER's (Appendix A). Two pixels share a byte, the left one in the high four bits, so a line of the sheet is 128 bytes and the whole sheet is 65,536.
+
+```text
+byte = y * 128 + x / 2
+left pixel (x even): bits 4-7      right pixel (x odd): bits 0-3
+```
+
+The top left of the sheet is two **pages**, each 160 × 100 pixels:
+
+| | Sheet's lines | Sheet's columns |
+|---|---|---|
+| Page 0 | 0-99 | 0-159 |
+| Page 1 | 100-199 | 0-159 |
+| Yours | 0-199 | 160-255 |
+| Yours | 200-511 | 0-255 |
+
+One page is **shown** and the other is **drawn on**. When a picture is finished, the two change places (FLIP, below), so nobody ever sees a picture half drawn. Page 0 is shown at switch-on, when the whole sheet is colour 0.
+
+The rest of the sheet is yours: 99,072 pixels to keep pictures in, for the NIECE to copy onto the page.
+
+**In the picture**, the page shown is behind everything else. Each of its pixels is two of the screen's wide and two high, so 160 × 100 fills the screen's 320 × 200. Wherever the computer's own picture is colour 0, paper, you see the page; text, the bitmap's ink, the video board's layer and its sprites are all in front. So the text screen is still there for a score, and a space is a window. BACKGROUND doesn't show while the page does. The page isn't moved by SCROLLX and SCROLLY.
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C100` | NCTRL | Bit 0: 1 shows the page. 0 at reset. |
+
+### Commands and the queue
+
+To draw, set the registers that say what and where, then write a command's number to NGO.
+
+| Address | Register | |
+|---|---|---|
+| `$C103` | NGO | Write only. 1 FILL, 2 BLIT, 3 LINE, 4 FLIP. Any other number does nothing. |
+| `$C101` | NSTATUS | Read only. Bit 7: busy, the queue isn't empty. Bit 6: the queue is full. Bit 5: a command was lost (reading NSTATUS clears this bit). Bit 0: the page shown, 0 or 1. |
+| `$C102` | NQUEUE | Read only. How many commands are in the queue, 0-64. |
+
+The command doesn't happen at once. It joins a **queue** of up to 64 commands, and it takes the registers with it *as they stand when NGO is written*: change them straight afterwards for the next command, and the one in the queue keeps what it had. The NIECE works through the queue in order while your program carries on.
+
+A command written when the queue already holds 64 is **lost**: it never runs, and bit 5 of NSTATUS says so. A program that might fill the queue looks at bit 6 first:
+
+```text
+@full:  BIT NSTATUS         ; bit 6 goes to V
+        BVS @full           ; full: wait
+        STA NGO
+```
+
+And to wait until everything asked for has been drawn:
+
+```text
+@busy:  BIT NSTATUS         ; bit 7 goes to N
+        BMI @busy
+```
+
+### What a command costs
+
+The NIECE draws **four pixels a cycle**, and takes 4 cycles to start each command:
+
+```text
+cycles = 4 + pixels / 4, rounded up
+```
+
+A command starts when it's written, or when the one before it finishes if that's later. All of its pixels appear together, on the cycle it finishes: until then the sheet is as it was. Nothing about this is left to chance. The cost never depends on what the pixels are.
+
+For FILL and BLIT, the pixels counted are the ones of the destination that are on the page. What hangs over the edge is cut off and costs nothing, and a command wholly off the page costs its 4 cycles. See-through pixels and columns the depth line turns away (below) still count: the chip has to look at them.
+
+| | Pixels | Cycles |
+|---|---|---|
+| Fill the whole page | 16,000 | 4,004: a fifth of a frame |
+| A 16 × 16 picture | 256 | 68 |
+| The same, drawn 64 × 64 | 4,096 | 1,028 |
+| A column 2 wide and 100 high | 200 | 54 |
+| A frame at 50 a second has | 79,872 | 19,968 |
+
+So the page can be drawn five times over in a frame, and storing the dozen registers of a command takes the processor about as long as the NIECE takes to draw a small picture. The queue is rarely more than a few commands long unless you ask for something big.
+
+### Where: the destination
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C108-$C109` | NDX | The left edge, low byte first: -32,768 to 32,767. |
+| `$C10A-$C10B` | NDY | The top edge, the same way. |
+| `$C10C-$C10D` | NDW | The width, 0 to 65,535. |
+| `$C10E-$C10F` | NDH | The height, 0 to 65,535. |
+| `$C115` | NCOLOUR | The colour FILL and LINE draw in, 0-15. |
+| `$C116` | NFLAGS | See below. |
+
+The destination is a rectangle on the page that's being drawn on: (0, 0) is the page's top left pixel and (159, 99) its bottom right, whichever page it is. The rectangle can start off the page (NDX and NDY can be negative) and be far bigger than it; only the part on the page is drawn. All registers are 0 at reset, and they keep their values from one command to the next, so a program only stores the ones that change.
+
+**FILL** (1) draws the rectangle in NCOLOUR. A width or height of 0 draws nothing.
+
+**LINE** (3) draws a line in NCOLOUR from (NDX, NDY) to (NDX + NDW, NDY + NDH), both ends included. Here NDW and NDH are signed, so a line can go up and to the left: -30 is `$E2`, `$FF`. The line has one pixel for each step along its longer side, each at the nearest place on the other (a half rounds to the right, or down). Its cost is its whole length, longer side plus one, in pixels, on the page or not.
+
+**FLIP** (4) makes the two pages change places: the one drawn on is shown, and the next commands draw on the other. It **waits for the beam to leave the picture** (the start of line 251, where FRAME goes up: chapter 9), and the queue waits behind it. So a FLIP never tears the picture, and a program that draws, FLIPs and waits for the queue to empty is in step with the screen without counting a line. It draws nothing and costs nothing but the wait.
+
+```asm
+; The NIECE's first picture: a sky, a field, a sun and a path.
+NCTRL   = $C100
+NSTATUS = $C101
+NGO     = $C103
+NDX     = $C108
+NDY     = $C10A
+NDW     = $C10C
+NDH     = $C10E
+NCOLOUR = $C115
+NIECE   = $C14F
+CLS     = $FF00
+FILL    = 1
+LINE    = 3
+FLIP    = 4
+
+        .org $0800
+start:  LDA NIECE
+        CMP #$17
+        BNE none            ; no NIECE: nothing to do
+        JSR CLS             ; spaces: the whole page shows through
+        LDX #0
+@box:   LDA boxes,X         ; five bytes a box: x, y, width, height, colour
+        STA NDX             ; (the high bytes are 0 since reset)
+        LDA boxes+1,X
+        STA NDY
+        LDA boxes+2,X
+        STA NDW
+        LDA boxes+3,X
+        STA NDH
+        LDA boxes+4,X
+        STA NCOLOUR
+        LDA #FILL
+        STA NGO             ; into the queue, with the registers as they are
+        TXA
+        CLC
+        ADC #5
+        TAX
+        CPX #15
+        BNE @box
+        LDA #0              ; the path: from (0, 99) to (159, 60), in white
+        STA NDX
+        LDA #99
+        STA NDY
+        LDA #159
+        STA NDW
+        LDA #<[-39]
+        STA NDH
+        LDA #>[-39]
+        STA NDH+1
+        LDA #1
+        STA NCOLOUR
+        LDA #LINE
+        STA NGO
+        LDA #FLIP           ; when the beam has left the picture
+        STA NGO
+@busy:  BIT NSTATUS
+        BMI @busy
+        LDA #1
+        STA NCTRL           ; show the page
+none:   HLT
+
+boxes:  .byte 0, 0, 160, 60, 14         ; the sky, light blue
+        .byte 0, 60, 160, 40, 5         ; the field, green
+        .byte 120, 10, 16, 16, 7        ; the sun, yellow
+```
+
+The three boxes are 16,000 and 256 pixels: 4,076 cycles of drawing, which the NIECE does while the program is still storing the line's registers and then waiting.
+
+### From where: the source
+
+**BLIT** (2) copies a rectangle of the sheet, the **source**, onto the destination rectangle, and makes it fit.
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C110` | NSX | The source's left edge on the sheet, 0-255. |
+| `$C111-$C112` | NSY | Its top edge, 0-511 (nine bits). |
+| `$C113` | NSW | Its width, 1-255. |
+| `$C114` | NSH | Its height, 1-255. |
+| `$C107` | NKEY | The see-through colour, 0-15. 0 at reset. |
+
+If the destination is the same size as the source, it's a plain copy. If it's wider, narrower, taller or shorter, the picture is stretched or squeezed to fit, each way on its own. Pixel (*i*, *j*) of the destination, counting from its top left corner, takes the source's pixel
+
+```text
+( NSX + i * NSW / NDW ,  NSY + j * NSH / NDH )      divisions rounded down
+```
+
+so every pixel of a picture drawn at twice its size becomes 2 × 2, and one drawn at half its size keeps every other pixel. This holds for the pixels that are on the page even when most of the destination isn't: a 64 × 64 picture drawn 600 high shows the right slice of its middle. A source that runs off the sheet's edge carries on from the opposite edge. A width or height of 0, source or destination, draws nothing.
+
+The source can be anywhere on the sheet, the pages included.
+
+NFLAGS says how:
+
+| Bit | Name | |
+|---|---|---|
+| 0 | KEY | Source pixels of the colour in NKEY aren't drawn: what was there shows through. BLIT only. |
+| 1 | FLIPX | The source is mirrored left to right. BLIT only. |
+| 2 | FLIPY | The source is upside down. BLIT only. |
+| 3 | ZTEST | The depth line decides which columns are drawn. |
+| 4 | ZWRITE | The columns drawn are written into the depth line. |
+| 5 | SHEET | Draw on the sheet itself instead of the page: the destination's (0, 0) is the sheet's, and all 256 × 512 of it can be drawn on. |
+| 6-7 | | Which **ink table** the colours go through, 0-3. BLIT only. |
+
+### Loading the sheet
+
+The processor reaches the sheet's bytes through a window, one at a time:
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C104-$C105` | NVADDR | A byte of the sheet, 0-65,535: line × 128 + column / 2. |
+| `$C106` | NVDATA | The byte at NVADDR. Reading it or writing it moves NVADDR on by one (after `$FFFF` comes 0). |
+
+NVDATA doesn't go through the queue: a byte written is in the sheet at once.
+
+```asm
+; A picture on the sheet, drawn at three sizes.
+NCTRL   = $C100
+NSTATUS = $C101
+NGO     = $C103
+NVADDR  = $C104
+NVDATA  = $C106
+NDX     = $C108
+NDY     = $C10A
+NDW     = $C10C
+NDH     = $C10E
+NSX     = $C110
+NSY     = $C111
+NSW     = $C113
+NSH     = $C114
+NCOLOUR = $C115
+NFLAGS  = $C116
+CLS     = $FF00
+FILL    = 1
+BLIT    = 2
+FLIP    = 4
+KEY     = 1
+ADDR    = $10               ; where the next line of the picture goes
+FACEY   = 200               ; the picture's place on the sheet: (0, 200)
+
+        .org $0800
+start:  JSR CLS
+        LDA #<[FACEY * 128]
+        STA ADDR
+        LDA #>[FACEY * 128]
+        STA ADDR+1
+        LDX #0
+@row:   LDA ADDR            ; eight lines of four bytes
+        STA NVADDR
+        LDA ADDR+1
+        STA NVADDR+1
+        LDY #4
+@byte:  LDA face,X
+        STA NVDATA          ; and NVADDR moves on
+        INX
+        DEY
+        BNE @byte
+        CLC
+        LDA ADDR
+        ADC #128            ; the sheet's next line
+        STA ADDR
+        BCC @same
+        INC ADDR+1
+@same:  CPX #32
+        BNE @row
+
+        LDA #160            ; the page blue all over
+        STA NDW
+        LDA #100
+        STA NDH
+        LDA #6
+        STA NCOLOUR
+        LDA #FILL
+        STA NGO
+
+        LDA #FACEY          ; the source: 8 x 8 at (0, 200)
+        STA NSY
+        LDA #8
+        STA NSW
+        STA NSH
+        LDA #KEY            ; colour 0 is see-through
+        STA NFLAGS
+        LDX #0
+@face:  LDA where,X         ; three bytes a face: x, y, size
+        STA NDX
+        LDA where+1,X
+        STA NDY
+        LDA where+2,X
+        STA NDW
+        STA NDH
+        LDA #BLIT
+        STA NGO
+        INX
+        INX
+        INX
+        CPX #9
+        BNE @face
+        LDA #FLIP
+        STA NGO
+@busy:  BIT NSTATUS
+        BMI @busy
+        LDA #1
+        STA NCTRL
+        HLT
+
+where:  .byte 4, 46, 8          ; as it is
+        .byte 20, 38, 24        ; three times the size
+        .byte 60, 10, 80        ; ten times
+
+face:   .byte $00, $77, $77, $00
+        .byte $07, $77, $77, $70
+        .byte $77, $97, $79, $77
+        .byte $77, $77, $77, $77
+        .byte $79, $77, $77, $97
+        .byte $77, $99, $99, $77
+        .byte $07, $77, $77, $70
+        .byte $00, $77, $77, $00
+```
+
+A digit of each byte is a pixel, so the picture can be read in the listing: 7 is yellow, 9 brown, and 0 is the see-through colour, where the blue stays.
+
+**Moving things.** Nothing drawn on a page has to be rubbed out. Each frame, draw the background again (one FILL, or one BLIT of a picture kept on the sheet), draw everything where it is now, and FLIP. A thing moves because it was drawn somewhere else this time.
+
+**Scrolling** is a BLIT whose source moves: keep a picture wider than the page on the sheet, and copy the 160 columns that start at NSX.
+
+### Ink tables
+
+The NIECE has four **ink tables** of sixteen colours each. BLIT looks every source pixel up in one of them, chosen by bits 6 and 7 of NFLAGS, and draws the colour it finds there. At reset every table holds 0, 1, 2 ... 15, so every colour comes out as itself.
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C118` | NTABLE | Which table shows at NINK, 0-3. |
+| `$C120-$C12F` | NINK | The table: what each source colour, 0-15, is drawn as. |
+
+Fill table 1 with darker colours and the same picture can be drawn in daylight or in shadow. Fill one with white and a thing can flash when it's hit. Give two tables different colours for 2 and 10 and one picture of a ship is two fleets.
+
+KEY looks at the source's colour, before the table: the see-through colour stays see-through whatever the table says. And a command takes its table with it into the queue, like the registers.
+
+### The depth line
+
+The NIECE keeps one more thing: a number from 0 to 255 for each column of the page, the **depth line**. It says how far away the thing drawn in that column is. Small is near.
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C117` | NDEPTH | This command's depth, 0-255. |
+
+With **ZWRITE** set, every column a command draws in takes NDEPTH as its depth. With **ZTEST** set, a command draws only in the columns where NDEPTH is *less* than the column's depth: where it's nearer than what's there. With both, it draws where it's nearer and those columns take its depth. Both work on whole columns, and on FILL, BLIT and LINE alike.
+
+At reset every column is 255, and a FILL of the whole page with ZWRITE and NDEPTH 255 makes it so again.
+
+This is what a picture of a room wants. Draw each wall as columns with ZWRITE, each with its distance. Then draw a thing in the room as *one* BLIT with ZTEST and its own distance, and the NIECE leaves out the columns where a wall is nearer. A barrel half behind a corner is half drawn, and the program never works out which half.
+
+### The arithmetic unit
+
+| Address | Register | |
+|---|---|---|
+| `$C130-$C131` | NMULA | A number, -32,768 to 32,767, low byte first. Reads as written. |
+| `$C132-$C133` | NMULB | Another. |
+| `$C134-$C137` | NPROD | Read only: NMULA × NMULB, four bytes, low byte first, signed. |
+| `$C138-$C13B` | NDIVN | A number, 0 to 4,294,967,295: four bytes, low byte first. Reads as written. |
+| `$C13C-$C13D` | NDIVD | What to divide it by, 0 to 65,535. |
+| `$C140-$C143` | NQUOT | Read only: NDIVN / NDIVD, rounded down, four bytes. |
+| `$C144-$C145` | NREM | Read only: the remainder. |
+
+There's nothing to wait for and no command to give: NPROD, NQUOT and NREM are always the answer for what the other registers hold now. Dividing by 0 gives every bit set: NQUOT `$FFFFFFFF` and NREM `$FFFF`.
+
+The multiplier is signed and the divider isn't. Chapter 7's multiply works a bit at a time, round a loop; this takes the stores and the loads:
+
+```text
+        LDA speed           ; 16 bits each
+        STA NMULA
+        LDA speed+1
+        STA NMULA+1
+        LDA cosine
+        STA NMULB
+        LDA cosine+1
+        STA NMULB+1
+        LDA NPROD+1         ; the product's middle bytes: speed * cosine / 256
+        STA dx
+        LDA NPROD+2
+        STA dx+1
+```
+
+Numbers with a fraction work as they are. If 256 stands for 1.0 in both, the product's bytes 1 and 2 are the answer on the same scale.
+
+### What it doesn't do
+
+It doesn't know what a wall is, or a ship, or a floor. It has no sprites that stay where they're put, no collisions and no interrupts: FRAME and the VBLANK interrupt (chapters 9 and 10) are the computer's, as before. It copies rectangles and it does sums. What they add up to is the program's business.
+
+---
+
 ## Appendix A. Screen codes and colours
 
 ### Screen codes
@@ -3543,6 +3952,8 @@ The glyphs themselves are in `rom/unscii.txt`, drawn as rows of `#` and `.`.
 On the monochrome monitor each colour shows as green, as bright as the colour is light.
 
 With the video board (chapter 15), the picture itself has four colours. Each pixel is a colour number, 0-3: number 0 shows BACKGROUND's colour, and 1-3 the colours in COLOUR1-COLOUR3 (`$C0B1-$C0B3`), any of these sixteen. Text and the 1-bit bitmap are drawn in colour number 3, white at reset, so without a program changing anything the picture looks the same with the board as without it. On the monochrome monitor the four are four shades of green, by the same rule.
+
+The NIECE (chapter 17) draws in all sixteen at once: each pixel of its page is one of these numbers.
 
 ---
 
@@ -3622,9 +4033,37 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$C0DD` | ENV3 | Voice 3's envelope now | | 12 |
 | `$C0DF` | SOUND | `$16`: the AUNT | | 12 |
 | `$C0E0-$C0FF` | WAVETABLE | As written | The wave table: 32 steps | 12 |
+| `$C100` | NCTRL | Bit 0: the NIECE's page shown. The NIECE, | Bit 0 | 17 |
+| `$C101` | NSTATUS | Bit 7 busy, bit 6 queue full, bit 5 a command lost (reading clears it), bit 0 the page shown | | 17 |
+| `$C102` | NQUEUE | Commands in the queue, 0-64 | | 17 |
+| `$C103` | NGO | | A command into the queue: 1 FILL, 2 BLIT, 3 LINE, 4 FLIP | 17 |
+| `$C104-$C105` | NVADDR | As written | A byte of the sheet | 17 |
+| `$C106` | NVDATA | The sheet's byte at NVADDR; NVADDR moves on | The same | 17 |
+| `$C107` | NKEY | As written | The see-through colour, 0-15 | 17 |
+| `$C108-$C109` | NDX | As written | The destination's left edge, signed | 17 |
+| `$C10A-$C10B` | NDY | As written | The destination's top edge, signed | 17 |
+| `$C10C-$C10D` | NDW | As written | The destination's width (LINE: how far across, signed) | 17 |
+| `$C10E-$C10F` | NDH | As written | The destination's height (LINE: how far down, signed) | 17 |
+| `$C110` | NSX | As written | The source's left edge, 0-255 | 17 |
+| `$C111-$C112` | NSY | As written | The source's top edge, 0-511 | 17 |
+| `$C113` | NSW | As written | The source's width | 17 |
+| `$C114` | NSH | As written | The source's height | 17 |
+| `$C115` | NCOLOUR | As written | FILL's and LINE's colour, 0-15 | 17 |
+| `$C116` | NFLAGS | As written | Bit 0 KEY, 1 FLIPX, 2 FLIPY, 3 ZTEST, 4 ZWRITE, 5 SHEET, 6-7 the ink table | 17 |
+| `$C117` | NDEPTH | As written | The command's depth, 0-255 | 17 |
+| `$C118` | NTABLE | As written | The ink table at NINK, 0-3 | 17 |
+| `$C120-$C12F` | NINK | As written | The ink table: sixteen colours | 17 |
+| `$C130-$C131` | NMULA | As written | A signed 16-bit number | 17 |
+| `$C132-$C133` | NMULB | As written | Another | 17 |
+| `$C134-$C137` | NPROD | NMULA × NMULB, 32 bits | | 17 |
+| `$C138-$C13B` | NDIVN | As written | A 32-bit number | 17 |
+| `$C13C-$C13D` | NDIVD | As written | A 16-bit number | 17 |
+| `$C140-$C143` | NQUOT | NDIVN / NDIVD | | 17 |
+| `$C144-$C145` | NREM | The remainder | | 17 |
+| `$C14F` | NIECE | `$17`: the NIECE is in | | 17 |
 | `$C3F0-$C3FF` | | Reserved | Reserved | |
 
-Without the video board, every address in `$C080-$C0BF` reads `$FF` and ignores writes, BOARD included. With it, the ones not listed here do the same. Every other address in `$C000-$CFFF` reads `$FF` and ignores writes. Blank cells: reads give `$FF`, writes are ignored.
+Without the video board, every address in `$C080-$C0BF` reads `$FF` and ignores writes, BOARD included. With it, the ones not listed here do the same. Without the NIECE (chapter 17: a prototype, not part of System Rev A), every address in `$C100-$C14F` does the same, and with it, the ones not listed here. Every other address in `$C000-$CFFF` reads `$FF` and ignores writes. Blank cells: reads give `$FF`, writes are ignored.
 
 ### Timing
 

@@ -329,9 +329,10 @@ fn a_saved_state_carries_the_chip() {
     plain.set_sound(false);
     let mut old = plain.save_state();
     old[4] = 3;
+    // (the NIECE's byte, version 6's, then the chip's: both 0, neither in)
     let at = old.len() - (4 + 4 + 312 + 0x4000) - 1;
-    assert_eq!(old[at], 0);
-    old.remove(at);
+    assert_eq!(old[at - 1..=at], [0, 0]);
+    old.drain(at - 1..=at);
     assert_eq!(old[36], 4, "TEXTROWS, after the bitmap's page: version 5's");
     old.remove(36);
     other.load_state(&old).unwrap();

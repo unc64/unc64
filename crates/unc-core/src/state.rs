@@ -13,15 +13,17 @@
 //! | 66 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, TEXTROWS with CASE in its bit 7 (version 5 on), the timer and speaker, the shifter |
 //! | 1, or 16 with the board | The video board (version 2 on): 0 if it isn't in; 1 and its 15 bytes of registers (`VideoBoard::save`) if it is |
 //! | 122 | The sound chip (version 4 on): 1 and its 121 bytes (`Chip::save`); or one byte, 0, if a host took it out |
+//! | 1, or 1 + 65,898 and 42 a queued command | The NIECE (version 6 on): 0 if it isn't in; 1 and `Niece::save` if it is: its registers, ink tables, depth line, queue and its 64K |
 //! | 4 | The computer's side of the tape interface: motor, data latch, byte ready, overrun |
 //! | 4 | Cycles into the current frame |
 //! | 312 | The border on each raster line of the last frame (for the picture) |
 //! | 16K or 48K | RAM, from `$0000` to the top of memory |
 //!
-//! So a UNC 16 with no key down saves to 16,917 bytes, and one with the 64K expansion to
-//! 49,685; the video board adds 15 more. (The sprite table and images are in RAM.)
+//! So a UNC 16 with no key down saves to 16,918 bytes, and one with the 64K expansion to
+//! 49,686; the video board adds 15 more. (The sprite table and images are in RAM.)
 //!
-//! **Version 4** is the same without TEXTROWS: it loads with four text rows under the
+//! **Version 5** is the same without the NIECE's byte: it loads as a machine without one.
+//! **Version 4** is that without TEXTROWS: it loads with four text rows under the
 //! bitmap, as at reset.
 //! **Version 3** is that without the sound chip's bytes: it loads with the chip as it
 //! is at switch-on, silent.
@@ -52,7 +54,7 @@ use crate::sound::{AudioLog, Timer};
 pub const MAGIC: &[u8; 4] = b"UNCS";
 /// Bumped whenever the layout changes. Older versions this build knows the layout of load;
 /// anything else is refused, never guessed at.
-pub const VERSION: u8 = 5;
+pub const VERSION: u8 = 6;
 /// The oldest version `load_state` reads: version 1, from before the video board.
 pub const OLDEST: u8 = 1;
 
@@ -170,6 +172,13 @@ impl Machine {
                 c.chip.save(&mut w);
             }
         }
+        match &self.mem.niece {
+            None => w.u8(0),
+            Some(n) => {
+                w.u8(1);
+                n.save(&mut w, self.idle_cycles);
+            }
+        }
         let d = &self.mem.deck;
         w.bool(d.motor);
         w.u8(d.data);
@@ -251,6 +260,14 @@ impl Machine {
                 v => return Err(format!("save state: sound chip {v}")),
             },
         };
+        let niece = match version {
+            1..=5 => None,
+            _ => match r.u8()? {
+                0 => None,
+                1 => Some(Box::new(crate::niece::Niece::restore(&mut r)?)),
+                v => return Err(format!("save state: NIECE {v}")),
+            },
+        };
         let (motor, data, ready, overrun) = (r.bool()?, r.u8()?, r.bool()?, r.bool()?);
         let frame_cycle = r.u32()?;
         if frame_cycle >= CYCLES_PER_FRAME {
@@ -271,6 +288,7 @@ impl Machine {
         m.ram[..ram_end].copy_from_slice(ram);
         m.io = io;
         m.board = board;
+        m.niece = niece;
         m.sound = sound.map(|mut c| {
             if version < 4 {
                 // as if it had been in, at rest, since switch-on: its sample clock where it would be

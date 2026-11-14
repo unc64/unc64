@@ -6,6 +6,7 @@ use crate::chip;
 use crate::charset::CHAR_ROM;
 use crate::cpu::{Bus, Cpu, CpuState};
 use crate::keys::KEY_ROWS;
+use crate::niece::{self, Niece};
 use crate::shifter::Shifter;
 use crate::sound::{AudioLog, Timer, noise};
 
@@ -32,6 +33,9 @@ pub const FIRST_PICTURE_LINE: usize = 51;
 /// The line the beam leaves the picture on, into the bottom border: FRAME goes up and VBLANK
 /// is raised as it starts (chapter 9).
 pub const VBLANK_LINE: u32 = 251;
+/// A pixel of the picture that shows the NIECE's page (chapter 17): this bit, and the colour
+/// (0-15) in the low four. Every other pixel is a colour number, 0-3.
+pub const NIECE_PIXEL: u8 = 0x10;
 
 pub mod io {
     pub const VMODE: u16 = 0xC000;
@@ -482,6 +486,8 @@ pub struct Memory {
     /// The AUNT, the sound chip (manual ch. 12). In every machine from the UNC 16 up;
     /// `Machine::set_sound(false)` takes it out, for a host that wants a machine without.
     pub sound: Option<Box<chip::Card>>,
+    /// The NIECE, the prototype graphics chip (chapter 17), if it's in. Not Rev A.
+    pub niece: Option<Box<Niece>>,
     /// The host's frame meter (`Machine::frame_work`): where this frame's work ended.
     pub meter: FrameMeter,
     /// The HOLD box's memory view, when the host watches (`Machine::watch`): when each
@@ -516,6 +522,7 @@ impl Memory {
             reserved: RESERVED_AT_START,
             board: None,
             sound: Some(Box::default()),
+            niece: None,
             meter: FrameMeter::default(),
             trace: None,
         }
@@ -559,6 +566,7 @@ impl Memory {
             0xC031..=0xC03F | 0xC050..=0xC06F => self.io_peek_rev_a(addr),
             0xC080..=0xC0BF => self.board.as_ref().map_or(0xFF, |b| b.peek(addr)),
             0xC0C0..=0xC0FF => self.sound.as_ref().map_or(0xFF, |c| c.chip.peek(addr as u8 - 0xC0)),
+            0xC100..=0xC14F => self.niece.as_ref().map_or(0xFF, |n| n.peek(addr - niece::BASE)),
             0xD000..=0xD7FF => CHAR_ROM[(addr - CHAR_ROM_START) as usize],
             0xD800..=0xDFFF => LOW_ROM[(addr - LOW_ROM_START) as usize],
             _ => 0xFF,
@@ -577,6 +585,10 @@ impl Bus for Memory {
             && let Some(c) = &mut self.sound
         {
             c.catch_up(self.io.cycle);
+        }
+        // the NIECE's queue is read as it stands at this cycle
+        if addr >> 8 == 0xC1 {
+            self.niece_now();
         }
         let v = self.peek(addr);
         self.io_read(addr);
@@ -652,6 +664,11 @@ impl Memory {
                     b.take(addr);
                 }
             }
+            0xC100..=0xC14F => {
+                if let Some(n) = &mut self.niece {
+                    n.take(addr - niece::BASE);
+                }
+            }
             _ => {}
         }
     }
@@ -690,12 +707,29 @@ impl Memory {
                         c.chip.store(addr as u8 - 0xC0, value);
                     }
                 }
+                0xC100..=0xC14F => {
+                    self.niece_now();
+                    let now = self.io.cycle;
+                    if let Some(n) = &mut self.niece {
+                        n.store(addr - niece::BASE, value, now);
+                    }
+                }
                 _ => {}
             },
             _ => {}
         }
         if let 0xC030..=0xC03F | 0xC050..=0xC06F = addr {
             self.io_write_rev_a(addr, value);
+        }
+    }
+}
+
+impl Memory {
+    /// Brings the NIECE's queue up to the cycle the instruction running now began at.
+    fn niece_now(&mut self) {
+        let (now, at) = (self.io.cycle, self.frame_cycle);
+        if let Some(n) = &mut self.niece {
+            n.catch_up(now, now, at);
         }
     }
 }
@@ -813,7 +847,24 @@ impl Memory {
             }
             row[sx..].copy_from_slice(&line[..PIXELS_W - sx]);
         }
-        let Some(b) = board else { return };
+        if let Some(b) = board {
+            self.compose_board(b, y, blink_on, row, sprites);
+        }
+        // the NIECE's page shows wherever the picture is colour 0: each of its pixels 2 x 2,
+        // as 16 + its colour
+        if let Some(n) = self.niece.as_deref().filter(|n| n.shown()) {
+            let mut line = [0u8; niece::PAGE_W as usize];
+            n.shown_line(y / 2, &mut line);
+            for (x, px) in row.iter_mut().enumerate() {
+                if *px == 0 {
+                    *px = NIECE_PIXEL | line[x / 2];
+                }
+            }
+        }
+    }
+
+    /// The video board's part of a line: the layer behind the screen and the sprites over it.
+    fn compose_board(&self, b: &VideoBoard, y: usize, blink_on: bool, row: &mut [u8; PIXELS_W], sprites: &mut SpriteLine) {
         if b.layer & 1 != 0 {
             let (lx, ly) = (b.layer_sx as usize, b.layer_sy as usize);
             if y >= ly {
@@ -926,7 +977,9 @@ impl Machine {
         let reserved = self.mem.reserved;
         let board = self.mem.board.is_some();
         let sound = self.mem.sound.is_some();
+        let niece = self.mem.niece.is_some();
         self.mem = Memory::new(size);
+        self.mem.niece = niece.then(Box::default);
         self.mem.board = board.then(VideoBoard::default);
         // the clock starts again at 0 with the processor's
         self.mem.sound = sound.then(Box::default);
@@ -1010,6 +1063,20 @@ impl Machine {
             let now = self.cpu.cycles + self.idle_cycles;
             self.mem.sound = on.then(|| Box::new(chip::Card::at(chip::Chip::default(), now)));
         }
+    }
+
+    /// Puts the NIECE in, or takes it out (chapter 17): the prototype graphics chip. No
+    /// machine has it unless a host says so. A chip put in is as at switch-on: its memory
+    /// empty, its queue empty, nothing shown. The machine carries on: no reset.
+    pub fn set_niece(&mut self, on: bool) {
+        if on != self.mem.niece.is_some() {
+            self.mem.niece = on.then(Box::default);
+        }
+    }
+
+    /// Whether the NIECE is in. NIECE (`$C14F`) reads $17 if it is.
+    pub fn has_niece(&self) -> bool {
+        self.mem.niece.is_some()
     }
 
     /// Whether the sound chip is in. SOUND (`$C0DF`) reads $16 if it is.
@@ -1192,12 +1259,15 @@ impl Machine {
         // the beam finishes every line it passed: before the frame ends, its last lines
         if line != before {
             let end = if wrapped { LINES_PER_FRAME } else { line };
+            // the cycle this frame began at, and the one the lines before a wrap belong to
+            let frame = now - self.mem.frame_cycle as u64;
+            let first = if wrapped { frame.saturating_sub(CYCLES_PER_FRAME as u64) } else { frame };
             for l in before..end {
-                self.beam(l);
+                self.beam(l, first);
             }
             if wrapped {
                 for l in 0..line {
-                    self.beam(l);
+                    self.beam(l, frame);
                 }
             }
             // the beam leaving the picture: FRAME goes up and VBLANK is raised (chapter 9)
@@ -1399,10 +1469,16 @@ impl Machine {
     /// The beam finishing raster line `line`: if it's one of the picture's lines (51-250),
     /// that line is drawn into `frame`, as things stand now, and the video board's SPRHIT,
     /// SPRHITBG and SPRLINE take what its sprites touched.
-    fn beam(&mut self, line: u32) {
+    /// `frame` is the cycle the line's frame began at: the NIECE's page is shown as it stood
+    /// on the line's last cycle.
+    fn beam(&mut self, line: u32, frame: u64) {
         let Some(y) = (line as usize).checked_sub(FIRST_PICTURE_LINE) else { return };
         if y >= PIXELS_H {
             return;
+        }
+        let (now, at) = (self.mem.io.cycle, self.mem.frame_cycle);
+        if let Some(n) = &mut self.mem.niece {
+            n.catch_up((frame + ((line + 1) * CYCLES_PER_LINE) as u64).saturating_sub(1), now, at);
         }
         let mut sprites = SpriteLine::new(&self.mem);
         let mut row = [0u8; PIXELS_W];
