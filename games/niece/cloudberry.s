@@ -46,6 +46,7 @@ FLIPY   = $04
 SHEET   = $20
 WHITE   = $40           ; ink table 1: everything white
 DUSK    = $80           ; ink table 2: the far fells in the evening
+DARK    = $C0           ; ink table 3: the near hills in the evening
 KEYC    = 4             ; the see-through colour: purple, so black can be an outline
 
 ; ---------------------------------------------------------------- tuning
@@ -193,8 +194,9 @@ ECNT    = $74
 RC      = $75
 RN      = $76
 WASG    = $77
-SKYF    = $78           ; NFLAGS for the far fells: an ink table for the evening
-FPEND   = $79
+SKYF    = $78           ; NFLAGS for the clouds and fells and for the near hills: an
+HILLF   = $79           ; ink table each, for the evening
+FPEND   = $7A
 
 ; ---------------------------------------------------------------- start
         .org $0800
@@ -332,7 +334,7 @@ backdrop:
         LDA #160
         STA NDWS
         STA NSW
-        LDA #KEY
+        LDA SKYF                ; the clouds and the fells: the evening's ink
         STA NFLAGS
         LDA CAMH                ; T1 = camera / 2, T2 = / 4, A = / 8
         STA T0
@@ -369,9 +371,7 @@ backdrop:
         STA NSH
         LDA #BLIT
         JSR go
-        LDA SKYF                ; the far fells
-        STA NFLAGS
-        LDA T2
+        LDA T2                  ; the far fells
         STA NSX
         LDA #FELLY
         STA NSY
@@ -382,7 +382,7 @@ backdrop:
         STA NSH
         LDA #BLIT
         JSR go
-        LDA #KEY                ; the near hills
+        LDA HILLF               ; the near hills
         STA NFLAGS
         LDA #1
         STA NSY+1               ; everything from here on is below line 256
@@ -397,7 +397,9 @@ backdrop:
         STA NSH
         LDA #BLIT
         JSR go
-        LDA CAML                ; the level
+        LDA #KEY                ; the level
+        STA NFLAGS
+        LDA CAML
         STA NSX
         LDA #<RINGY
         STA NSY
@@ -2224,6 +2226,8 @@ loadlevel:
         BNE @sky
         LDA skies,X
         STA SKYF
+        LDA skies+1,X
+        STA HILLF
         LDA #0
         STA LC
 @chunk: LDX LC
@@ -2359,6 +2363,13 @@ setup:  LDA #KEYC
         STA NINK,X
         DEX
         BPL @dusk
+        LDA #3                  ; table 3: and its shadows
+        STA NTABLE
+        LDX #15
+@dark:  LDA darkink,X
+        STA NINK,X
+        DEX
+        BPL @dark
         LDA #0
         TAX
 @tr:    STA TRANS,X             ; which tile, or which thing, a character of
@@ -2791,7 +2802,8 @@ cloudtab:
         .byte 0
 
 ; The sky, a level each: seven bands of y, height, the two colours and the
-; pattern; then NFLAGS for the far fells. 32 bytes a level.
+; pattern; then NFLAGS for the far fells and for the near hills. 32 bytes a
+; level.
 skies:  .byte TOPY, 10, $6E, %10000010          ; light blue with a little blue
         .byte 14, 14, $EE, 0                    ; light blue
         .byte 28, 10, $1E, %10000010            ; paling
@@ -2799,20 +2811,25 @@ skies:  .byte TOPY, 10, $6E, %10000010          ; light blue with a little blue
         .byte 48, 12, $E1, %10000010            ; nearly white over the fells
         .byte 60, 24, $6E, %11110000            ; the lake: stripes
         .byte 84, 16, $B5, %10000000            ; the hillside
-        .byte KEY, 0, 0, 0
+        .byte KEY, KEY, 0, 0
         .byte TOPY, 10, $46, %10100101          ; the evening: purple and blue
         .byte 14, 10, $4A, %10100101            ; purple and pink
         .byte 24, 10, $8A, %10100101            ; pink and orange
         .byte 34, 12, $78, %10000010            ; orange
         .byte 46, 14, $78, %10100101            ; orange and yellow
         .byte 60, 24, $86, %11110000            ; the lake, lit
-        .byte 84, 16, $B5, %10000010            ; the hillside, darker
-        .byte KEY | DUSK, 0, 0, 0
+        .byte 84, 16, $BB, 0                    ; the hillside, in shadow
+        .byte KEY | DUSK, KEY | DARK, 0, 0
 
-; Ink table 2: the far fells in the evening. Light blue to purple, grey to
-; dark grey, green to blue, white to light red.
+; Ink table 2: the clouds and the far fells in the evening. Light blue to
+; purple, grey to dark grey, green to blue, and white, the clouds and the
+; snow, to light red.
 duskink:
         .byte 0, 10, 2, 3, 4, 6, 6, 7, 8, 9, 10, 11, 11, 13, 4, 15
+; Ink table 3: the near hills in the evening. Green to dark grey, the trunks
+; to black, light green to green, white to light grey.
+darkink:
+        .byte 0, 15, 2, 3, 4, 11, 6, 7, 8, 0, 10, 11, 12, 5, 14, 15
 
 ; The tune's notes: A3 C4 D4 E4 G4 A4 C5 D5 E5 G5, as FREQ (Hz x 16.777).
 notelo: .byte <3691, <4389, <4927, <5530, <6577, <7382, <8779, <9854, <11060, <13153
@@ -2902,9 +2919,9 @@ level1:
         .byte "                  o             "
         .byte "                 o o       {^}  "
         .byte "                           (%)  "
-        .byte "           o   -----        I   "
+        .byte "           o    -----       I   "
         .byte "                            I   "
-        .byte "  h  t c        t   L   c   I t "
+        .byte "  h  t c       R t  L   c   I t "
         .byte "##########   ###################"
         .byte "==========~~~==================="
         .byte "==========www==================="
@@ -2924,11 +2941,11 @@ level1:
         ; columns 96-127
         .byte "                                "
         .byte "                                "
-        .byte "                                "
         .byte "             M                  "
         .byte "                                "
+        .byte "             o                  "
         .byte "          o     o     o         "
-        .byte "                                "
+        .byte "            ---                 "
         .byte "                                "
         .byte "  t                          c  "
         .byte "####  ---   ---   ---   --  ####"
@@ -2963,12 +2980,12 @@ level1:
         ; columns 192-223
         .byte "                                "
         .byte "                                "
+        .byte "          M                     "
         .byte "                                "
+        .byte "         ooo        ooo         "
         .byte "                                "
-        .byte "          o          o          "
-        .byte "                           o    "
         .byte "         ---        ---         "
-        .byte "   o           M          o     "
+        .byte "   o                      o     "
         .byte "  t  L       c         L h   t  "
         .byte "########  ########   ###########"
         .byte "========~~========~~~==========="
@@ -2996,7 +3013,7 @@ level2:
         .byte "r                   o           "
         .byte "r                  o o          "
         .byte "r                               "
-        .byte "r             o          bbb    "
+        .byte "r             o          ---    "
         .byte "r       mmm       mmm           "
         .byte "r t  s  rrr   h   rrr      L    "
         .byte "rmmmmmmmrrrmmmmmmmrrrmmmmmmmmmmm"
@@ -3006,24 +3023,24 @@ level2:
         .byte "                                "
         .byte "                                "
         .byte "                                "
-        .byte "       M                        "
-        .byte "                 o              "
-        .byte "       o                        "
-        .byte "                         mmm    "
-        .byte "             mm     o    rrr    "
-        .byte "   L         rr   t      rrr  c "
+        .byte "                                "
+        .byte "       o         o              "
+        .byte "                      o         "
+        .byte "                                "
+        .byte "             mm     o     mmm   "
+        .byte "   L         rr   t       rrr  c"
         .byte "mmmmmm   mmmmrr  mmmm   mmrrrmmm"
         .byte "rrrrrr   rrrrrr  rrrr   rrrrrrrr"
         .byte "rrrrrr   rrrrrr  rrrr   rrrrrrrr"
         ; columns 64-95
         .byte "                                "
         .byte "                                "
+        .byte "                                "
         .byte "              o o               "
-        .byte "                        o       "
-        .byte "             mmmm    M          "
-        .byte "         o   rrrr               "
-        .byte "        mmm  rrrr  --   mmmm    "
-        .byte "    mm  rrr  rrrr       rrrr    "
+        .byte "                                "
+        .byte "         o   mmmm      o        "
+        .byte "        mmm  rrrr  --           "
+        .byte "    mm  rrr  rrrr       mmmm    "
         .byte " t  rr  rrr  rrrr   L   rrrr  t "
         .byte "mmmmrr  rrr  rrrrmmmmmmmrrrrmmmm"
         .byte "rrrrrr  rrr  rrrrrrrrrrrrrrrrrrr"
@@ -3031,14 +3048,14 @@ level2:
         ; columns 96-127
         .byte "                                "
         .byte "                                "
+        .byte "             M                  "
         .byte "                                "
-        .byte "         o        o             "
-        .byte "      M               M         "
         .byte "                                "
-        .byte "         o        o             "
-        .byte "       ----     ----            "
+        .byte "          o  o  o  o  o         "
+        .byte "            ---   ---           "
+        .byte "                                "
         .byte "  c                          t  "
-        .byte "mmmm   --   ---    --   ---  mmm"
+        .byte "mmmm  ---   ---   ---   ---  mmm"
         .byte "rrrr~~~~~~~~~~~~~~~~~~~~~~~~~rrr"
         .byte "rrrrwwwwwwwwwwwwwwwwwwwwwwwwwrrr"
         ; columns 128-159
@@ -3047,34 +3064,34 @@ level2:
         .byte "   (%)       o      (%)     o   "
         .byte "   (%)               I          "
         .byte "    I     o        bbIbb        "
-        .byte "  bbIb               I    mmm   "
-        .byte "    I    mmm    o    I    rrr   "
-        .byte "    I    rrr         I  L rrr   "
-        .byte " t  I  L rrr  u   t  Immmmrrr  h"
-        .byte "mmmmmmmmmrrrmmmmmmmmmmrrrrrrrmmm"
+        .byte "  bbIb               I          "
+        .byte "    I           o    I          "
+        .byte "    I    mmm         I     mmm  "
+        .byte " t  I  L rrr  u   t  I  L  rrr h"
+        .byte "mmmmmmmmmrrrmmmmmmmmmmmmmmmrrrmm"
         .byte "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
         .byte "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
         ; columns 160-191
         .byte "                                "
-        .byte "                o               "
-        .byte "               M        o       "
         .byte "                                "
-        .byte "          o     mmm             "
-        .byte "         mmm    rrr    mmm      "
-        .byte "    o    rrr    rrr    rrr      "
-        .byte "   mmm   rrr    rrr    rrr   mm "
-        .byte "   rrr   rrr    rrr    rrr   rr "
-        .byte "mm rrr   rrr    rrr    rrr   rrm"
-        .byte "rr rrr   rrr    rrr    rrr   rrr"
-        .byte "rr rrr   rrr    rrr    rrr   rrr"
+        .byte "                                "
+        .byte "          o     o               "
+        .byte "                       o        "
+        .byte "         mmm   mmm              "
+        .byte "    o    rrr   rrr    mmm       "
+        .byte "   mmm   rrr   rrr    rrr   mm  "
+        .byte "   rrr   rrr   rrr    rrr   rr  "
+        .byte "mm rrr   rrr   rrr    rrr   rrmm"
+        .byte "rr rrr   rrr   rrr    rrr   rrrr"
+        .byte "rr rrr   rrr   rrr    rrr   rrrr"
         ; columns 192-223
         .byte "                                "
         .byte "                                "
+        .byte "          M        M            "
         .byte "                                "
-        .byte "          o                     "
-        .byte "      o       M      o          "
+        .byte "         ooo      ooo           "
         .byte "                                "
-        .byte "     ---     ---    ---         "
+        .byte "         ---      ---           "
         .byte "                           o    "
         .byte "  L      t L      c     L     t "
         .byte "mmmmmm  mmmmmm   mmmmm  mmmmmmmm"
@@ -3087,12 +3104,12 @@ level2:
         .byte "                               r"
         .byte "    o o o o                    r"
         .byte "                    H          r"
-        .byte "                               r"
         .byte "         {^}                   r"
-        .byte " t  h    (%)  s  c          t  r"
-        .byte "##########I####################r"
-        .byte "===============================r"
-        .byte "===============================r"
+        .byte "         (%)                   r"
+        .byte " t  h     I   s  c          t  r"
+        .byte "mmmmmmmm#######################r"
+        .byte "rrrrrrrr=======================r"
+        .byte "rrrrrrrr=======================r"
         .assert * - level2 == 8 * 12 * 32
 
 ; ---------------------------------------------------------------- the pictures

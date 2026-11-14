@@ -406,7 +406,8 @@ impl Game {
         let n = self.chip();
         let (cam, tick) = (self.cam(), self.word("TICK", "TICKH"));
         let (felly, cloudy, tiley, neary) = (self.sym("FELLY") as i32, self.sym("CLOUDY") as i32, self.sym("TILEY") as i32, self.sym("NEARY") as i32);
-        let fell_ink: Vec<u8> = if self.get("SKYF") & 0x80 != 0 { (0..16).map(|i| self.at("duskink", i)).collect() } else { (0..16).collect() };
+        // the clouds and fells, and the hills, go through the ink tables their NFLAGS name
+        let (fell_ink, hill_ink) = (n.inks[(self.get("SKYF") >> 6) as usize], n.inks[(self.get("HILLF") >> 6) as usize]);
         let bands: Vec<(i32, i32, u8, u8)> =
             (0..7).map(|b| (self.at("BANDS", b * 4) as i32, self.at("BANDS", b * 4 + 1) as i32, self.at("BANDS", b * 4 + 2), self.at("BANDS", b * 4 + 3))).collect();
         let map: Vec<u8> = (0..12 * 256).map(|i| self.at("MAP", i)).collect();
@@ -424,7 +425,7 @@ impl Game {
                 if (6..26).contains(&y) {
                     let p = n.pixel((cam >> 3) + (tick >> 4) + x, cloudy + y - 6);
                     if p != KEYC {
-                        c = p;
+                        c = fell_ink[p as usize];
                     }
                 }
                 if (28..60).contains(&y) {
@@ -436,7 +437,7 @@ impl Game {
                 if (36..84).contains(&y) {
                     let p = n.pixel((cam >> 1) + x, neary + y - 36);
                     if p != KEYC {
-                        c = p;
+                        c = hill_ink[p as usize];
                     }
                 }
                 if y >= TOPY {
@@ -524,8 +525,8 @@ impl Game {
     }
 
     /// The keys a careful walker would hold this frame, going right: RIGHT always, and SPACE
-    /// from the moment the ground ahead stops or a wall stands in the way until he's down
-    /// again. It reads the map as the game does.
+    /// from the moment the ground ahead stops (a step down he walks off) or a wall stands in
+    /// the way until he's down again. It reads the map as the game does.
     fn walker(&mut self, jumping: &mut bool) {
         self.m.key(RIGHT);
         let (px, py) = (self.px(), self.py());
@@ -541,7 +542,8 @@ impl Game {
         }
         let ahead = (px + 8) >> 3;
         let feet = (py + 12) >> 3;
-        let gap = self.flags(ahead, feet) & (SOLID | ONEWAY) == 0;
+        // nothing ahead to stand on, here or a step or two down
+        let gap = (feet..feet + 3).all(|r| self.flags(ahead, r) & (SOLID | ONEWAY) == 0);
         let wall = (py >> 3..=(py + 11) >> 3).any(|r| self.flags((px + 9) >> 3, r) & SOLID != 0);
         if gap || wall {
             self.m.key(SPACE);
