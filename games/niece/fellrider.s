@@ -179,20 +179,20 @@ LOGOY   = 22                ; and the title, 54 x 7 at column 160
 ; ---------------------------------------------------------------- the physics' numbers
 ; (the tests pin how the moped behaves: change these and expect to hear from them)
 GRAV    = 3604              ; 0.055 pixels a frame a frame, in 65536ths
-AXLE    = 8 * 256           ; hubs fore and aft of the centre of mass, pixels x 256
-HANG    = 7 * 256           ; and below it, with the spring at full stretch
+AXLE    = 9 * 256           ; hubs fore and aft of the centre of mass, pixels x 256
+HANG    = 5 * 256           ; and below it, with the spring at full stretch
 HEADB   = 3 * 256           ; the head: behind the centre of mass
-HEADU   = 11 * 256          ;   and above it
+HEADU   = 14 * 256          ;   and above it
 TWOPI   = 1608              ; 6.283 x 256
-KWHEEL  = 901               ; a spring: force for a pixel squeezed, in 65536ths
-DWHEEL  = 3800              ; its damper: force for a pixel a frame
+KWHEEL  = 600               ; a spring: force for a pixel squeezed, in 65536ths
+DWHEEL  = 4600              ; its damper: force for a pixel a frame
 KHEAD   = 3000
 DHEAD   = 9000
 MUWHEEL = 282               ; grip: 1.1 of the load
 MUHEAD  = 160
 RWHEEL  = 5 * 256           ; a wheel's radius
-RHEAD   = 640               ; and the helmet's: 2.5
-CSTOP   = 1152              ; the travel: 4.5 pixels, then the bump stop
+RHEAD   = 384               ; and the helmet's hard middle: 1.5
+CSTOP   = 1664              ; the travel: 6.5 pixels, then the bump stop
 KSTOP   = 6000
 CMAX    = 12                ; nothing is squeezed further than this, in whole pixels
 NMAX    = 29000             ; nor pushed harder: 0.44, eight times the moped's weight
@@ -200,20 +200,21 @@ SLIPMAX = 800
 KTYRE   = 38                ; pull for slip: 38/256 of the moped's weight for a pixel a frame
 DMAX    = 2700              ; the engine at a standstill: 0.041, three quarters of gravity
 DFADE   = 640               ;   less this for each pixel a frame the wheel is doing
-BRAKE   = 2600 * 4          ; the brake, as a change of tyre speed (a wheel's inertia is 1/4)
+BRAKE   = 1400 * 4          ; the brake, as a change of tyre speed (a wheel's inertia is 1/4)
 DREV    = 1200              ; backwards, gently
 SREV    = 384               ; under 1.5 pixels a frame LEFT is backwards, not a brake
-LEAN    = 14000             ; the rider's weight thrown: a torque, angle units x 256
+LEAN    = 24000             ; the rider's weight thrown, with a wheel on the ground to
+LEANAIR = 8000              ;   push against, and in the air: torques, before the halving
 VXMAX   = 4                 ; speeds are held to this many pixels a frame, across
 VYMAX   = 7                 ;   and up and down
-OMMAX   = 4000              ; and turning to this: 22 degrees a frame
+OMMAX   = 1100              ; and turning to this: 6 degrees a frame
 STARTX  = 128
 LEFTX   = 64                ; as far back as there is
 
-BASE    = 74                ; the ground's middle line on the page
+BASE    = 65                ; the ground's middle line on the page
 GTOP    = 36                ; the ground is never higher than this line
 GBOT    = 93                ;   nor lower than this
-FLAT    = 384               ; the first pixels are flat
+FLAT    = 176               ; the first pixels are flat: three metres from the start
 SNOWY   = 50                ; above this line the ground is snow
 
 TITLE   = 0                 ; STATE
@@ -508,7 +509,7 @@ rules:  LDA KEYS            ; SPACE, as it goes down
         BEQ @done
         SEC                 ; and pulling
         LDA GAS
-        SBC #90
+        SBC #48
         STA GAS
         LDA GAS+1
         SBC #0
@@ -591,9 +592,9 @@ newrun: LDX #X0
         BPL @dust
         LDA #STARTX
         STA XL
-        LDA #BASE - 10      ; standing: the springs squeezed two pixels by its weight
+        LDA #BASE - 7       ; standing: the springs squeezed three pixels by its weight
         STA Y0+2
-        LDA #2
+        LDA #3
         STA CPH
         STA CPH+1
         LDA #$FF
@@ -614,12 +615,12 @@ newrun: LDX #X0
         STA GENL+2
         STA COL+1
         STA COL+2
-        STA T7
 @col:   JSR gencol
         INC COL
         BNE @same
         INC COL+1
-@same:  DEC T7
+@same:  LDA COL             ; 256 of them: round to where it began
+        CMP GENL
         BNE @col
         LDA COL
         STA GENR
@@ -815,8 +816,7 @@ physics:
         JSR contact
         INC IDX
         JSR contact
-        LDA NL+2            ; the head pushed on the ground
-        ORA NH+2
+        LDA CPH+2           ; the head a whole pixel into the ground: a brush isn't a crash
         BEQ @head
         LDA #1
         STA CRASH
@@ -918,12 +918,12 @@ contact:
         STA CPL,X
         LDA CC+1
         STA CPH,X
-        LDY T1              ; the slope: two columns on less two columns back
-        INY
-        INY
-        TYA
+        LDA T1              ; the slope: four columns on less four columns back (a tyre
+        CLC                 ;   that size bridges anything smaller)
+        ADC #4
+        TAY
         SEC
-        SBC #4
+        SBC #8
         TAX
         SEC
         LDA HGL,Y
@@ -932,16 +932,16 @@ contact:
         LDA HGH,Y
         SBC HGH,X
         CLC
-        ADC #$08            ; 16ths of a pixel in 4, from -128 to 127: the table's index
+        ADC #$10            ; 32nds of a pixel in 8, from -128 to 127: the table's index
         BMI @steepu
-        CMP #$10
+        CMP #$20
         BCS @steepd
-        ASL A
         ASL A
         ASL A
         ASL A
         STA T3
         LDA T2
+        LSR A
         LSR A
         LSR A
         LSR A
@@ -1418,8 +1418,8 @@ controls:
         BPL @dp
         DEY
 @dp:    STY T6
-        STY T3              ; (the sign, for the turning below)
-        CLC                 ; the turning: T x 5 pixels of radius
+        STY T3
+        CLC                 ; the turning: T and a quarter of T
         LDA T0
         ADC ALA
         STA ALA
@@ -1427,6 +1427,27 @@ controls:
         ADC ALA+1
         STA ALA+1
         TYA
+        ADC ALA+2
+        STA ALA+2
+        LDA T0
+        STA T7
+        LDA T1
+        STA T2
+        CMP #$80
+        ROR T2
+        ROR T7
+        LDA T2
+        CMP #$80
+        ROR T2
+        ROR T7
+        CLC
+        LDA T7
+        ADC ALA
+        STA ALA
+        LDA T2
+        ADC ALA+1
+        STA ALA+1
+        LDA T3
         ADC ALA+2
         STA ALA+2
         ASL T4              ; four times it
@@ -1445,16 +1466,6 @@ controls:
         LDA SH
         ADC T6
         STA SH
-        CLC                 ; and the other four of the five
-        LDA T4
-        ADC ALA
-        STA ALA
-        LDA T5
-        ADC ALA+1
-        STA ALA+1
-        LDA T6
-        ADC ALA+2
-        STA ALA+2
         JMP @lean
 @nothr: LDA PADS
         LSR A
@@ -1537,17 +1548,8 @@ controls:
         LDA SH,X
         SBC T6
         STA SH,X
-        SEC                 ; and the moped turns with the wheel it stopped: that change
-        LDA ALA             ;   and a quarter of it again (5 pixels of radius over 4)
-        SBC T4
-        STA ALA
-        LDA ALA+1
-        SBC T5
-        STA ALA+1
-        LDA ALA+2
-        SBC T6
-        STA ALA+2
-        LDA T5
+        LDY #2              ; and the moped turns with the wheel it stopped: a quarter of
+@bturn: LDA T5              ;   that change, and a sixteenth
         CMP #$80
         ROR T5
         ROR T4
@@ -1565,6 +1567,8 @@ controls:
         LDA ALA+2
         SBC T6
         STA ALA+2
+        DEY
+        BNE @bturn
         DEX
         BMI @braked
         JMP @bwheel
@@ -1664,15 +1668,22 @@ controls:
         STA VX
         STA VX+1
         STA VX+2
-@keys:  LDA PADS            ; the rider leans
+@keys:  LDX #0              ; the rider leans: with a wheel on the ground he has
+        LDA NL              ;   something to push against, and in the air only himself
+        ORA NH
+        ORA NL+1
+        ORA NH+1
+        BNE @grip
+        LDX #2
+@grip:  LDA PADS
         AND #4
         BEQ @noback
         CLC
         LDA ALA
-        ADC #<LEAN
+        ADC leans,X
         STA ALA
         LDA ALA+1
-        ADC #>LEAN
+        ADC leans+1,X
         STA ALA+1
         BCC @noback
         INC ALA+2
@@ -1682,14 +1693,15 @@ controls:
         BEQ @nofwd
         SEC
         LDA ALA
-        SBC #<LEAN
+        SBC leans,X
         STA ALA
         LDA ALA+1
-        SBC #>LEAN
+        SBC leans+1,X
         STA ALA+1
         BCS @nofwd
         DEC ALA+2
 @nofwd: RTS
+leans:  .word LEAN, LEANAIR
 
 ; ---- speeds from the forces
 accel:  LDY #0              ; VX += AXA - VX / 256: the air
@@ -1774,11 +1786,21 @@ accel:  LDY #0              ; VX += AXA - VX / 256: the air
         STA VY+1
         LDA #<[-VYMAX]
         STA VY+2
-@yok:   LDY #0              ; OM += ALA - OM / 256
-        LDA OM+2
+@yok:   LDA ALA+2           ; the turning: half the torque (the moment of inertia is
+        CMP #$80            ;   twice the 40.74 that needs no division),
+        ROR ALA+2
+        ROR ALA+1
+        ROR ALA
+        LDY #0              ; and OM less a 256th of itself in the air, a 16th with a
+        LDA OM+2            ;   wheel on the ground: the tyres and the springs soak it up
         BPL @op
         DEY
 @op:    STY T6
+        LDA NL
+        ORA NH
+        ORA NL+1
+        ORA NH+1
+        BNE @damp
         SEC
         LDA OM
         SBC OM+1
@@ -1789,6 +1811,33 @@ accel:  LDY #0              ; VX += AXA - VX / 256: the air
         LDA OM+2
         SBC T6
         STA T2
+        JMP @turn
+@damp:  LDA OM              ; a 16th: the three bytes and the sign, four places left,
+        STA T0              ;   and the top three of the four
+        LDA OM+1
+        STA T1
+        LDA OM+2
+        STA T2
+        LDA T6
+        STA T3
+        LDX #4
+@sh:    ASL T0
+        ROL T1
+        ROL T2
+        ROL T3
+        DEX
+        BNE @sh
+        SEC
+        LDA OM
+        SBC T1
+        STA T0
+        LDA OM+1
+        SBC T2
+        STA T1
+        LDA OM+2
+        SBC T3
+        STA T2
+@turn:
         CLC
         LDA T0
         ADC ALA
@@ -2023,30 +2072,30 @@ gencol: LDA COL             ; three sines: each one's angle is the column times 
         LDA #>GF1
         STA NMULB+1
         LDX NPROD+1
+        LDA #<GF4
+        STA NMULB
+        LDA #>GF4
+        STA NMULB+1
+        LDY NPROD+1
+        CLC
+        LDA wave1,X
+        ADC wave4,Y
+        STA T4              ; the rollers: two lengths, so no two hills are the same
         LDA #<GF2
         STA NMULB
         LDA #>GF2
         STA NMULB+1
         LDY NPROD+1
-        CLC
-        LDA wave1,X
-        ADC wave2,Y
-        STA T0
         LDA #<GF3
         STA NMULB
         LDA #>GF3
         STA NMULB+1
-        LDY NPROD+1
+        LDX NPROD+1
         CLC
-        LDA T0
-        ADC wave3,Y
-        STA NMULA           ; -110 to 110
-        LDY #0
-        ORA #0
-        BPL @wp
-        DEY
-@wp:    STY NMULA+1
-        SEC                 ; the roughness: a 32nd of the pixels past the flat, up to RMAX
+        LDA wave2,Y
+        ADC wave3,X
+        STA T5              ; and the rough
+        SEC                 ; how far past the flat
         LDA COL
         SBC #<FLAT
         STA T0
@@ -2055,31 +2104,68 @@ gencol: LDA COL             ; three sines: each one's angle is the column times 
         STA T1
         LDA COL+2
         SBC #0
-        BCC @flat
-        BNE @rough
-        LDA T1
-        CMP #$20
-        BCS @rough
-        ASL A
-        ASL A
-        ASL A
-        STA T1
+        STA T2
+        BCS @hills
+        LDA #0              ; the flat: no rollers, nothing rough
+        STA T6
+        STA T7
+        JMP @sizes
+@hills: ORA T1              ; the rollers' size: 176 by 88 pixels on, the hills there
+        BNE @big            ;   from the first, and a 128th of the pixels more, up to 32
         LDA T0
-        LSR A
-        LSR A
-        LSR A
-        LSR A
-        LSR A
-        ORA T1
-        CMP RMAX
-        BCC @r
-@rough: LDA RMAX
-        JMP @r
-@flat:  LDA #0
-@r:     STA NMULB
+        CMP #144
+        BCS @big
+        CMP #88             ; (there in 88 pixels: the first hill is a hill)
+        BCS @full
+        ASL A
+        BCC @r1
+@full:  LDA #176
+        BNE @r1
+@big:   LDA T2
+        BNE @most
+        LDA T1
+        CMP #16
+        BCS @most
+        STA T3
+        LDA T0
+        ASL A
+        LDA T3
+        ROL A
+        CLC
+        ADC #176
+        BNE @r1
+@most:  LDA #176 + 32
+@r1:    CMP RMAX
+        BCC @r1ok
+        LDA RMAX
+@r1ok:  STA T6
+        LDA T2              ; the rough's size: a 64th of the pixels, up to 160
+        BNE @rmost
+        LDA T1
+        CMP #40
+        BCS @rmost
+        ASL T0
+        ROL A
+        ASL T0
+        ROL A
+        JMP @r2
+@rmost: LDA #160
+@r2:    CMP RMAX
+        BCC @r2ok
+        LDA RMAX
+@r2ok:  STA T7
+@sizes: LDA T4              ; rollers x their size, a quarter of it
+        STA NMULA
+        LDY #0
+        ORA #0
+        BPL @wp
+        DEY
+@wp:    STY NMULA+1
+        LDA T6
+        STA NMULB
         LDA #0
         STA NMULB+1
-        LDA NPROD           ; a quarter of the product, taken from the middle line
+        LDA NPROD
         STA T0
         LDA NPROD+1
         CMP #$80
@@ -2089,13 +2175,39 @@ gencol: LDA COL             ; three sines: each one's angle is the column times 
         ROR A
         ROR T0
         STA T1
-        LDX COL
-        SEC
+        LDA T5              ; and the rough x its
+        STA NMULA
+        LDY #0
+        ORA #0
+        BPL @wp2
+        DEY
+@wp2:   STY NMULA+1
+        LDA T7
+        STA NMULB
+        LDA NPROD
+        STA T2
+        LDA NPROD+1
+        CMP #$80
+        ROR A
+        ROR T2
+        CMP #$80
+        ROR A
+        ROR T2
+        STA T3
+        SEC                 ; both taken from the middle line
         LDA #0
         SBC T0
-        TAY
+        STA T0
         LDA #BASE
         SBC T1
+        STA T1
+        LDX COL
+        SEC
+        LDA T0
+        SBC T2
+        TAY
+        LDA T1
+        SBC T3
         BMI @high
         CMP #GTOP
         BCC @high
@@ -2113,14 +2225,16 @@ gencol: LDA COL             ; three sines: each one's angle is the column times 
         TXA
         AND #63
         CMP #32
-        BNE @paint
+        BNE @old
         LDA COL
         CMP HIGEN
         LDA COL+1
         SBC HIGEN+1
         LDA COL+2
         SBC HIGEN+2
-        BCC @paint
+        BCS @new
+@old:   JMP @paint
+@new:
         LDA COL+1           ; which place: the column / 64
         ASL A
         ASL A
@@ -2137,17 +2251,49 @@ gencol: LDA COL             ; three sines: each one's angle is the column times 
         TYA
         AND #31
         TAY
-        LDA COL+2
-        BNE @far
-        LDA COL+1
+        LDA places,Y
         CMP #2
-        BCS @far
-        LDA #0              ; nothing in the first 512
-        BEQ @put
-@far:   LDA places,Y
+        BNE @put
+        CPY #16             ; a can: the second of each 32 places only in the first
+        BCC @put            ;   4,096 pixels. After that they're twice as far apart
+        LDA COL+2
+        BNE @coin
+        LDA COL+1
+        CMP #$10
+        BCC @can
+@coin:  LDA #1
+        BNE @put
+@can:   LDA #2
 @put:   STA itype,X
+        STA T0
+        ; how high. A can stands on the ground. A coin hangs where the moped's
+        ; middle goes: 9 above the ground, or where the ground has fallen away since 40
+        ; columns back, as much higher as it has fallen, up to 12: the line off a crest
+        SEC
         LDA T2
+        SBC #9
         STA ity,X
+        LDA T0
+        CMP #1
+        BNE @placed
+        LDA COL
+        SEC
+        SBC #40
+        TAY
+        SEC
+        LDA T2
+        SBC HGH,Y
+        BCC @placed
+        BEQ @placed
+        CMP #12
+        BCC @lift
+        LDA #12
+@lift:  STA T0
+        SEC
+        LDA ity,X
+        SBC T0
+        STA ity,X
+@placed:
         CLC
         LDA COL
         ADC #1
@@ -2376,29 +2522,24 @@ things: LDA #0
         BNE @there
         JMP @next
 @there: STA T4
-        LDY #9              ; how high: 9 above the ground, or 30 for the ones to jump for
-        CMP #3
-        BNE @low
-        LDY #30
-@low:   STY T5
-        SEC
         LDA ity,X
-        SBC T5
         STA T5              ; its middle, down the page
-        ; has the moped got it? Within 10 across and 13 up or down of the centre of mass
+        ; has the moped got it? A box round the wheels, the frame and the rider: 12
+        ; either side of the centre of mass, 16 above it and 12 below. The moped does
+        ; four pixels a frame at most, so nothing gets through the box between frames
         LDA T3
         BNE @draw
         SEC
         LDA T2
-        SBC #BX - 10
-        CMP #21
+        SBC #BX - 12
+        CMP #25
         BCS @draw
         SEC
         LDA T5
-        SBC BY
+        SBC Y0+2
         CLC
-        ADC #13
-        CMP #27
+        ADC #16
+        CMP #29
         BCS @draw
         LDA STATE
         CMP #RIDE
@@ -2414,13 +2555,9 @@ things: LDA #0
         INC COINS
 @rich:  JSR coinsnd
         JMP @next
-@can:   CLC
-        LDA GAS+1
-        ADC #$80
-        BCC @fill
-        LDA #$FF
+@can:   LDA #$FF            ; a can fills the tank
         STA GAS
-@fill:  STA GAS+1
+        STA GAS+1
         JSR cansnd
         JMP @next
 @draw:  LDA T4
@@ -3390,12 +3527,12 @@ scenery:
         LDX T0              ; the far fells' top: line 38, give or take 24
         LDA wave1,X
         JSR quarter
+        CMP #$80
+        ROR A
         STA T3
         LDX T1
         LDA wave2,X
         JSR quarter
-        CMP #$80
-        ROR A
         CLC
         ADC T3
         STA T3
@@ -3450,8 +3587,6 @@ scenery:
         LDX T0
         LDA wave3,X
         JSR quarter
-        CMP #$80
-        ROR A
         CLC
         ADC T4
         CLC
@@ -3771,23 +3906,27 @@ radl:   .byte <RWHEEL, <RWHEEL, <RHEAD
 radh:   .byte >RWHEEL, >RWHEEL, >RHEAD
 
 ; What's in each of 32 places along the ground, 64 pixels apart, round and round:
-; 0 nothing, 1 a coin, 2 a can, 3 a coin to jump for.
-places: .byte 1, 1, 1, 0, 1, 3, 1, 0, 0, 1, 1, 2, 0, 1, 1, 1
-        .byte 3, 0, 1, 1, 0, 1, 3, 1, 1, 0, 0, 2, 1, 1, 0, 3
+; 0 nothing, 1 a coin, 2 a can.
+places: .byte 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 2, 0, 1, 1, 1
+        .byte 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 2, 1, 1, 1, 0
 
 ; The ground's three waves: how many 65536ths of a circle each turns in a pixel, and
 ; a turn of each at its height.
-GF1     = 218
+GF1     = 193
 GF2     = 596
-GF3     = 1771
+GF3     = 1024
+GF4     = 126
 wave1:  .rept 256, i
-        .byte sin(i, 60) & $FF
+        .byte sin(i, 75) & $FF
+        .endr
+wave4:  .rept 256, i
+        .byte [-sin(i, 45)] & $FF
         .endr
 wave2:  .rept 256, i
-        .byte sin(i, 34) & $FF
+        .byte sin(i, 30) & $FF
         .endr
 wave3:  .rept 256, i
-        .byte sin(i, 16) & $FF
+        .byte sin(i, 14) & $FF
         .endr
 
 ; The ground's tangent for each slope, from -2 to 2 in 64ths: a vector 256 long.
@@ -3808,22 +3947,22 @@ tanyh:  .rept 256, i
 ; of mass: the picture's corner, the headstock, the swingarm's pivot, the mudguard
 ; (from the front hub) and the shock's top. A point u forward and v down the moped is (u cos + v sin, v cos - u sin).
 pcx:    .rept 64, i
-        .byte [[[1 - sin(i * 4, 9)] >> 1] - 16] & $FF
+        .byte [[[1 - sin(i * 4, 15)] >> 1] - 16] & $FF
         .endr
 pcy:    .rept 64, i
-        .byte [[[1 - cos(i * 4, 9)] >> 1] - 16] & $FF
+        .byte [[[1 - cos(i * 4, 15)] >> 1] - 16] & $FF
         .endr
 hsx:    .rept 64, i
-        .byte [[cos(i * 4, 16 * 6) + sin(i * 4, 16 * -5) + 8] >> 4] & $FF
+        .byte [[cos(i * 4, 16 * 6) + sin(i * 4, 16 * -8) + 8] >> 4] & $FF
         .endr
 hsy:    .rept 64, i
-        .byte [[cos(i * 4, 16 * -5) - sin(i * 4, 16 * 6) + 8] >> 4] & $FF
+        .byte [[cos(i * 4, 16 * -8) - sin(i * 4, 16 * 6) + 8] >> 4] & $FF
         .endr
 pvx:    .rept 64, i
-        .byte [[cos(i * 4, 16 * -1) + sin(i * 4, 16 * 3) + 8] >> 4] & $FF
+        .byte [[cos(i * 4, 16 * -1) + sin(i * 4, 16 * 0) + 8] >> 4] & $FF
         .endr
 pvy:    .rept 64, i
-        .byte [[cos(i * 4, 16 * 3) - sin(i * 4, 16 * -1) + 8] >> 4] & $FF
+        .byte [[cos(i * 4, 16 * 0) - sin(i * 4, 16 * -1) + 8] >> 4] & $FF
         .endr
 mgx:    .rept 64, i         ; the mudguard: from 3 behind the hub and 6 above it,
         .byte [[cos(i * 4, 16 * -3) + sin(i * 4, 16 * -6) + 8] >> 4] & $FF
@@ -3838,10 +3977,10 @@ mgh:    .rept 64, i
         .byte [-sin(i * 4, 7)] & $FF
         .endr
 skx:    .rept 64, i
-        .byte [[cos(i * 4, 16 * -6) + sin(i * 4, 16 * -2) + 8] >> 4] & $FF
+        .byte [[cos(i * 4, 16 * -6) + sin(i * 4, 16 * -5) + 8] >> 4] & $FF
         .endr
 sky:    .rept 64, i
-        .byte [[cos(i * 4, 16 * -2) - sin(i * 4, 16 * -6) + 8] >> 4] & $FF
+        .byte [[cos(i * 4, 16 * -5) - sin(i * 4, 16 * -6) + 8] >> 4] & $FF
         .endr
 
 ; ---------------------------------------------------------------- the pictures

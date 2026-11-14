@@ -32,9 +32,9 @@ const NGO: u16 = 0xC103;
 const STA_ABS: u8 = 0x33;
 
 /// The ground's middle line, and where the centre of mass rests above flat ground: the
-/// hubs hang 7 below it, the wheels are 5 in radius, and the springs give 2 under its weight.
-const BASE: f64 = 74.0;
-const REST: f64 = BASE - 10.0;
+/// hubs hang 5 below it, the wheels are 5 in radius, and the springs give 3 under its weight.
+const BASE: f64 = 65.0;
+const REST: f64 = BASE - 7.0;
 
 /// What a stretch of frames cost, the processor and the chip.
 #[derive(Default, Debug)]
@@ -120,6 +120,8 @@ impl Game {
     fn ride_flat() -> Game {
         let mut g = Game::ride();
         g.set("RMAX", 0);
+        // (the 256 columns made before the run began have the first hill in them)
+        g.shape(32, 288, |_| BASE);
         g
     }
 
@@ -498,23 +500,27 @@ fn asm_sin(a: i64, n: f64) -> i64 {
 }
 
 /// The ground's height at world column `x` in 256ths of a line, as the header of the source
-/// describes it: three sines of 300, 110 and 37 pixels, times a roughness that grows a 32nd
-/// for each pixel past the first 384, held to `rmax`; never above line 36 or below 93.
+/// describes it. Rollers of two lengths, 340 and 520 pixels, there at nearly their full size 144 pixels past
+/// the flat and a fifth bigger by 4,000; over them two shorter waves, 110 and 64 pixels,
+/// that grow a 64th for each pixel. Never above line 36 or below 93. `rmax` holds both
+/// sizes down (0: flat).
 fn height(x: i64, rmax: i64) -> i64 {
     let wave = |step: i64, size: f64| asm_sin(((x & 0xFFFF) * step & 0xFFFF) >> 8, size);
-    let w = wave(218, 60.0) + wave(596, 34.0) + wave(1771, 16.0);
-    let rough = ((x - 384) >> 5).clamp(0, 255).min(rmax);
-    (74 * 256 - ((w * rough) >> 2)).clamp(36 * 256, 93 * 256)
+    let t = x - 176;
+    let (rollers, rough) = if t < 0 { (0, 0) } else { ((if t < 144 { (2 * t).min(176) } else { 176 + (t >> 7).min(32) }).min(rmax), (t >> 6).min(160).min(rmax)) };
+    (65 * 256 - (((wave(193, 75.0) - wave(126, 45.0)) * rollers) >> 2) - (((wave(596, 30.0) + wave(1024, 14.0)) * rough) >> 2)).clamp(36 * 256, 93 * 256)
 }
 
 impl Game {
-    /// A rider good enough to get a long way: throttle up to `speed` pixels a frame, and
-    /// leaning to keep the moped at the ground's slope. Sets the keys for the next frame.
+    /// A cautious rider: throttle up to `speed` pixels a frame, eased off when the nose is
+    /// more than 25 degrees above the ground's slope, and in the air a dab of lean to bring
+    /// the moped level with the ground it's coming down to. Sets the keys for the next frame.
     fn rider(&mut self, speed: f64) {
         let x = self.x() as i64;
         let slope = (self.ground(x + 10) - self.ground(x - 2)) / 12.0;
         let err = self.pitch() + slope.atan().to_degrees();
-        let keys = [(RIGHT, self.vx() < speed && err < 12.0), (LEFT, false), (UP, err < -6.0), (DOWNKEY, err > 4.0)];
+        let air = self.airborne();
+        let keys = [(RIGHT, self.vx() < speed && err < 25.0), (LEFT, false), (UP, air && err < -10.0), (DOWNKEY, air && err > 10.0)];
         for (k, down) in keys {
             if down {
                 self.m.key_hold(k);
@@ -544,14 +550,14 @@ impl Game {
         self.load(0) == 0.0 && self.load(1) == 0.0
     }
     /// The moped's energy for each unit of its mass: moving, turning (its moment of inertia
-    /// is 40.74), height, and what's wound into the two springs and their bump stops.
+    /// is 81.48), height, and what's wound into the two springs and their bump stops.
     /// (A frame ends with the speeds one step ahead of the places, so the height is taken
     /// where this speed will have put it.)
     fn energy(&self) -> f64 {
-        let (g, k, stop) = (3604.0 / 65536.0, 901.0 / 65536.0, 6000.0 / 65536.0);
+        let (g, k, stop) = (3604.0 / 65536.0, 600.0 / 65536.0, 6000.0 / 65536.0);
         let om = self.turning().to_radians();
-        let springs: f64 = (0..2).map(|i| 0.5 * k * self.squeeze(i).powi(2) + 0.5 * stop * (self.squeeze(i) - 4.5).max(0.0).powi(2)).sum();
-        0.5 * (self.vx().powi(2) + self.vy().powi(2)) + 0.5 * 40.74 * om * om - g * (self.y() + self.vy()) + springs
+        let springs: f64 = (0..2).map(|i| 0.5 * k * self.squeeze(i).powi(2) + 0.5 * stop * (self.squeeze(i) - 6.5).max(0.0).powi(2)).sum();
+        0.5 * (self.vx().powi(2) + self.vy().powi(2)) + 0.5 * 81.48 * om * om - g * (self.y() + self.vy()) + springs
     }
 }
 
@@ -668,18 +674,20 @@ fn title_ride_run_over_and_again() {
     g.press(b' ');
     assert_eq!(g.get("STATE"), RIDE);
     assert!(!g.text().contains("PRESS SPACE"));
-    // hold the throttle from a standstill and it goes over backwards: the head touches,
+    // throttle with the rider leaning back, from a standstill, and it goes over backwards:
+    // the head touches,
     g.m.key(RIGHT);
+    g.m.key_hold(UP);
     g.until(150, "it goes over backwards", |g| g.get("STATE") == DOWN);
     assert!(g.pitch() > 90.0, "pitch {}", g.pitch());
     assert_eq!(g.get("CRASH"), 1);
     // and a second later the run is over, with the keys dead meanwhile
     g.until(60, "the run is over", |g| g.get("STATE") == OVER);
-    g.m.key_up(RIGHT);
+    g.keys_up();
     let text = g.text();
     assert!(text.contains("YOU CAME OFF!") && text.contains("PRESS SPACE TO RIDE AGAIN"), "{text}");
     let rode = g.word("DIST");
-    assert!(rode >= 1 && rode < 20, "rode {rode} metres");
+    assert!(rode < 20, "rode {rode} metres");
     assert!(text.contains(&format!("RODE {rode:04}M")), "{text}");
     assert_eq!(g.word("BEST"), rode);
     // SPACE: a new run from the start, the best kept
@@ -694,7 +702,7 @@ fn title_ride_run_over_and_again() {
 
 // ---------- the physics ----------
 
-/// At rest on flat ground the moped is level, each spring squeezed two pixels and carrying
+/// At rest on flat ground the moped is level, each spring squeezed three pixels and carrying
 /// half its weight, and it stays exactly where it is.
 #[test]
 fn it_rests_level_on_its_springs() {
@@ -704,7 +712,7 @@ fn it_rests_level_on_its_springs() {
     assert!((g.y() - REST).abs() < 0.02, "y {}", g.y());
     assert!(g.pitch().abs() < 0.1, "pitch {}", g.pitch());
     for i in 0..2 {
-        assert!((g.squeeze(i) - 2.0).abs() < 0.03, "spring {i}: {}", g.squeeze(i));
+        assert!((g.squeeze(i) - 3.0).abs() < 0.03, "spring {i}: {}", g.squeeze(i));
         assert!((g.load(i) - 0.5).abs() < 0.01, "load {i}: {}", g.load(i));
     }
     g.frames(300);
@@ -716,27 +724,79 @@ fn it_rests_level_on_its_springs() {
 }
 
 /// Throttle drives the back wheel: the moped goes forward, its weight goes onto the back
-/// spring and the nose comes up. The brake does the opposite.
+/// spring and the nose comes up a little. The brake does the opposite.
 #[test]
 fn throttle_pitches_it_back_and_the_brake_forward() {
     let mut g = Game::ride_flat();
     g.frames(100);
     g.hold(RIGHT, 14);
     assert!(g.vx() > 0.25, "vx {}", g.vx());
-    assert!(g.pitch() > 2.0, "pitch {}", g.pitch());
-    assert!(g.squeeze(0) > 2.5 && g.squeeze(1) < 1.5, "springs {} {}", g.squeeze(0), g.squeeze(1));
-    assert!(g.load(0) > 0.7 && g.load(1) < 0.3, "loads {} {}", g.load(0), g.load(1));
+    assert!(g.pitch() > 1.0, "pitch {}", g.pitch());
+    assert!(g.squeeze(0) > 3.2 && g.squeeze(1) < 2.8, "springs {} {}", g.squeeze(0), g.squeeze(1));
+    assert!(g.load(0) > 0.55 && g.load(1) < 0.45, "loads {} {}", g.load(0), g.load(1));
     // the back tyre is turning faster than the ground goes by: it's driving
     assert!(g.spin(0) > g.vx());
-    // get it level and rolling at speed, then brake
-    g.ride_until(3.0, 300, "up to speed", |g| g.vx() > 2.0 && g.pitch().abs() < 8.0 && g.turning().abs() < 0.3 && !g.airborne());
+    // up to speed, then brake
+    g.m.key(RIGHT);
+    g.until(300, "up to speed", |g| g.vx() > 2.3);
+    g.m.key_up(RIGHT);
+    g.frames(5);
     let (v, level) = (g.vx(), g.pitch());
     g.hold(LEFT, 10);
     assert!(g.vx() < v - 0.25, "vx {} from {v}", g.vx());
-    assert!(g.pitch() < level - 1.5 && g.pitch() < 0.0, "pitch {} from {level}", g.pitch());
-    assert!(g.squeeze(1) > 2.5 && g.squeeze(1) > g.squeeze(0), "springs {} {}", g.squeeze(0), g.squeeze(1));
+    assert!(g.pitch() < level - 1.0 && g.pitch() < 0.0, "pitch {} from {level}", g.pitch());
+    assert!(g.squeeze(1) > g.squeeze(0), "springs {} {}", g.squeeze(0), g.squeeze(1));
     assert!(g.load(1) > g.load(0));
     assert_eq!(g.get("CRASH"), 0);
+}
+
+/// What a first-time player does: holds the throttle. On the flat that's safe for as long
+/// as you like: the front goes light, the nose comes up a few degrees and settles, and
+/// the moped is away.
+#[test]
+fn throttle_held_on_the_flat_does_not_loop_it() {
+    let mut g = Game::ride_flat();
+    g.frames(30);
+    g.m.key(RIGHT);
+    let mut most = 0.0f64;
+    for _ in 0..250 {
+        g.frame();
+        most = most.max(g.pitch().abs());
+        assert_eq!(g.get("CRASH"), 0);
+    }
+    assert!(most < 12.0, "the nose came up {most} degrees");
+    assert!(g.vx() > 2.2 && g.x() > 128.0 + 300.0, "vx {} at x = {}", g.vx(), g.x());
+    assert!(g.load(1) > 0.1, "the front wheel is back on the ground: {}", g.load(1));
+    // nor does the brake put it over the bars, from as fast as it goes
+    g.m.key_up(RIGHT);
+    g.m.key(LEFT);
+    let mut least = 0.0f64;
+    while g.vx() > 0.3 {
+        g.frame();
+        least = least.min(g.pitch());
+        assert_eq!(g.get("CRASH"), 0);
+    }
+    g.m.key_up(LEFT);
+    assert!(least > -15.0, "braking pitched it {least} degrees");
+    assert_eq!(g.get("STATE"), RIDE);
+}
+
+/// It can still be put on its back on the flat, by meaning to: throttle with the rider
+/// leaning back, held. Leaning back alone doesn't do it.
+#[test]
+fn throttle_and_leaning_back_held_does_loop_it() {
+    let mut g = Game::ride_flat();
+    g.frames(30);
+    g.hold(UP, 200);
+    assert!(g.get("CRASH") == 0 && g.pitch() < 30.0, "leaning alone: pitch {}", g.pitch());
+    let mut g = Game::ride_flat();
+    g.frames(30);
+    g.m.key(RIGHT);
+    g.m.key_hold(UP);
+    let took = g.until(200, "it goes over", |g| g.get("CRASH") == 1);
+    g.keys_up();
+    assert!(took >= 40, "over in {took} frames: that's too easy");
+    assert!(g.pitch() > 90.0);
 }
 
 /// Grip is the load times 1.1 and no more: with the front wheel in the air the brake on
@@ -775,7 +835,7 @@ fn it_rolls_back_down_a_slope() {
     let mut g = Game::ride_flat();
     // a hillside rising to the right, one in four
     g.shape(40, 280, |x| BASE - (x - 128.0) * 0.25);
-    g.place(128.0, BASE - 10.3, 14.0);
+    g.place(128.0, BASE - 7.3, 14.0);
     g.frames(120);
     assert!(g.vx() < -0.5, "vx {}", g.vx());
     assert!(g.x() < 110.0, "x {}", g.x());
@@ -819,7 +879,7 @@ fn a_drop_never_bounces_higher_and_comes_to_rest() {
         }
     }
     assert!(landed);
-    assert!(deepest > 3.0, "the springs took the landing: {deepest}");
+    assert!(deepest > 4.5, "the springs took the landing: {deepest}");
     assert!(tops.len() >= 3, "it bounced: {tops:?}");
     for w in tops.windows(2) {
         assert!(w[1] > w[0] - 0.01, "a bounce went higher than the one before: {tops:?}");
@@ -828,6 +888,7 @@ fn a_drop_never_bounces_higher_and_comes_to_rest() {
     assert!(up < 0.001, "energy went up by {up} in a frame in the air");
     assert!(g.energy() < start);
     assert!((g.y() - REST).abs() < 0.05 && g.vy().abs() < 0.01 && g.turning().abs() < 0.01, "at rest: y {} vy {}", g.y(), g.vy());
+    assert_eq!(g.get("STATE"), RIDE);
     assert_eq!(g.get("CRASH"), 0);
     g.frames(100);
     assert_eq!((g.vx(), g.vy()), (0.0, 0.0));
@@ -835,18 +896,19 @@ fn a_drop_never_bounces_higher_and_comes_to_rest() {
 
 /// A ramp launches it: both wheels leave the ground, it flies over a gap it couldn't have
 /// rolled across, turning as it left, and the landing squeezes the springs past where they
-/// rest.
+/// rest. And it's a safe landing: flat on both wheels or hard on the back one, the rider
+/// stays on.
 #[test]
 fn a_ramp_launches_it_and_it_lands() {
     let mut g = Game::ride_flat();
-    g.ride_until(3.2, 400, "up to speed", |g| g.vx() > 2.4 && g.pitch().abs() < 4.0 && !g.airborne());
+    g.m.key(RIGHT);
+    g.until(400, "up to speed", |g| g.vx() > 2.4);
     // a ramp ahead: 36 pixels long and 12 high, then nothing (the ground as it was)
     let x0 = g.x().floor() as i64 + 30;
     g.shape(x0, x0 + 36, |x| BASE - (x - x0 as f64) / 3.0);
-    g.m.key(RIGHT);
     g.until(60, "it leaves the ramp", |g| g.airborne() && g.x() > (x0 + 36) as f64);
     g.m.key_up(RIGHT);
-    assert!(g.vy() < -0.5, "going up: vy {}", g.vy());
+    assert!(g.vy() < -0.4, "going up: vy {}", g.vy());
     let (mut air, mut highest) = (0, g.y());
     let om = g.turning();
     let mut last = om;
@@ -858,25 +920,35 @@ fn a_ramp_launches_it_and_it_lands() {
         assert!(air < 200, "it never came down");
     }
     assert!(air >= 15, "{air} frames in the air");
-    assert!(highest < REST - 14.0, "it got to y = {highest}");
+    assert!(highest < REST - 12.0, "it got to y = {highest}");
     assert!(g.x() > (x0 + 36 + 30) as f64, "it landed at {} from a ramp ending at {}", g.x(), x0 + 36);
     // in the air nothing turned it but the air: the turning it left with, a little less
     assert!(om.abs() > 0.05 && last * om > 0.0 && last.abs() <= om.abs() && last.abs() > om.abs() * 0.8, "turning {om} then {last}");
-    assert!(g.get("THUMP") > 0 || g.vy() > 0.5);
     let mut deepest = 0.0f64;
-    for _ in 0..30 {
+    for _ in 0..60 {
         g.frame();
         deepest = deepest.max(g.squeeze(0)).max(g.squeeze(1));
     }
-    assert!(deepest > 3.5, "the landing squeezed a spring to {deepest}");
+    assert!(deepest > 4.5, "the landing squeezed a spring to {deepest}");
+    assert_eq!((g.get("CRASH"), g.get("STATE")), (0, RIDE), "the rider stays on");
+    // dropped 40 pixels: flat, on the back wheel with the nose 35 degrees up, and on the
+    // front with it 25 down. None of them is a crash
+    for pitch in [0.0, 35.0, -25.0] {
+        let mut g = Game::ride_flat();
+        g.place(128.0, REST - 40.0, pitch);
+        g.frames(200);
+        assert_eq!((g.get("CRASH"), g.get("STATE")), (0, RIDE), "dropped at {pitch} degrees");
+        assert!(g.pitch().abs() < 3.0 && g.vy().abs() < 0.05, "dropped at {pitch} degrees: it settles ({})", g.pitch());
+    }
 }
 
-/// In the air the throttle and the brake turn the moped: what spins the back wheel up one
-/// way turns the rest the other, and stopping a spinning wheel hands its turning back.
-/// The rider's weight does the same, either way.
+/// In the air the throttle and the brake turn the moped, gently: what spins the back wheel
+/// up one way turns the rest the other, and stopping a spinning wheel hands the turning
+/// back. The rider's weight turns it faster, either way, and the two together fastest:
+/// that's how it's put on its back in the air.
 #[test]
 fn in_the_air_throttle_brake_and_leaning_turn_it() {
-    let high = REST - 70.0;
+    let high = REST - 90.0;
     // nothing held: it falls without turning
     let mut g = Game::ride_flat();
     g.place(128.0, high, 0.0);
@@ -885,34 +957,50 @@ fn in_the_air_throttle_brake_and_leaning_turn_it() {
     // throttle: the back wheel spins up forwards (clockwise, seen from here) and the nose rises
     let mut g = Game::ride_flat();
     g.place(128.0, high, 0.0);
-    g.hold(RIGHT, 25);
+    g.hold(RIGHT, 40);
     assert!(g.airborne());
-    let (nose_up, turning) = (g.pitch(), g.turning());
-    assert!(nose_up > 8.0 && turning > 0.5, "pitch {nose_up} turning {turning}");
+    let (throttle, turning) = (g.pitch(), g.turning());
+    assert!(throttle > 10.0 && throttle < 35.0 && turning > 0.2, "pitch {throttle} turning {turning}");
     assert!(g.spin(0) > 2.0 && g.spin(1) == 0.0, "tyres {} {}", g.spin(0), g.spin(1));
-    // then the brake: the wheel stops and the turning it took comes back
-    g.hold(LEFT, 22);
-    assert!(g.spin(0) < 0.5, "tyre {}", g.spin(0));
-    assert!(g.turning() < turning * 0.4, "turning {} from {turning}", g.turning());
+    // then the brake: the wheel slows and the turning it took comes back
+    let tyre = g.spin(0);
+    g.hold(LEFT, 12);
+    assert!(g.spin(0) < tyre - 0.8, "tyre {} from {tyre}", g.spin(0));
+    assert!(g.turning() < turning * 0.75, "turning {} from {turning}", g.turning());
     // leaning back and leaning forward
+    let mut leaning = 0.0;
     for (key, sign) in [(UP, 1.0), (DOWNKEY, -1.0)] {
         let mut g = Game::ride_flat();
         g.place(128.0, high, 0.0);
-        g.hold(key, 25);
+        g.hold(key, 40);
         assert!(g.airborne());
-        assert!(g.pitch() * sign > 8.0, "leaning: pitch {}", g.pitch());
+        leaning = g.pitch() * sign;
+        assert!(leaning > 2.0 * throttle && leaning < 120.0, "leaning: pitch {}", g.pitch());
         assert_eq!(g.spin(0), 0.0);
+        // never faster than six degrees a frame
+        g.hold(key, 20);
+        assert!(g.turning().abs() <= 6.05, "turning {}", g.turning());
     }
+    let mut g = Game::ride_flat();
+    g.place(128.0, high, 0.0);
+    g.m.key(RIGHT);
+    g.hold(UP, 40);
+    g.keys_up();
+    assert!(g.airborne() && g.pitch() > leaning + 5.0, "both: pitch {} (leaning alone {leaning})", g.pitch());
 }
 
 /// Landing on the rider's head ends the run, and the heap comes to rest by the same sums.
+/// Only the head counts, and only a real knock: it has to be a whole pixel into the ground.
 #[test]
 fn landing_on_its_head_ends_the_run() {
     let mut g = Game::ride_flat();
     g.frames(30);
-    g.place(128.0, REST - 20.0, 180.0);
-    g.until(60, "the head touches", |g| g.get("CRASH") == 1);
-    assert!(g.squeeze(2) > 0.0);
+    // (upside down, the helmet a third of a pixel off the ground)
+    g.place(128.0, BASE - 15.8, 180.0);
+    g.until(60, "the head touches", |g| g.squeeze(2) > 0.0);
+    assert!(g.squeeze(2) < 1.0 && g.get("CRASH") == 0, "a touch isn't a crash yet: {}", g.squeeze(2));
+    g.until(40, "the head is a pixel in", |g| g.get("CRASH") == 1);
+    assert!(g.squeeze(2) >= 1.0);
     g.until(3, "the rider is down", |g| g.get("STATE") == DOWN);
     // the throttle is dead
     g.m.key(RIGHT);
@@ -923,12 +1011,6 @@ fn landing_on_its_head_ends_the_run() {
     g.frames(250);
     assert!(g.vx().abs() < 0.1 && g.vy().abs() < 0.1 && g.turning().abs() < 0.3, "still moving: {} {} {}", g.vx(), g.vy(), g.turning());
     assert!(g.y() < BASE, "it's on the ground, not in it: y {}", g.y());
-    // right way up from the same height, it just lands
-    let mut g = Game::ride_flat();
-    g.frames(30);
-    g.place(128.0, REST - 20.0, 0.0);
-    g.frames(150);
-    assert_eq!((g.get("CRASH"), g.get("STATE")), (0, RIDE));
 }
 
 // ---------- gas and coins ----------
@@ -939,26 +1021,32 @@ fn gas_runs_down_faster_with_the_throttle_and_a_can_fills_it() {
     let full = g.gas();
     g.frames(50);
     let ticking = full - g.gas();
-    g.ride_until(2.5, 200, "a little way", |g| g.x() > 300.0);
-    let before = g.gas();
+    assert_eq!(ticking, 50 * 6);
     g.hold(RIGHT, 10);
-    let pulling = before - g.gas();
-    assert!(ticking > 0 && pulling > 4 * ticking / 5 * 2, "{ticking} in 50 frames ticking over, {pulling} in 10 pulling");
-    // coins at 608 and 672, and the first can at 736
-    g.ride_until(2.5, 600, "past the first two coins", |g| g.x() > 700.0);
-    assert_eq!(g.get("COINS"), 2);
-    assert!(g.text().lines().next().unwrap().contains("COINS 02"), "{}", g.text());
+    assert_eq!(full - g.gas() - ticking, 10 * (6 + 48), "pulling");
+    // coins at 288, 352 and 416, at 544, 608 and 672, and the first can at 736
+    g.ride_until(2.6, 600, "past the first six coins", |g| g.x() > 700.0);
+    assert_eq!(g.get("COINS"), 6);
+    assert!(g.text().lines().next().unwrap().contains("COINS 06"), "{}", g.text());
     let before = g.gas();
-    g.ride_until(2.5, 200, "past the can", |g| g.x() > 760.0);
-    assert!(g.gas() > before + 20000, "gas {} from {before}", g.gas());
-    assert!(g.text().lines().next().unwrap().contains("COINS 02"));
+    assert!(before < 50000 && before > 30000, "gas {before} at the first can");
+    g.ride_until(2.6, 200, "past the can", |g| g.x() > 760.0);
+    assert!(g.gas() > 62000, "a can fills the tank: gas {} from {before}", g.gas());
+    assert_eq!(g.get("COINS"), 6);
     assert_eq!(g.get("STATE"), RIDE);
 }
 
 #[test]
 fn out_of_gas_it_rolls_to_a_stop_and_the_run_is_over() {
     let mut g = Game::ride_flat();
-    g.ride_until(2.5, 300, "up to speed", |g| g.vx() > 1.5);
+    for i in 0..16 {
+        g.set_at("itype", i, 0);
+    }
+    g.m.key(RIGHT);
+    g.until(300, "up to speed", |g| g.vx() > 1.5);
+    for i in 0..16 {
+        g.set_at("itype", i, 0);
+    }
     g.put("GAS", 2, 30);
     g.m.key(RIGHT);
     g.frames(5);
@@ -1059,21 +1147,21 @@ fn the_body_is_drawn_at_its_pitch_and_the_wheels_on_their_springs() {
         let both = niece::flag::FLIPX | niece::flag::FLIPY;
         assert_eq!(flags & both, if turn >= 32 { both } else { 0 }, "pitch {pitch}");
         assert_eq!(flags & niece::flag::KEY, niece::flag::KEY);
-        // the picture's middle is 4.5 pixels up the moped from the centre of mass
+        // the picture's middle is 7.5 pixels up the moped from the centre of mass
         let rad = (turn as f64 * 5.625).to_radians();
         let (mx, my) = (dx as f64 + 16.0 - 56.0, dy as f64 + 16.0 - g.y().floor());
-        assert!((mx + 4.5 * rad.sin()).abs() <= 1.0 && (my + 4.5 * rad.cos()).abs() <= 1.0, "pitch {pitch}: the picture's middle is at ({mx}, {my})");
+        assert!((mx + 7.5 * rad.sin()).abs() <= 1.0 && (my + 7.5 * rad.cos()).abs() <= 1.0, "pitch {pitch}: the picture's middle is at ({mx}, {my})");
     }
-    // the wheels: on the page a wheel's hub is 7 below the centre of mass in the air, and
-    // 5 when the moped stands on it
+    // the wheels: on the page a wheel's hub is 5 below the centre of mass in the air, and
+    // 2 when the moped stands on it
     let mut g = Game::ride_flat();
     g.frames(100);
     let hub = g.get("WYS") as f64 - g.y().floor();
-    assert!((hub - 5.0).abs() <= 1.0, "standing: {hub}");
+    assert!((hub - 2.0).abs() <= 1.0, "standing: {hub}");
     g.place(128.0, 30.0, 0.0);
     g.frames(2);
     let hub = g.get("WYS") as f64 - g.y().floor();
-    assert!((hub - 7.0).abs() <= 1.0, "in the air: {hub}");
+    assert!((hub - 5.0).abs() <= 1.0, "in the air: {hub}");
 }
 
 /// A spring at the end of its travel shows: the wheel is drawn squashed, 12 wide and 8 high.
@@ -1098,15 +1186,16 @@ fn a_bottomed_spring_squashes_the_tyre() {
         seen
     };
     assert_eq!(wheels(&mut g), [(10, 10), (10, 10)]);
-    g.place(128.0, REST - 45.0, 0.0);
+    g.place(128.0, REST - 80.0, 0.0);
     let mut squashed = false;
-    for _ in 0..80 {
+    for _ in 0..120 {
         let w = wheels(&mut g);
-        let bottomed = g.squeeze(0) >= 4.5;
+        let bottomed = g.squeeze(0) >= 6.5;
         assert_eq!(w.contains(&(12, 8)), bottomed, "wheels {w:?} with the spring at {}", g.squeeze(0));
         squashed |= bottomed;
     }
-    assert!(squashed, "a drop of 45 pixels bottoms the springs");
+    assert!(squashed, "a drop of 80 pixels bottoms the springs");
+    assert_eq!(g.get("CRASH"), 0);
 }
 
 // ---------- sound ----------
@@ -1151,6 +1240,170 @@ fn the_engine_note_follows_the_revs() {
     assert_eq!(g.m.peek(V1 + 4), 0);
 }
 
+// ---------- a game a first-time player can play ----------
+
+/// What's in each of the 32 places along the ground, as the source's `places` has it: a
+/// coin (1), a can (2) or nothing. Past 4,096 pixels the second can of each 32 is a coin.
+fn place(k: i64) -> u8 {
+    const PLACES: [u8; 32] = [0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 2, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 2, 1, 1, 1, 0];
+    match PLACES[(k & 31) as usize] {
+        2 if k & 31 == 27 && k * 64 + 32 >= 4096 => 1,
+        t => t,
+    }
+}
+
+/// How a ride went: metres, frames, coins and cans picked up, and of those it went past.
+#[derive(Debug)]
+struct Ride {
+    metres: u32,
+    frames: u32,
+    coins: u32,
+    coins_passed: u32,
+    cans: u32,
+    cans_passed: u32,
+    crashed: bool,
+}
+
+impl Game {
+    /// Rides until the run is over: `keys` sets the keys before each frame. Counts what was
+    /// picked up (a place's `itype` going to nothing as the moped goes by) against what
+    /// was there, and checks on the way that every coin and can hangs where a moped
+    /// simply standing on the ground under it would have it in its box.
+    fn ride_to_the_end(&mut self, max: u32, mut keys: impl FnMut(&mut Game)) -> Ride {
+        let mut r = Ride { metres: 0, frames: 0, coins: 0, coins_passed: 0, cans: 0, cans_passed: 0, crashed: false };
+        let mut next = 0i64; // the first place not yet gone by
+        while r.frames < max && self.get("STATE") == RIDE {
+            keys(self);
+            let before: Vec<u8> = (0..16).map(|i| self.at("itype", i)).collect();
+            self.frame();
+            r.frames += 1;
+            let x = self.x();
+            for i in 0..16u16 {
+                let (was, is) = (before[i as usize], self.at("itype", i));
+                // which place this is: the one with this number near the moped
+                let k = (0..).map(|n| (x as i64 / 64 - 2) + n).find(|k| k & 15 == i as i64).unwrap();
+                let at = (k * 64 + 32) as f64;
+                if was != 0 && is == 0 && (at - x).abs() < 16.0 {
+                    assert_eq!(was, place(k), "the thing at place {k}");
+                    if was == 2 {
+                        r.cans += 1;
+                    } else {
+                        r.coins += 1;
+                    }
+                }
+                if is != 0 && (at - x).abs() < 40.0 {
+                    // within reach from the ground: the box is 16 above the centre of
+                    // mass and 12 below, and the centre of mass rides 7 above the ground
+                    let (y, ground) = (self.at("ity", i) as f64, self.ground(at as i64));
+                    assert!(y >= ground - 7.0 - 16.0 && y <= ground - 7.0 + 12.0, "place {k}: it hangs at {y} over ground at {ground}");
+                    assert_eq!(is, place(k), "the thing at place {k}");
+                }
+            }
+            while (next * 64 + 32) as f64 + 14.0 < x {
+                match place(next) {
+                    1 => r.coins_passed += 1,
+                    2 => r.cans_passed += 1,
+                    _ => {}
+                }
+                next += 1;
+            }
+        }
+        self.keys_up();
+        r.metres = self.word("DIST");
+        r.crashed = self.get("CRASH") == 1;
+        r
+    }
+}
+
+/// The hills are there from the first screen and they are hills: in the first 300 metres
+/// the ground runs over 40 lines of the page, any two screens' width of it over 30, and
+/// the first climb is on the page before the moped has gone its own length four times.
+/// None of it is too steep to ride up: nowhere more than 2 in 3.
+#[test]
+fn the_first_300_metres_are_big_hills_none_too_steep() {
+    let h: Vec<f64> = (0..4800 + 16 * 128).map(|x| height(x, 255) as f64 / 256.0).collect();
+    let span = |a: usize, b: usize| {
+        let (lo, hi) = h[a..b].iter().fold((f64::MAX, f64::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+        hi - lo
+    };
+    assert!(h[..176].iter().all(|&v| v == BASE), "three metres of flat to start on");
+    assert!(span(128, 4928) >= 40.0, "the first 300 metres run over {} lines", span(128, 4928));
+    assert!(span(128, 128 + 320) >= 20.0, "the first hill: {} lines in the first two screens", span(128, 448));
+    for a in (200..4600).step_by(40) {
+        assert!(span(a, a + 320) >= 14.0, "the two screens from {a} are nearly flat: {} lines", span(a, a + 320));
+        assert!(span(a, a + 640) >= 30.0, "the four screens from {a} have only {} lines of hill", span(a, a + 640));
+    }
+    let steepest = (130..4928).map(|x| (h[x + 2] - h[x - 2]).abs() / 4.0).fold(0.0, f64::max);
+    assert!(steepest < 0.67, "the steepest slope is {steepest}");
+    // and smooth: a pixel on, the slope has changed by less than a tenth
+    for x in 130..4928 {
+        let (a, b) = ((h[x + 2] - h[x - 2]) / 4.0, (h[x + 3] - h[x - 1]) / 4.0);
+        assert!((a - b).abs() < 0.1, "a kink at {x}: slopes {a} and {b}");
+    }
+    // the game's ground is that ground
+    let g = Game::ride();
+    for x in 40..280 {
+        assert_eq!((g.ground(x) * 256.0) as i64, height(x, 255), "column {x}");
+    }
+}
+
+/// A first-time player holds the throttle and does nothing else. That's a ride: over the
+/// first hills and off their crests, more than 150 metres before the moped comes off.
+#[test]
+fn just_holding_the_throttle_is_a_ride_of_150_metres() {
+    let mut g = Game::ride();
+    let ride = g.ride_to_the_end(8000, |g| g.m.key_hold(RIGHT));
+    eprintln!("the throttle held: {ride:?}");
+    assert!(ride.metres >= 150, "{ride:?}");
+    assert!(ride.frames >= 1000, "{ride:?}");
+    assert!(ride.cans >= 2 && ride.cans == ride.cans_passed, "the cans are where it can't miss them: {ride:?}");
+    assert!(ride.coins * 10 >= ride.coins_passed * 8, "{ride:?}");
+    assert_eq!(g.get("LATE"), 0);
+    assert_eq!(g.meter.lost, 0);
+}
+
+/// A cautious rider (the throttle eased off when the nose is 25 degrees up, a dab of lean
+/// in the air) gets a good deal further than that, takes every can on the way, and all
+/// but a few of the coins: every one of them hangs where the moped goes.
+#[test]
+fn a_cautious_rider_gets_further_and_takes_every_can() {
+    let mut g = Game::ride();
+    let naive = g.ride_to_the_end(8000, |g| g.m.key_hold(RIGHT));
+    let mut g = Game::ride();
+    let ride = g.ride_to_the_end(20000, |g| g.rider(2.6));
+    eprintln!("the cautious rider: {ride:?}");
+    assert!(ride.metres >= 450, "{ride:?}");
+    assert!(ride.metres * 2 >= naive.metres * 3, "{ride:?} against {naive:?}");
+    assert!(ride.cans >= 6 && ride.cans == ride.cans_passed, "{ride:?}");
+    assert!(ride.coins * 10 >= ride.coins_passed * 8, "{ride:?}");
+    assert_eq!(g.get("LATE"), 0);
+    assert_eq!(g.meter.lost, 0);
+}
+
+/// Nothing gets past the box between two frames: at four pixels a frame, as fast as the
+/// moped is let go, wherever in a pixel it starts, it takes every coin it rides through;
+/// and one flown over 14 pixels above the ground line as well.
+#[test]
+fn no_coin_is_skipped_at_top_speed() {
+    for phase in 0..12 {
+        for up in [0.0, 14.0] {
+            let mut g = Game::ride_flat();
+            let (x0, y) = (250.0 + phase as f64 * 0.37, REST - up);
+            g.place(x0, y, 0.0);
+            for i in 0..42 {
+                // held at top speed and at its height, on the line through the coins
+                g.put("VX", 3, 0x03_FFFF);
+                g.put("Y0", 3, (y * 65536.0) as i64);
+                g.put("VY", 3, 0);
+                g.frame();
+                assert!((g.x() - (x0 + 4.0 * (i + 1) as f64)).abs() < 1.0, "x {} after {i} frames", g.x());
+            }
+            // the coins at 288, 352 and 416
+            assert_eq!(g.get("COINS"), 3, "starting at {x0}, {up} above the ground line");
+        }
+    }
+}
+
 // ---------- the same every time ----------
 
 #[test]
@@ -1190,19 +1443,18 @@ fn the_same_keys_make_the_same_ride() {
 
 // ---------- 50 frames a second at 1 MHz ----------
 
-/// The claim in the source's header. A long ride with a rider who keeps it upright, into
-/// the rough ground and back to a stop, with the meter on every instruction: every frame's
-/// work and every frame's drawing done inside the frame, every FLIP at the next vertical
-/// blank, no command lost.
+/// The claim in the source's header. A long ride with the cautious rider, over the hills
+/// and into the rough until it comes off, with the meter on every instruction: every
+/// frame's work and every frame's drawing done inside the frame, every FLIP at the next
+/// vertical blank, no command lost.
 #[test]
 fn a_long_ride_holds_fifty_frames_a_second() {
     let mut g = Game::ride();
     let mut dice = Dice(0xF311_1DE5);
     let (mut jumps, mut air, mut fastest) = (0, 0, 0.0f64);
     let mut frames = 0;
-    while frames < 6000 && g.get("STATE") == RIDE {
-        // as fast as it will go on the easy ground, then as fast as the rider dares
-        let speed = if g.x() < 1500.0 { 4.0 } else { 1.8 + (dice.next() % 100) as f64 / 100.0 };
+    while frames < 9000 && g.get("STATE") == RIDE {
+        let speed = 2.4 + (dice.next() % 100) as f64 / 100.0;
         for _ in 0..25 {
             g.rider(speed);
             g.frame();
@@ -1220,21 +1472,21 @@ fn a_long_ride_holds_fifty_frames_a_second() {
     // (and the crash that ended it, if one did, and the words after it)
     g.frames(150);
     g.report("a long ride");
-    assert!(frames >= 1500 && g.x() > 3000.0, "{frames} frames to x = {}", g.x());
-    assert!(jumps >= 3, "{jumps} jumps");
+    assert!(frames >= 2500 && g.x() > 5000.0, "{frames} frames to x = {}", g.x());
+    assert!(jumps >= 5, "{jumps} jumps");
     assert!(fastest > 2.7, "the fastest was {fastest}");
     g.assert_fifty();
     let m = &g.meter;
     // the numbers in the header, with a little room
-    assert!(m.worst < 12_000, "the worst frame's work: {}", m.worst);
-    assert!(m.total / m.frames < 8_000, "the mean frame's work: {}", m.total / m.frames);
+    assert!(m.worst < 13_500, "the worst frame's work: {}", m.worst);
+    assert!(m.total / m.frames < 9_500, "the mean frame's work: {}", m.total / m.frames);
     assert!(m.most_drawing < 9_000, "the most drawing in a frame: {} cycles", m.most_drawing);
-    assert!(m.latest_done < 14_500, "the chip was done {} cycles into the frame", m.latest_done);
-    assert!(m.deepest <= 24, "the queue got {} deep", m.deepest);
+    assert!(m.latest_done < 15_500, "the chip was done {} cycles into the frame", m.latest_done);
+    assert!(m.deepest <= 26, "the queue got {} deep", m.deepest);
 }
 
 /// The same with a rider who doesn't keep it upright: wheelies, loops, crashes, the run
-/// over and started again, eight times.
+/// over and started again, six times or more.
 #[test]
 fn crashes_and_new_runs_hold_fifty_too() {
     let mut g = Game::ride();
@@ -1250,9 +1502,10 @@ fn crashes_and_new_runs_hold_fifty_too() {
             } else if r % 8 == 6 {
                 g.m.key_hold(LEFT);
             }
+            // (leaning back more often than not: this rider means to come off)
             match (r >> 8) % 5 {
-                0 => g.m.key_hold(UP),
-                1 | 2 => g.m.key_hold(DOWNKEY),
+                0 | 1 | 2 => g.m.key_hold(UP),
+                3 => g.m.key_hold(DOWNKEY),
                 _ => {}
             }
         }
@@ -1272,10 +1525,10 @@ fn crashes_and_new_runs_hold_fifty_too() {
     }
     g.keys_up();
     g.report("crashes and new runs");
-    assert!(crashes >= 8, "{crashes} crashes");
+    assert!(crashes >= 6, "{crashes} crashes");
     let _ = loops;
     g.assert_fifty();
-    assert!(g.meter.worst < 12_500, "the worst frame's work: {}", g.meter.worst);
+    assert!(g.meter.worst < 13_500, "the worst frame's work: {}", g.meter.worst);
 }
 
 // ---------- pictures ----------
@@ -1345,3 +1598,4 @@ fn pictures() {
     shot(&mut g, "end");
     g.report("pictures");
 }
+
