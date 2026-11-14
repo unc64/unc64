@@ -106,7 +106,8 @@ impl Game {
     /// hosts start a program, and run until the sheet is drawn and the title is up.
     fn boot() -> Game {
         let mut g = Game::boot_niece(true);
-        g.until(400, "the title", |g| g.get("STATE") == TITLE && g.chip().shown());
+        let frames = g.until(400, "the title", |g| g.get("STATE") == TITLE && g.chip().shown());
+        assert!(frames < 150, "setting up the sheet took {frames} frames");
         g.frames(3);
         g.meter = Meter::default();
         g
@@ -753,11 +754,15 @@ fn the_title_wanders_along_the_level_and_space_starts_a_game() {
     // every BLIT of the level takes from the camera's low byte: past 256 it has gone round
     assert!(g.cam() > 256);
     assert_eq!(g.backdrop()[3].sx, g.cam() as u8);
-    g.press(SPACE);
-    g.until(60, "SPACE starts a game", |g| g.get("STATE") == PLAY);
+    g.m.key(SPACE);
+    let held = g.until(60, "SPACE starts a game", |g| g.get("STATE") == PLAY);
+    g.m.key_up(SPACE);
+    eprintln!("unpacking a level and drawing its first 21 columns holds the picture for {held} frames");
+    assert!(held <= 12);
     g.frames(2);
     let text = g.text();
-    assert!(text.lines().next().unwrap().starts_with(" BERRIES 00/38  LIVES 3  TIME 2"), "{text}");
+    let berries = g.things(E_BERRY).len();
+    assert!(text.lines().next().unwrap().starts_with(&format!(" BERRIES 00/{berries}  LIVES 3  TIME 2")), "{text}");
     assert!(text.contains("1: THE BOG AND THE BIRCHES"));
     assert!(!text.contains("PRESS SPACE"));
     assert_eq!((g.get("LIVES"), g.score(), g.cam()), (3, 0, 0));
@@ -977,7 +982,7 @@ fn a_berry_picked_is_fifty_points() {
     g.frames(2);
     assert_eq!(g.at("ETYPE", i), 0, "picked");
     assert_eq!((g.berries(), g.score()), (1, 50));
-    assert!(g.text().starts_with(" BERRIES 01/38"), "{}", g.text());
+    assert!(g.text().starts_with(&format!(" BERRIES 01/{}", berries.len())), "{}", g.text());
     assert!(g.things(E_BERRY).is_empty());
 }
 
@@ -987,7 +992,7 @@ fn a_lemming_walks_to_and_fro_bites_and_is_flattened_by_a_jump() {
     let i = g.things(E_LEM)[0];
     let y = g.at("EY", i) as i32;
     assert_eq!(y, 64, "on the grass");
-    // watch it going left: it turns round at the pool's edge and never leaves the grass
+    // watch it going left: it turns round at the rock, and never leaves the grass
     g.set_at("ES", i, F_FLIPX);
     g.stand(g.thing_x(i) - 20, GROUND_Y - 30);
     g.set("INVUL", 0);
@@ -999,7 +1004,8 @@ fn a_lemming_walks_to_and_fro_bites_and_is_flattened_by_a_jump() {
         (lo, hi) = (lo.min(x), hi.max(x));
         assert!(g.flags(x >> 3, 9) != 0 && g.flags((x + 11) >> 3, 9) != 0, "a lemming over the edge at {x}");
     }
-    assert_eq!(lo, 45 * 8, "it turned at the pool's edge");
+    assert_eq!((g.flags(47, 8), g.flags(48, 8)), (SOLID, 0));
+    assert_eq!(lo, 48 * 8, "it turned at the rock");
     assert!(hi - lo > 60, "it walked from {lo} to {hi}");
     // walking into it: a life, a knock back, and a while he can't be hurt and flashes white
     let x = g.thing_x(i);
@@ -1075,6 +1081,7 @@ fn the_bog_costs_a_life_and_he_comes_back_where_he_last_stood() {
 #[test]
 fn the_last_life_is_game_over_and_space_starts_again() {
     let mut g = Game::play();
+    let berries = g.things(E_BERRY).len();
     g.set("LIVES", 1);
     g.stand(300, GROUND_Y);
     g.hold(RIGHT, 60);
@@ -1088,7 +1095,7 @@ fn the_last_life_is_game_over_and_space_starts_again() {
     g.until(60, "another game", |g| g.get("STATE") == PLAY);
     g.frames(3);
     assert_eq!((g.get("LIVES"), g.score(), g.berries(), g.get("LEVEL")), (3, 0, 0, 0));
-    assert_eq!(g.things(E_BERRY).len(), 38, "the berries are back");
+    assert_eq!(g.things(E_BERRY).len(), berries, "the berries are back");
     assert!(!g.text().contains("GAME OVER"));
     // a lemming's bite on the last life knocks him off the page
     g.set("LIVES", 1);
@@ -1189,22 +1196,26 @@ fn the_page_is_the_level_a_pixel_on_for_every_pixel_of_the_camera() {
 fn the_ring_is_right_going_left_and_when_the_camera_hurries() {
     let mut g = Game::play();
     g.no_things();
+    // to the birch wood, which is flat: the camera is past its fourth time round the ring
     let mut jumping = false;
-    for _ in 0..520 {
+    for _ in 0..2000 {
+        if g.px() >= 1210 && g.get("GROUND") == 1 {
+            break;
+        }
         g.walker(&mut jumping);
         g.frame();
     }
     g.m.key_up(RIGHT);
     g.m.key_up(SPACE);
-    g.until(100, "down", |g| g.get("GROUND") == 1);
+    g.frames(20);
     g.to_work();
     let far = g.cam();
-    assert!(far > 256);
+    assert!(far > 1024 + 100, "{far}");
     // back left: the camera swings round to lead him the other way, two pixels a frame, and
     // then goes with him
     g.m.key(LEFT);
     let mut last = far;
-    for f in 0..150 {
+    for f in 0..170 {
         g.frame();
         g.to_work();
         let cam = g.cam();
@@ -1213,11 +1224,11 @@ fn the_ring_is_right_going_left_and_when_the_camera_hurries() {
         g.assert_page(&format!("going left, frame {f}"));
     }
     g.m.key_up(LEFT);
-    assert!(last < far - 150 && last < 256 && far > 256, "back across the ring's join: {far} to {last}");
+    assert!(last < 1024 - 40, "back across the ring's join: {far} to {last}");
     // put down half a level away, the camera comes at six pixels a frame, a new column
     // nearly every frame, and the page is right all the way
-    g.set("PXL", (1200 & 255) as u8);
-    g.set("PXH", (1200 >> 8) as u8);
+    g.set("PXL", (200 & 255) as u8);
+    g.set("PXH", (200 >> 8) as u8);
     g.set("PY", 20);
     g.set("CAMSPD", 6);
     let mut most = 0;
@@ -1227,12 +1238,13 @@ fn the_ring_is_right_going_left_and_when_the_camera_hurries() {
         g.set("VYH", 0);
         g.frame();
         g.to_work();
-        most = most.max(g.cam() - last);
+        most = most.max(last - g.cam());
         last = g.cam();
         g.assert_page(&format!("hurrying, frame {f}"));
     }
     assert_eq!(most, 6);
-    assert_eq!(last, 1200 - 60, "and stops with him where it likes him");
+    assert_eq!(last, g.px() - 94, "and stops with him where it likes him");
+    assert!((190..=200).contains(&g.px()));
     assert_eq!(g.get("CAMSPD"), 2);
     assert_eq!(g.get("LATE"), 0);
     assert!(!g.chip().lost);

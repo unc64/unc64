@@ -1,6 +1,99 @@
 ; CLOUDBERRY: a platformer that scrolls, for the UNC 64 (64K) with the NIECE, the
 ; prototype graphics chip of chapter 17, the one marked NV-1. No video board needed.
-; United Northern Computers' laboratory, 1985. Not for sale. (64K: the level is unpacked.)
+; United Northern Computers' laboratory, 1985. Not for sale.
+;
+; Late summer on the fells, and the cloudberries are ripe. You're out with a pail,
+; across the bog on its duckboards, through the birch wood and over the stones, to
+; the hut at the far end of the level; and then, in the evening, back over the high
+; stones to the other hut. Pick what you pass. A lemming bites if you walk into it,
+; and is flat if you land on it. A cloud of midges is best left alone. The bog is
+; wet: fall in and you're back where you last stood, a life short. Three lives.
+;
+; Controls: cursor left and right, or A and D, run. SPACE, cursor up or W jumps: a
+; tap is a hop, and holding it a leap of three tiles. They're held keys, from the
+; keyboard matrix, so running and jumping go together. SPACE starts the game.
+;
+; A berry is 50 points, a flattened lemming 100, and every second left on the clock
+; when you reach the hut is 10. The clock running out costs nothing but those.
+;
+; What it shows of the NIECE:
+;   scrolling a pixel at a time, through a level 2,048 pixels long (12.8 pages),
+;     with ONE BLIT a frame. The stretch of level round the camera is kept on the
+;     sheet as a ring 256 pixels wide, and the page's 160 columns are copied from
+;     it starting at the camera's x modulo 256, which is the camera's low byte. A
+;     BLIT's source that runs off the sheet's right edge carries on from the left,
+;     so the ring never has to be moved or copied: see `backdrop`
+;   the ring is fed a column of tiles at a time, as the camera comes to them:
+;     twelve BLITs of 8 x 8 with SHEET, from the tiles kept elsewhere on the sheet
+;     (`column`). A destination doesn't wrap as a source does, so the ring is 32
+;     whole tiles wide and a column never crosses its edge
+;   three more layers behind the level, each one BLIT from a strip 256 wide that
+;     joins up with itself: clouds at an eighth of the level's speed (and drifting),
+;     the far fells at a quarter, the near hills at a half. The level's see-through
+;     colour (KEY) lets them show. None of the three is in the program as a
+;     picture: the NIECE draws them on the sheet at the start, the fells and hills
+;     a column at a time from tables of sines (`fells`, `hills`), the trees and
+;     clouds from three small pictures at several sizes
+;   patterned FILL (NPATTERN): the sky is five bands of two colours mixed, paling
+;     towards the fells, and the lake is stripes (`sky`). The fells themselves are
+;     mixtures too. Seven FILLs a frame and no picture of a sky anywhere
+;   the short registers, NDXS, NDYS, NDWS and NDHS, wherever the number fits a
+;     byte. (NDXS is signed, so a place on the right of the page, 128-159, still
+;     takes both bytes of NDX: `sprset`, `pdraw`.)
+;   things by BLIT: the picker in six pictures, mirrored with FLIPX to face left,
+;     drawn 10 x 16 for a moment as he jumps and 14 x 12 as he lands (the same
+;     12 x 14 picture: the chip squeezes it); berries that bob, lemmings in two
+;     steps, midges whose one cloud is turned over by FLIPX and FLIPY
+;   ink tables: table 1 is all white, and he's drawn through it every few frames
+;     while he can't be hurt; a flattened lemming too. Tables 2 and 3 are the
+;     evening: the second level's clouds, fells and hills are the first's, with
+;     other inks, under another seven FILLs of sky
+;   the queue: every command waits for room (bit 6 of NSTATUS), so none is ever
+;     lost, even when a level's first 21 columns go in as 252 BLITs at once
+;
+; The score, the berries, the lives and the clock are ordinary text on the top
+; line, in front of a black strip of the page; a line of words has a black box
+; FILLed behind it.
+;
+; The map is the processor's business: where he can stand, what stops him, what
+; a lemming turns round at (`player`, `wall`, `tileat`). He moves in 256ths of
+; a pixel, gravity is less while he's rising with the key held, a press of jump
+; counts for six frames before he lands and the ground for six after he's left
+; it, and a duckboard holds him only from above. Flat out he runs a pixel a
+; frame, a whole number, and the camera goes exactly as he does, so nothing
+; judders (`camera`).
+;
+; Sound: the AUNT. Voice 1 the jump, voice 2 berries and bad news, voice 3 a tune.
+;
+; Time, at 1 MHz. Paced by the FLIP: one step of the game a frame, 50 a second;
+; `work` to `endwork` is one frame's work. Walking each level from its start to
+; its hut, a frame's work is 4,000 cycles of the 19,968 on average and 6,900 at
+; the worst (a new column of tiles, ten things on the page and a landing all at
+; once): 600 the sky, 800 moving him, 350 the backdrop's four BLITs, 600 a new
+; column when there is one, up to 2,900 the berries and the creatures, 200 drawing
+; him, 200 the score. The NIECE has 49,800 pixels to draw in the fullest frame,
+; of the 79,872 it can: 16,000 of sky, 16,000 of backdrop, 15,360 of level, and
+; the rest things. It's done 12,500 cycles after the vertical blank, and the
+; queue is never more than 29 deep. So 50 frames a second, with two thirds of the
+; processor and a third of the chip to spare. LATE counts frames that missed
+; their vertical blank; the tests want 0.
+;
+; Twice the picture stands still: setting up the sheet at the start takes half a
+; second, and unpacking a level into the map takes ten frames, with OUT TO THE
+; FELLS on the screen. The frame count starts again after each (`resync`).
+;
+; Without the NIECE ($C14F doesn't read $17), CLOUDBERRY says so and waits.
+;
+; Memory:
+;   $0000-$007A  variables (the fast page; the ROM's $D0-$FE untouched)
+;   $0400-$07E7  the text screen: the score and the words
+;   $0800-       code, tables, the words, the two levels, the pictures
+;   after them   the things, and the level unpacked: 12 pages, a row each (.res)
+; On the sheet, under the two pages: the fells at line 200, the clouds at 232, the
+; ring at 256, the tiles at 352, the pictures of things at 384, the hills at 464.
+;
+; The tests (crates/unc-asm/tests/game_cloudberry.rs) find STATE, PXL, PY, CAML,
+; LIVES, SCORE, MAP, ETYPE, LATE and the rest by name in the symbol table.
 
 ; ---------------------------------------------------------------- the machine
 SCREEN  = $0400
@@ -196,7 +289,8 @@ RN      = $76
 WASG    = $77
 SKYF    = $78           ; NFLAGS for the clouds and fells and for the near hills: an
 HILLF   = $79           ; ink table each, for the evening
-FPEND   = $7A
+PSXH    = $7A           ; not 0: he's off the page (the camera is on its way)
+FPEND   = $7B
 
 ; ---------------------------------------------------------------- start
         .org $0800
@@ -512,7 +606,7 @@ st_title:
         BNE @go
         STA ADIR
 @go:    JSR scene
-        LDA #68                 ; a cloudberry, four times the size
+        LDA #68                 ; a cloudberry, three times the size
         STA SX
         LDA #0
         STA SXH
@@ -1410,6 +1504,9 @@ camera: SEC
         LDA PXL
         SBC CAML
         STA PSX
+        LDA PXH
+        SBC CAMH
+        STA PSXH
         RTS
 
 ; ---------------------------------------------------------------- drawing him
@@ -1417,10 +1514,12 @@ camera: SEC
 ; faces left, and through the white ink table every few frames while he
 ; can't be hurt. For a few frames after a jump starts he's drawn 10 x 16, and
 ; after a hard landing 14 x 12: the same picture, squeezed by the NIECE.
-pdraw:  LDA PY
+pdraw:  LDA PSXH
+        BNE @off
+        LDA PY
         CMP #104
         BCC @on
-        RTS
+@off:   RTS
 @on:    LDA #KEY
         ORA PFACE
         STA SFL
@@ -1554,6 +1653,7 @@ ents:   LDA TICK
 touch:  LDA HITS
         BEQ @no
         LDA SXH
+        ORA PSXH
         BNE @no
         LDY ETY
         SEC
@@ -3277,13 +3377,12 @@ pics:
         .byte "FFCFFFFC"
         .byte "CFFCFFFC"
         ; tile 18: a birch branch
-        .byte 8, 8, 144, 96
-        .byte "..D...5."
-        .byte "1F11F111"
-        .byte "F1111F1B"
-        .byte ".B....B."
-        .byte "........"
-        .byte "........"
+        .byte 8, 7, 144, 96
+        .byte ".D5..5D."
+        .byte "11F1111F"
+        .byte "B11F11B1"
+        .byte ".5...D5."
+        .byte ".....5.."
         .byte "........"
         .byte "........"
         ; tiles 20-23, 52-55, 84-87, 116-119: the hut, sixteen tiles

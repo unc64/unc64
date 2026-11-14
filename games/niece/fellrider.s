@@ -38,7 +38,7 @@
 ;     for a second the same sums show the heap coming to rest.
 ;   Units: pixels and frames. Places and speeds have 16 bits of fraction (the sums use
 ;     the top 8 of them), forces are in 65536ths of a pixel per frame per frame, angles
-;     in 65536ths of a circle. Gravity is 0.04. One step a frame, 50 a second, always:
+;     in 65536ths of a circle. Gravity is 0.055. One step a frame, 50 a second, always:
 ;     forces from where things are, then speeds, then places (semi-implicit Euler).
 ;   Every multiplication is the NIECE's arithmetic unit: about 62 of them a step with
 ;     both wheels down. Sines are a table the assembler made, 1,024 to the circle.
@@ -159,14 +159,14 @@ LOGOY   = 22                ; and the title, 54 x 7 at column 160
 
 ; ---------------------------------------------------------------- the physics' numbers
 ; (scripts aren't needed to change these, but the tests pin how the moped behaves)
-GRAV    = 2621              ; 0.04 pixels a frame a frame, in 65536ths
+GRAV    = 3604              ; 0.055 pixels a frame a frame, in 65536ths
 AXLE    = 8 * 256           ; hubs fore and aft of the centre of mass, pixels x 256
 HANG    = 7 * 256           ; and below it, with the spring at full stretch
 HEADB   = 3 * 256           ; the head: behind the centre of mass
 HEADU   = 11 * 256          ;   and above it
 TWOPI   = 1608              ; 6.283 x 256
-KWHEEL  = 655               ; a spring: force for a pixel squeezed, in 65536ths
-DWHEEL  = 3240              ; its damper: force for a pixel a frame
+KWHEEL  = 901               ; a spring: force for a pixel squeezed, in 65536ths
+DWHEEL  = 3800              ; its damper: force for a pixel a frame
 KHEAD   = 3000
 DHEAD   = 9000
 MUWHEEL = 282               ; grip: 1.1 of the load
@@ -176,15 +176,15 @@ RHEAD   = 640               ; and the helmet's: 2.5
 CSTOP   = 1152              ; the travel: 4.5 pixels, then the bump stop
 KSTOP   = 6000
 CMAX    = 12                ; nothing is squeezed further than this, in whole pixels
-NMAX    = 29000             ; nor pushed harder: 0.44, eleven times the moped's weight
+NMAX    = 29000             ; nor pushed harder: 0.44, eight times the moped's weight
 SLIPMAX = 800
 KTYRE   = 38                ; pull for slip: 38/256 of the moped's weight for a pixel a frame
-DMAX    = 1800              ; the engine at a standstill: 0.027, two thirds of gravity
-DFADE   = 256               ;   less this for each pixel a frame the wheel is doing
+DMAX    = 2500              ; the engine at a standstill: 0.038, two thirds of gravity
+DFADE   = 512               ;   less this for each pixel a frame the wheel is doing
 BRAKE   = 2600 * 4          ; the brake, as a change of tyre speed (a wheel's inertia is 1/4)
 DREV    = 1200              ; backwards, gently
 SREV    = 384               ; under 1.5 pixels a frame LEFT is backwards, not a brake
-LEAN    = 10680             ; the rider's weight thrown: a torque, angle units x 256
+LEAN    = 14000             ; the rider's weight thrown: a torque, angle units x 256
 VXMAX   = 4                 ; speeds are held to this many pixels a frame, across
 VYMAX   = 7                 ;   and up and down
 OMMAX   = 4000              ; and turning to this: 22 degrees a frame
@@ -349,16 +349,27 @@ start:  LDA NIECE
         STA LASTF
 
 ; ---------------------------------------------------------------- a frame
-; `work` to `endwork` is one frame's work; the wait after it is for the FLIP.
+; `work` to `endwork` is one frame's work; the wait after it is for the FLIP. A step of
+; the physics is forces, then speeds, then places; the frame starts at the places, so
+; that the three big BLITs of the background are in the queue 1,500 cycles into the
+; frame and the chip draws them while the processor does the forces.
 work:   INC TICK
         JSR keys
         JSR rules
-        JSR physics
+        JSR move            ; where everything is now,
+terrain:
+        JSR scroll          ;   the ground to go under it,
+draw:   JSR backdrop        ;   and the chip can be drawing that
+phys:   JSR physics         ;   while the forces are worked out
         JSR hud
         JSR sound
-terrain:
-        JSR scroll
-draw:   JSR picture
+sprites:
+        JSR things
+        JSR moped
+        JSR dust
+        LDA STATE
+        BNE @full
+        JSR title
 @full:  BIT NSTATUS
         BVS @full
         LDA #FLIP
@@ -792,7 +803,7 @@ physics:
         LDA #0
         STA PADS
 @alive: JSR controls
-        JMP move
+        JMP accel
 
 ; ---- one wheel, or the head, against the ground. IDX = which.
 contact:
@@ -1439,8 +1450,9 @@ controls:
         ADC #<[3 * SREV]
         LDA SH
         ADC #>[3 * SREV]
-        BMI @lean
-        LDA #<[-DREV]
+        BPL @back
+        JMP @lean
+@back:  LDA #<[-DREV]
         STA T0
         LDA #>[-DREV]
         STA T1
@@ -1527,7 +1539,9 @@ controls:
         SBC T6
         STA ALA+2
         DEX
-        BPL @bwheel
+        BMI @braked
+        JMP @bwheel
+@braked:
         JMP @lean
 @coast: LDA SF              ; no key: the engine holds the back wheel back, a 64th a frame
         STA T4
@@ -1650,8 +1664,8 @@ controls:
         DEC ALA+2
 @nofwd: RTS
 
-; ---- speeds from the forces, then places from the speeds
-move:   LDY #0              ; VX += AXA - VX / 256: the air
+; ---- speeds from the forces
+accel:  LDY #0              ; VX += AXA - VX / 256: the air
         LDA VX+2
         BPL @xp
         DEY
@@ -1782,7 +1796,10 @@ move:   LDY #0              ; VX += AXA - VX / 256: the air
         STA OM+2
         LDA #0
         STA OM
-@ook:   LDY #0              ; places
+@ook:   RTS
+
+; ---- places from the speeds
+move:   LDY #0
         LDA VX+2
         BPL @mp
         DEY
@@ -2222,7 +2239,8 @@ turf:   .byte 13, 5         ; grass: light green over green
         .byte 1, 15         ; snow: white over light grey
 
 ; ---------------------------------------------------------------- the picture
-picture:
+; The three strips, back to front: most of what the chip draws in a frame.
+backdrop:
         LDA #0              ; the sky and the far fells: an eighth of the camera
         STA NFLAGS
         STA NSY+1
@@ -2295,13 +2313,6 @@ picture:
         BVS @b3
         LDA #BLIT
         STA NGO
-        JSR things
-        JSR moped
-        JSR dust
-        LDA STATE
-        BNE @notitle
-        JSR title
-@notitle:
         RTS
 
 ; ---- the coins and the cans: four places are near enough to be on the page
@@ -2672,27 +2683,27 @@ goline: BIT NSTATUS
 ; ---- dust: thrown up by the back tyre when it slips, and by a hard landing
 dust:   LDA STATE
         CMP #RIDE
-        BNE @draw
+        BNE @no
         LDA NL              ; the back wheel on the ground,
         ORA NH
-        BEQ @draw
+        BEQ @no
         LDA THUMP
         BNE @throw          ;   landing,
         LDA TICK
         AND #1
-        BNE @draw
+        BNE @no
         LDA SLIP+1          ;   or slipping by a sixth of a pixel a frame
         BMI @sn
         BNE @throw
         LDA SLIP
         CMP #40
         BCS @throw
-        BCC @draw
+@no:    JMP @draw
 @sn:    CMP #$FF
         BNE @throw
         LDA SLIP
         CMP #<[-40]
-        BCS @draw
+        BCS @no
 @throw: LDX DNEXT
         INX
         CPX #NDUST
@@ -2862,9 +2873,9 @@ words:  LDX #0
         BNE @nott
         LDX #39
 @t:     LDA titl1,X
-        STA SCREEN + 7 * 40,X
+        STA SCREEN + 8 * 40,X
         LDA titl2,X
-        STA SCREEN + 9 * 40,X
+        STA SCREEN + 10 * 40,X
         DEX
         BPL @t
         RTS
@@ -3778,26 +3789,26 @@ bikeart:
         .byte $44, $44, $44, $44, $40, $BB, $04, $44, $44, $44, $44, $44, $44
         .byte $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44, $44
 wheelart:
-        .byte $44, $40, $BB, $04, $44
-        .byte $40, $BC, $CC, $CB, $04
-        .byte $4B, $C4, $F4, $4C, $B4
-        .byte $0C, $44, $F4, $44, $C0
-        .byte $BC, $FF, $FF, $FF, $CB
-        .byte $BC, $44, $FF, $44, $CB
-        .byte $0C, $44, $F4, $44, $C0
-        .byte $4B, $C4, $F4, $4C, $B4
-        .byte $40, $BC, $CC, $CB, $04
-        .byte $44, $40, $BB, $04, $44
         .byte $44, $4B, $00, $B4, $44
-        .byte $4B, $0C, $CC, $C0, $B4
-        .byte $40, $CF, $44, $FC, $04
-        .byte $BC, $4F, $44, $F4, $CB
-        .byte $0C, $44, $FF, $44, $C0
-        .byte $0C, $44, $FF, $44, $C0
-        .byte $BC, $4F, $44, $F4, $CB
-        .byte $40, $CF, $44, $FC, $04
-        .byte $4B, $0C, $CC, $C0, $B4
+        .byte $4B, $00, $00, $00, $B4
+        .byte $40, $04, $F4, $40, $04
+        .byte $B0, $44, $F4, $44, $0B
+        .byte $00, $FF, $CC, $FF, $00
+        .byte $00, $FF, $CC, $FF, $00
+        .byte $B0, $44, $F4, $44, $0B
+        .byte $40, $04, $F4, $40, $04
+        .byte $4B, $00, $00, $00, $B4
         .byte $44, $4B, $00, $B4, $44
+        .byte $44, $40, $BB, $04, $44
+        .byte $40, $B0, $00, $0B, $04
+        .byte $4B, $0F, $44, $F0, $B4
+        .byte $00, $4F, $44, $F4, $00
+        .byte $B0, $44, $CC, $44, $0B
+        .byte $B0, $44, $CC, $44, $0B
+        .byte $00, $4F, $44, $F4, $00
+        .byte $4B, $0F, $44, $F0, $B4
+        .byte $40, $B0, $00, $0B, $04
+        .byte $44, $40, $BB, $04, $44
 coinart:
         .byte $44, $77, $77, $44
         .byte $47, $71, $17, $74
