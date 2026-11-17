@@ -8,5 +8,6 @@ The UNC-1 is in the 6502 family but is not a 6502, and the UNC 64 is not a Commo
 - [The manual](docs/prg/programmers-reference-guide.md): the same, as the source.
 - [Cassettes](docs/cassettes.md): the `.unc.png` and `.tap` formats.
 - [REVISIONS.md](REVISIONS.md): what System Rev A (alpha, not yet frozen) will fix.
-- [Examples](games/): games with their tests; `web/samples/` for small programs.
+- [Software](https://github.com/unc64/cassettes/tree/main/source): every cassette on the Portal's shelf with its source, `source/<id>/`, the machine's own games included. Read these for how real programs are written.
+- [games/](games/): the machine's own games as this repository's tests play them (`crates/unc-asm/tests/`); `web/samples/` for small programs.
 - [AGENTS.md](AGENTS.md): the rules for changing this repository.

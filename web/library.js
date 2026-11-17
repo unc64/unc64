@@ -7,7 +7,7 @@
 //     list()  -> Promise<[entry]>,
 //     get(id) -> Promise<cassette>  (UNCCassette's shape: title, tape, files, main, ...) }
 //
-//   entry: { id, title, author, about, machine: { ram, board }, hasFiles, kind,
+//   entry: { id, title, author, about, machine: { ram, niece }, hasFiles, kind,
 //            face() -> Promise<url of the face picture> }
 //
 // Yours lives in the browser's IndexedDB. Where the browser won't keep anything (some
@@ -134,15 +134,43 @@ window.UNCLibrary = (() => {
     },
   };
 
-  // The community library goes here: a source like the others, list() and get() over the
-  // network. Nothing is fetched today.
+  // The Portal (unc64.com/portal): the community's cassettes, a source like the others. Its
+  // index is fetched when Browse is first opened, and a cassette when it's asked for; nothing
+  // of yours is sent. Offline, or opened from a disk with no network, the section says so.
+  const PORTAL = (window.UNC_PORTAL_URL || 'https://unc64.com/portal/').replace(/\/?$/, '/');
   const online = {
     id: 'online',
     name: 'Online',
-    note: 'Coming later: cassettes other people have posted, in the same file format.',
-    placeholder: true,
-    async list() { return []; },
-    async get() { throw new Error('not yet'); },
+    note: 'The Portal, unc64.com/portal: what other people have made. Submit yours from Export.',
+    empty: '',
+    index: null,
+    async entries() {
+      if (!this.index) {
+        const res = await fetch(`${PORTAL}index.json`, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`the Portal answered ${res.status}`);
+        const j = await res.json();
+        if (j.format !== 'unc64-portal' || j.version > 1) throw new Error('the Portal is newer than this Machine Room');
+        this.index = j.cassettes.filter((e) => /^[a-z0-9-]+$/.test(e.id) && /^cassettes\/[a-z0-9-]+\.unc\.png$/.test(e.file));
+      }
+      return this.index;
+    },
+    async list() {
+      try {
+        const list = await this.entries();
+        this.empty = 'The Portal\'s shelf is empty.';
+        return list.map((e) => ({ id: e.id, title: e.title, author: e.author, about: e.about, machine: e.machine, hasFiles: !!e.source, kind: e.lang === 'basic' ? 'basic' : 'asm', face: async () => PORTAL + e.file }));
+      } catch (err) {
+        this.empty = `Couldn't reach the Portal (${err.message || err}). It's at unc64.com/portal when you're online.`;
+        return [];
+      }
+    },
+    async get(id) {
+      const e = (await this.entries()).find((x) => x.id === id);
+      if (!e) throw new Error(`the Portal has no cassette called ${id}`);
+      const res = await fetch(PORTAL + e.file);
+      if (!res.ok) throw new Error(`the cassette didn't arrive (${res.status})`);
+      return C.read(new Uint8Array(await res.arrayBuffer()), e.file);
+    },
   };
 
   // ---------- the Browse view ----------
@@ -182,7 +210,7 @@ window.UNCLibrary = (() => {
         const cards = (l) => l.map((e) => card(src, e)).join('');
         let body;
         if (src.placeholder) body = `<div class="br-empty">${esc(src.note)}</div>`;
-        else if (!list.length) body = `<div class="br-empty">${total ? 'Nothing here matches.' : src.writable ? 'No cassettes yet. Save your program (Save), or drop a .unc.png or .tap on the page.' : 'Nothing here.'}</div>`;
+        else if (!list.length) body = `<div class="br-empty">${total ? 'Nothing here matches.' : src.empty ? esc(src.empty) : src.writable ? 'No cassettes yet. Save your program (Save), or drop a .unc.png or .tap on the page.' : 'Nothing here.'}</div>`;
         else body = groups.map((g) => `${g ? `<h4>${esc(g)}</h4>` : ''}<div class="br-grid">${cards(list.filter((e) => (e.group || '') === g))}</div>`).join('');
         return `<section class="br-sec" data-src="${src.id}"><h3>${esc(src.name)} <span>${src.placeholder ? '' : total}</span></h3>${src.placeholder ? '' : `<p>${esc(src.note)}</p>`}${body}</section>`;
       }).join('');
@@ -201,7 +229,7 @@ window.UNCLibrary = (() => {
     function card(src, e) {
       const badges = [
         `<span class="b">${e.machine?.ram === 64 ? '64K' : '16K'}</span>`,
-        e.machine?.board ? '<span class="b board">Video board</span>' : '',
+        e.machine?.niece ? '<span class="b board">NIECE</span>' : '',
         e.kind === 'basic' ? '<span class="b">BASIC</span>' : '',
         e.hasFiles ? '<span class="b src">Source</span>' : '<span class="b">Binary only</span>',
       ].join('');
@@ -243,5 +271,5 @@ window.UNCLibrary = (() => {
     return { render };
   }
 
-  return { store, yours, online, view, newId };
+  return { store, yours, online, view, newId, PORTAL };
 })();

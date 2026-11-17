@@ -7,14 +7,14 @@
 
 <p align="center"><b>A computer that fits in your head.</b></p>
 
-The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid-1980s that never existed. This is the machine, emulated for real: a cycle-counted 6502-family processor, a system ROM with UNC BASIC, a character set, a beeper and a three-voice sound chip, tape, and a video board with sprites and smooth scrolling. 64K of memory. One manual. You can know all of it.
+The UNC 64, by United Northern Computers, is an 8-bit home computer from the mid-1980s that never existed. This is the machine, emulated for real: a cycle-counted 6502-family processor, a system ROM with UNC BASIC, a character set, a beeper and a three-voice sound chip, tape, and a graphics chip that draws in sixteen colours at any size. 64K of memory. One manual. You can know all of it.
 
 ## Start in one minute: the Machine Room
 
 The Machine Room is the UNC 64 in a web page: an editor, the real emulator, a debugger and a tape deck, with example programs and games to open, run and change. Nothing to install.
 
 - **In your browser:** **[unc64.github.io/unc64](https://unc64.github.io/unc64/)**
-- **Offline, one file:** `scripts/build-machine-room.sh` (Node, nothing to install) writes `build/machine-room/index.html`. Double-click it: it runs from your disk, without the internet. Releases will carry it as `machine-room.html`.
+- **Offline, one file:** `scripts/build-machine-room.sh` (Node, nothing to install) writes `build/machine-room/index.html`. Double-click it: it runs from your disk, without the internet. Add `--shelf DIR`, with a checkout of [unc64/cassettes](https://github.com/unc64/cassettes), and the page carries the whole library; the one online and the one on each release are built that way. Releases will carry it as `machine-room.html`.
 - **From a clone**, with nothing but Python:
 
   ```sh
@@ -40,7 +40,7 @@ msg:    .text "HELLO FROM THE UNC 64!"
 
 Change the message, run it again. Then:
 
-- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and five games with their full source: SNAKE, STACK, ORBIT, DEBUG, and AURORA for the video board. MUSIC TRACKER is there too, an editor for the sound chip written in assembly.
+- **Browse** opens the examples: small programs (raster bars, a custom character set, a tune, the keyboard) and games with their full source: SNAKE, STACK, ORBIT and DEBUG for the UNC 16, and for the UNC 64, with its 64K and its graphics chip, the NIECE (manual chapter 15): CLOUDBERRY, a scrolling platformer, FELLRIDER, a moped with real suspension, and FROSTHALL, a raycaster at 1 MHz. MUSIC TRACKER is there too, an editor for the sound chip written in assembly. With them comes the shelf of [the Portal](https://unc64.com/portal/), what other people have made for the machine.
 - **Hover** over any instruction, register or ROM call in the editor for what it does and how many cycles it takes. **Help** explains the Machine Room; the whole machine is in [the manual](docs/prg/programmers-reference-guide.md).
 - **The debugger**: breakpoints, stepping (F7, F6 over), run and stop (F8), registers and memory.
 - **Save** puts your program on a cassette: a `.unc.png`, a picture of a tape with the program inside, to share or to load in the game.
@@ -48,9 +48,15 @@ Change the message, run it again. Then:
 
 ## Learn the machine
 
-[The Programmer's Reference Guide](docs/prg/programmers-reference-guide.md) is the whole machine in one book: the processor, the screen, timing and the raster, interrupts, the keyboard, sound, the ROM, tape, UNC BASIC, the video board, every instruction with its cycles. It's also the spec: every program listing in it is assembled and run by the tests. Coming from the 6502? Start at Appendix F.
+[The Programmer's Reference Guide](docs/prg/programmers-reference-guide.md) is the whole machine in one book: the processor, the screen, timing and the raster, interrupts, the keyboard, sound, the ROM, tape, UNC BASIC, the NIECE, every instruction with its cycles. It's also the spec: every program listing in it is assembled and run by the tests. Coming from the 6502? Start at Appendix F.
 
 AI agents: [`llms.txt`](llms.txt) and [`llms-full.txt`](llms-full.txt).
+
+## The software
+
+Programs for the UNC 64 are cassettes, and they live in **[unc64/cassettes](https://github.com/unc64/cassettes)**: the shelf behind [the Portal](https://unc64.com/portal/), where each one plays in the browser. Every cassette's source is there to read, in [`source/`](https://github.com/unc64/cassettes/tree/main/source), the machine's own games included, and that's where to send yours.
+
+The machine's own games are in this repository too, in `games/`, because the tests play them: they're how a change to the emulator is checked.
 
 ## Your own editor
 
@@ -76,7 +82,7 @@ The emulator, the assembler and the ROM are Rust and UNC assembly, in one worksp
 | `rom/` | The system ROM and UNC BASIC, in UNC assembly, and the character set |
 | `docs/prg/`, `docs/cassettes.md` | The manual and the cassette format |
 | `web/` | The Machine Room |
-| `games/`, `web/samples/` | The examples, all tested |
+| `games/`, `web/samples/` | The machine's own games and samples, which the tests play. To read or share software: [unc64/cassettes](https://github.com/unc64/cassettes) |
 | `editors/`, `fonts/`, `scripts/` | Editor support, the UNC font and the manual's fonts, the build scripts |
 
 ```sh

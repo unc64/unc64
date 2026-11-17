@@ -178,3 +178,59 @@ fn bad_states_are_refused_and_leave_the_machine_alone() {
     }
     assert!(m.load_state(&newer).unwrap_err().contains("version"));
 }
+
+/// Version 6 had a byte for the video board, and its registers if it was in. The board is
+/// gone: an old state still loads, without it.
+#[test]
+fn version_6_states_load_without_the_board() {
+    use unc_core::machine::RamSize;
+    for ram in [RamSize::K16, RamSize::K64] {
+        let now = Machine::boot(ram).save_state();
+        assert_eq!((now[4], now[90]), (7, 1), "version 7; the sound chip's byte follows the I/O");
+        let mut v6 = now.clone();
+        v6[4] = 6;
+        v6.insert(90, 0);
+        let mut m = Machine::boot(RamSize::K16);
+        m.load_state(&v6).unwrap();
+        assert!(!m.has_niece());
+        assert_eq!(m.save_state(), now);
+        // with the board in: its 15 registers are read past
+        v6[90] = 1;
+        v6.splice(91..91, [0x37, 0x38, 0, 0, 0, 3, 0, 1, 0x3C, 0, 0, 1, 9, 15, 1]);
+        m.load_state(&v6).unwrap();
+        assert_eq!(m.save_state(), now);
+        // version 5 had no NIECE's byte: it loads as a machine without one
+        let mut v5 = now.clone();
+        v5[4] = 5;
+        v5.insert(90, 0);
+        v5.remove(91 + 122);
+        m.set_niece(true);
+        m.load_state(&v5).unwrap();
+        assert!(!m.has_niece());
+        assert_eq!(m.save_state(), now);
+    }
+    assert_eq!(Machine::boot(RamSize::K16).save_state().len(), 16_917);
+    assert_eq!(Machine::boot(RamSize::K64).save_state().len(), 49_685);
+}
+
+/// The NIECE and the 64K expansion are separate parts: a machine can have either, and a save
+/// state keeps whichever it was.
+#[test]
+fn the_niece_and_the_memory_can_be_had_apart() {
+    use unc_core::machine::RamSize;
+    let mut small = Machine::boot(RamSize::K16);
+    assert!(!small.has_niece());
+    small.set_niece(true);
+    assert_eq!(small.peek(0xC14F), 0x17);
+    let mut big = Machine::boot(RamSize::K64);
+    assert!(!big.has_niece(), "the memory doesn't bring the chip with it");
+    assert_eq!(big.peek(0xC14F), 0xFF);
+    let (a, b) = (small.save_state(), big.save_state());
+    big.load_state(&a).unwrap();
+    assert!(big.has_niece() && big.save_state() == a);
+    small.load_state(&b).unwrap();
+    assert!(!small.has_niece() && small.save_state() == b);
+    small.set_niece(true);
+    small.reset();
+    assert!(small.has_niece(), "a reset keeps what's fitted");
+}

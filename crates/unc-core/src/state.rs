@@ -11,25 +11,24 @@
 //! | 1 | RAM: 16 or 64 (K) |
 //! | 18 | The processor: A, X, Y, SP, PC, P, the cycle count, its state and the IRQ line |
 //! | 66 + keys held | The I/O: video, raster, interrupts, frame, keyboard (KBD, the held keys, the matrix), colours, character set and bitmap pages, TEXTROWS with CASE in its bit 7 (version 5 on), the timer and speaker, the shifter |
-//! | 1, or 16 with the board | The video board (version 2 on): 0 if it isn't in; 1 and its 15 bytes of registers (`VideoBoard::save`) if it is |
 //! | 122 | The sound chip (version 4 on): 1 and its 121 bytes (`Chip::save`); or one byte, 0, if a host took it out |
+//! | 1, or 65,900 and 43 a queued command | The NIECE (version 6 on): 0 if it isn't in; 1 and its registers, ink tables, depth line, queue and its 64K (`Niece::save`) if it is |
 //! | 4 | The computer's side of the tape interface: motor, data latch, byte ready, overrun |
 //! | 4 | Cycles into the current frame |
 //! | 312 | The border on each raster line of the last frame (for the picture) |
 //! | 16K or 48K | RAM, from `$0000` to the top of memory |
 //!
 //! So a UNC 16 with no key down saves to 16,917 bytes, and one with the 64K expansion to
-//! 49,685; the video board adds 15 more. (The sprite table and images are in RAM.)
+//! 49,685; the NIECE adds 65,899 more.
 //!
-//! **Version 4** is the same without TEXTROWS: it loads with four text rows under the
-//! bitmap, as at reset.
-//! **Version 3** is that without the sound chip's bytes: it loads with the chip as it
-//! is at switch-on, silent.
-//! **Version 2** had the first Rev A board: 37 bytes of registers, eight sprites in them.
-//! That board is gone, so a version 2 state loads with the board in, its bank, scroll and
-//! layer kept and its sprites dropped (the table and the colours as at reset).
-//! **Version 1** is the same layout without the video board's byte or registers: it loads
-//! as a machine without the board.
+//! **Version 6** is the same with a byte for the video board before the sound chip's (0,
+//! or 1 and its 15 registers). The board is gone: its bytes are read past.
+//! **Version 5** is that without the NIECE's byte: it loads as a machine without one.
+//! **Version 4** is that without TEXTROWS: it loads with four text rows under the bitmap.
+//! **Version 3** is that without the sound chip's bytes: it loads with the chip as it is at
+//! switch-on, silent.
+//! **Version 2** had the first video board: 37 bytes of registers.
+//! **Version 1** is the same layout without the video board's byte.
 //!
 //! **Not saved:** the tape deck's own state (the tape in it, the counter, the PLAY and RECORD
 //! keys), the
@@ -42,7 +41,6 @@
 //! finds, and stops with BREAK or `?LOAD ERROR` if it isn't the one it was reading; a SAVE
 //! that was recording stops with BREAK unless RECORD and PLAY are down on the host's deck.
 
-use crate::board::VideoBoard;
 use crate::cpu::{Cpu, CpuState};
 use crate::keys::KEY_ROWS;
 use crate::machine::{HELD_KEYS, LINES_PER_FRAME, Machine, Observation, RamSize, CYCLES_PER_FRAME};
@@ -52,8 +50,8 @@ use crate::sound::{AudioLog, Timer};
 pub const MAGIC: &[u8; 4] = b"UNCS";
 /// Bumped whenever the layout changes. Older versions this build knows the layout of load;
 /// anything else is refused, never guessed at.
-pub const VERSION: u8 = 5;
-/// The oldest version `load_state` reads: version 1, from before the video board.
+pub const VERSION: u8 = 7;
+/// The oldest version `load_state` reads: version 1.
 pub const OLDEST: u8 = 1;
 
 pub(crate) struct Writer(pub Vec<u8>);
@@ -153,13 +151,6 @@ impl Machine {
         w.bytes(&io.keys);
         w.bool(io.speaker);
         w.u32(io.speaker_toggles);
-        match &self.mem.board {
-            None => w.u8(0),
-            Some(b) => {
-                w.u8(1);
-                b.save(&mut w);
-            }
-        }
         match &self.mem.sound {
             None => w.u8(0),
             Some(c) => {
@@ -168,6 +159,13 @@ impl Machine {
                 c.catch_up(self.cpu.cycles + self.idle_cycles);
                 w.u8(1);
                 c.chip.save(&mut w);
+            }
+        }
+        match &self.mem.niece {
+            None => w.u8(0),
+            Some(n) => {
+                w.u8(1);
+                n.save(&mut w, self.idle_cycles);
             }
         }
         let d = &self.mem.deck;
@@ -233,15 +231,17 @@ impl Machine {
         io.keys = r.bytes(KEY_ROWS)?.try_into().unwrap();
         io.speaker = r.bool()?;
         io.speaker_toggles = r.u32()?;
-        let board = match version {
-            1 => None,
-            _ => match r.u8()? {
-                0 => None,
-                1 if version == 2 => Some(VideoBoard::restore_v2(&mut r)?),
-                1 => Some(VideoBoard::restore(&mut r)?),
+        // Versions 2 to 6 had a video board's byte here, and its registers if it was in: the
+        // board is gone, so they're read past (37 bytes in version 2, 15 after).
+        if (2..=6).contains(&version) {
+            match r.u8()? {
+                0 => {}
+                1 => {
+                    r.bytes(if version == 2 { 37 } else { 15 })?;
+                }
                 v => return Err(format!("save state: video board {v}")),
-            },
-        };
+            }
+        }
         let sound = match version {
             // from before the chip: the machine has one now, as at switch-on
             1..=3 => Some(crate::chip::Chip::default()),
@@ -249,6 +249,15 @@ impl Machine {
                 0 => None,
                 1 => Some(crate::chip::Chip::restore(&mut r)?),
                 v => return Err(format!("save state: sound chip {v}")),
+            },
+        };
+        let niece = match version {
+            // from before the chip: a machine without one
+            1..=5 => None,
+            _ => match r.u8()? {
+                0 => None,
+                1 => Some(Box::new(crate::niece::Niece::restore(&mut r)?)),
+                v => return Err(format!("save state: NIECE {v}")),
             },
         };
         let (motor, data, ready, overrun) = (r.bool()?, r.u8()?, r.bool()?, r.bool()?);
@@ -270,7 +279,7 @@ impl Machine {
         m.ram.fill(0);
         m.ram[..ram_end].copy_from_slice(ram);
         m.io = io;
-        m.board = board;
+        m.niece = niece;
         m.sound = sound.map(|mut c| {
             if version < 4 {
                 // as if it had been in, at rest, since switch-on: its sample clock where it would be

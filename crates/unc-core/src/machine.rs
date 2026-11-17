@@ -1,11 +1,11 @@
 //! The UNC 64 as a whole: memory map, I/O, raster timing, breakpoints. Rev A.
 //! The spec for everything here is docs/prg/programmers-reference-guide.md (chapters 8-13, Appendix B).
 
-use crate::board::{self, VideoBoard};
 use crate::chip;
 use crate::charset::CHAR_ROM;
 use crate::cpu::{Bus, Cpu, CpuState};
 use crate::keys::KEY_ROWS;
+use crate::niece::{self, Niece};
 use crate::shifter::Shifter;
 use crate::sound::{AudioLog, Timer, noise};
 
@@ -32,6 +32,9 @@ pub const FIRST_PICTURE_LINE: usize = 51;
 /// The line the beam leaves the picture on, into the bottom border: FRAME goes up and VBLANK
 /// is raised as it starts (chapter 9).
 pub const VBLANK_LINE: u32 = 251;
+/// A pixel of the picture that shows the NIECE's page (chapter 15): this bit, and the colour
+/// (0-15) in the low four. Every other pixel is a colour number, 0-3.
+pub const NIECE_PIXEL: u8 = 0x10;
 
 pub mod io {
     pub const VMODE: u16 = 0xC000;
@@ -124,34 +127,6 @@ pub mod io {
     /// KEYS to KEYS + 8: the keyboard matrix, nine rows of eight keys, 1 while down.
     pub const KEYS: u16 = 0xC060;
 
-    // The video board, Rev A (chapter 15): `$C080-$C0BF`. Without the board every one
-    // of them reads $FF and ignores writes; with it, the ones not named here do too.
-    /// SPRTAB: high byte of the sprite table's page: 32 entries of 4 bytes. $37 at reset.
-    pub const SPRTAB: u16 = 0xC0A0;
-    /// SPRBANK: high byte of the sprite images' bank. $38 at reset.
-    pub const SPRBANK: u16 = 0xC0A1;
-    /// SPRHIT: table sprites 0-7 that touched another sprite since the last read. Reading clears it.
-    pub const SPRHIT: u16 = 0xC0A4;
-    /// SPRHITBG: table sprites 0-7 that touched the picture since the last read. Reading clears it.
-    pub const SPRHITBG: u16 = 0xC0A5;
-    /// SPRLINE: bit 7 if a line had more than eight sprites since the last read. Reading clears it.
-    pub const SPRLINE: u16 = 0xC0A6;
-    /// SCROLLX, SCROLLY: the main picture's fine scroll, bits 0-2.
-    pub const SCROLLX: u16 = 0xC0A8;
-    pub const SCROLLY: u16 = 0xC0A9;
-    /// LAYER: bit 0 shows the background layer.
-    pub const LAYER: u16 = 0xC0AA;
-    /// LAYERPAGE: high byte of the layer's 40 x 25 screen. $3C at reset.
-    pub const LAYERPAGE: u16 = 0xC0AB;
-    /// LAYERSX, LAYERSY: the layer's fine scroll, bits 0-2.
-    pub const LAYERSX: u16 = 0xC0AC;
-    pub const LAYERSY: u16 = 0xC0AD;
-    /// COLOURMODE: bit 0, the 4-colour bitmap (160 x 200).
-    pub const COLOURMODE: u16 = 0xC0B0;
-    /// COLOUR1-COLOUR3: the colours (0-15) of colour numbers 1-3. 11, 15, 1 at reset.
-    pub const COLOUR1: u16 = 0xC0B1;
-    pub const COLOUR2: u16 = 0xC0B2;
-    pub const COLOUR3: u16 = 0xC0B3;
     /// The sound chip (manual ch. 12): `$C0C0-$C0FF`. Without it every one of them
     /// reads $FF and ignores writes. Voice 1 is eight registers from AUNT, voice 2 from
     /// AUNT + 8, voice 3 from AUNT + 16 (`chip::FREQ_LO` and the rest are the offsets).
@@ -165,8 +140,6 @@ pub mod io {
     pub const SOUND: u16 = 0xC0DF;
     /// WAVETABLE to WAVETABLE + 31: the drawn waveform.
     pub const WAVETABLE: u16 = 0xC0E0;
-    /// BOARD: $15 with the board in, $FF without.
-    pub const BOARD: u16 = 0xC0BF;
 }
 
 /// Frames the hosts run after switching on, so the ROM has booted to BASIC before a program
@@ -477,11 +450,12 @@ pub struct Memory {
     /// What `$C3F0-$C3FF` answers: 19, 86, then 0s, until the host says otherwise
     /// (`Machine::set_reserved`).
     pub reserved: [u8; 16],
-    /// The video board (chapter 15), if it's in.
-    pub board: Option<VideoBoard>,
     /// The AUNT, the sound chip (manual ch. 12). In every machine from the UNC 16 up;
     /// `Machine::set_sound(false)` takes it out, for a host that wants a machine without.
     pub sound: Option<Box<chip::Card>>,
+    /// The NIECE, the graphics chip (chapter 15), if it's in: a part of its own, like the
+    /// 64K expansion, and a machine can have either without the other (`Machine::set_niece`).
+    pub niece: Option<Box<Niece>>,
     /// The host's frame meter (`Machine::frame_work`): where this frame's work ended.
     pub meter: FrameMeter,
     /// The HOLD box's memory view, when the host watches (`Machine::watch`): when each
@@ -514,8 +488,8 @@ impl Memory {
             frame_cycle: 0,
             obs: Box::default(),
             reserved: RESERVED_AT_START,
-            board: None,
             sound: Some(Box::default()),
+            niece: None,
             meter: FrameMeter::default(),
             trace: None,
         }
@@ -557,8 +531,8 @@ impl Memory {
             io::TAPE_DATA => self.deck.data,
             0xC3F0..=0xC3FF => self.reserved[(addr - io::RESERVED) as usize],
             0xC031..=0xC03F | 0xC050..=0xC06F => self.io_peek_rev_a(addr),
-            0xC080..=0xC0BF => self.board.as_ref().map_or(0xFF, |b| b.peek(addr)),
             0xC0C0..=0xC0FF => self.sound.as_ref().map_or(0xFF, |c| c.chip.peek(addr as u8 - 0xC0)),
+            0xC100..=0xC14F => self.niece.as_ref().map_or(0xFF, |n| n.peek(addr - niece::BASE)),
             0xD000..=0xD7FF => CHAR_ROM[(addr - CHAR_ROM_START) as usize],
             0xD800..=0xDFFF => LOW_ROM[(addr - LOW_ROM_START) as usize],
             _ => 0xFF,
@@ -577,6 +551,10 @@ impl Bus for Memory {
             && let Some(c) = &mut self.sound
         {
             c.catch_up(self.io.cycle);
+        }
+        // the NIECE's queue is read as it stands at this cycle
+        if addr >> 8 == 0xC1 {
+            self.niece_now();
         }
         let v = self.peek(addr);
         self.io_read(addr);
@@ -647,9 +625,9 @@ impl Memory {
             }
             // Reading the low byte latches the high bit, so LO then HI is one line number.
             io::RASTER => self.io.raster_hi = (self.raster_line() >> 8) as u8,
-            io::SPRHIT | io::SPRHITBG | io::SPRLINE => {
-                if let Some(b) = &mut self.board {
-                    b.take(addr);
+            0xC100..=0xC14F => {
+                if let Some(n) = &mut self.niece {
+                    n.take(addr - niece::BASE);
                 }
             }
             _ => {}
@@ -679,15 +657,17 @@ impl Memory {
                 }
                 io::TAPE => self.deck.motor = value & io::TAPE_MOTOR != 0,
                 io::TAPE_DATA => self.deck.write(value),
-                0xC080..=0xC0BF => {
-                    if let Some(b) = &mut self.board {
-                        b.store(addr, value);
-                    }
-                }
                 0xC0C0..=0xC0FF => {
                     if let Some(c) = &mut self.sound {
                         c.catch_up(self.io.cycle);
                         c.chip.store(addr as u8 - 0xC0, value);
+                    }
+                }
+                0xC100..=0xC14F => {
+                    self.niece_now();
+                    let now = self.io.cycle;
+                    if let Some(n) = &mut self.niece {
+                        n.store(addr - niece::BASE, value, now);
                     }
                 }
                 _ => {}
@@ -696,6 +676,16 @@ impl Memory {
         }
         if let 0xC030..=0xC03F | 0xC050..=0xC06F = addr {
             self.io_write_rev_a(addr, value);
+        }
+    }
+}
+
+impl Memory {
+    /// Brings the NIECE's queue up to the cycle the instruction running now began at.
+    fn niece_now(&mut self) {
+        let (now, at) = (self.io.cycle, self.frame_cycle);
+        if let Some(n) = &mut self.niece {
+            n.catch_up(now, now, at);
         }
     }
 }
@@ -750,32 +740,12 @@ impl Memory {
     }
 }
 
-/// The sprites of one line of the picture, as `compose_line` draws them: which shown entries
-/// of the table it found when the line began, and what they touched so far.
-pub(crate) struct SpriteLine {
-    shown: Vec<(usize, board::Sprite)>,
-    pub report: board::SpriteReport,
-}
-
-impl SpriteLine {
-    pub(crate) fn new(mem: &Memory) -> Self {
-        let shown = match &mem.board {
-            Some(b) => (0..board::SPRITES).map(|n| (n, b.sprite(&|a| mem.peek(a), n))).filter(|(_, s)| s.shown()).collect(),
-            None => Vec::new(),
-        };
-        SpriteLine { shown, report: board::SpriteReport::default() }
-    }
-}
-
 /// The video chip: one line of the picture at a time (chapter 9).
 impl Memory {
-    /// What values 0-3 of the picture show now: BACKGROUND, and white ink without the video
-    /// board, COLOUR1-COLOUR3 with it.
+    /// What values 0-3 of the picture show now: BACKGROUND, and white ink. (Four of them
+    /// because the picture once had four colours of its own; only 0 and 1 are drawn now.)
     pub(crate) fn colours_now(&self) -> [u8; 4] {
-        match &self.board {
-            None => [self.io.background, 1, 1, 1],
-            Some(b) => [self.io.background, b.colour(1), b.colour(2), b.colour(3)],
-        }
+        [self.io.background, 1, 1, 1]
     }
 
     /// How many lines of the picture the bitmap takes, from the top, when it's on: all 200,
@@ -785,57 +755,35 @@ impl Memory {
     }
 
     /// Line y (0-199) of the picture, from the registers and memory as they stand now: the
-    /// text or the bitmap, with the video board its fine scroll, the layer behind it and the
-    /// sprites over it. The sprites' table is the one `sprites` read; what they touch goes in
-    /// its report.
-    pub(crate) fn compose_line(&self, y: usize, blink_on: bool, row: &mut [u8; PIXELS_W], sprites: &mut SpriteLine) {
-        let board = self.board.as_ref();
-        // the screen's ink: 1 without the board, colour number 3 with it
-        let ink = if board.is_some() { 3 } else { 1 };
-        let (sx, sy) = board.map_or((0, 0), |b| (b.scroll_x as usize, b.scroll_y as usize));
-        row.fill(0);
-        if y >= sy {
-            let src = y - sy;
-            let vmode = self.io.vmode;
-            let split = self.bitmap_lines();
-            let mut line = [0u8; PIXELS_W];
-            if vmode & io::VMODE_BITMAP != 0 && src < split {
-                let four = board.is_some_and(|b| b.colour_mode & board::COLOURMODE_BITMAP4 != 0);
-                let base = (self.io.bitmap as u16) << 8;
-                for col in 0..BITMAP_STRIDE {
-                    let bits = self.peek(base.wrapping_add((src * BITMAP_STRIDE + col) as u16));
-                    for (x, px) in line[col * 8..col * 8 + 8].iter_mut().enumerate() {
-                        *px = if four { (bits >> (6 - x / 2 * 2)) & 3 } else { ((bits >> (7 - x)) & 1) * ink };
-                    }
-                }
-            } else {
-                self.text_line(SCREEN, src, blink_on, ink, &mut line);
-            }
-            row[sx..].copy_from_slice(&line[..PIXELS_W - sx]);
-        }
-        let Some(b) = board else { return };
-        if b.layer & 1 != 0 {
-            let (lx, ly) = (b.layer_sx as usize, b.layer_sy as usize);
-            if y >= ly {
-                let mut layer = [0u8; PIXELS_W];
-                self.text_line((b.layer_page as u16) << 8, y - ly, blink_on, 1, &mut layer);
-                for (px, &l) in row[lx..].iter_mut().zip(&layer[..PIXELS_W - lx]) {
-                    if *px == 0 {
-                        *px = l;
-                    }
+    /// text or the bitmap, 0 for paper and 1 for ink, and behind it the NIECE's page.
+    pub(crate) fn compose_line(&self, y: usize, blink_on: bool, row: &mut [u8; PIXELS_W]) {
+        let vmode = self.io.vmode;
+        if vmode & io::VMODE_BITMAP != 0 && y < self.bitmap_lines() {
+            let base = (self.io.bitmap as u16) << 8;
+            for col in 0..BITMAP_STRIDE {
+                let bits = self.peek(base.wrapping_add((y * BITMAP_STRIDE + col) as u16));
+                for (x, px) in row[col * 8..col * 8 + 8].iter_mut().enumerate() {
+                    *px = (bits >> (7 - x)) & 1;
                 }
             }
+        } else {
+            self.text_line(SCREEN, y, blink_on, 1, row);
         }
-        if !sprites.shown.is_empty() {
-            let r = b.sprite_line(&|a| self.peek(a), &sprites.shown, y as i32, row, true);
-            sprites.report.hit |= r.hit;
-            sprites.report.hit_bg |= r.hit_bg;
-            sprites.report.over |= r.over;
+        // the NIECE's page shows wherever the picture is paper: each of its pixels 2 x 2,
+        // as 16 + its colour
+        if let Some(n) = self.niece.as_deref().filter(|n| n.shown()) {
+            let mut line = [0u8; niece::PAGE_W as usize];
+            n.shown_line(y / 2, &mut line);
+            for (x, px) in row.iter_mut().enumerate() {
+                if *px == 0 {
+                    *px = NIECE_PIXEL | line[x / 2];
+                }
+            }
         }
     }
 
     /// Line y (0-199) of a 40 x 25 text screen of codes from `screen`, ink drawn as `ink`:
-    /// the main screen, or the video board's layer, by the same glyph rules.
+    /// the screen's.
     fn text_line(&self, screen: u16, y: usize, blink_on: bool, ink: u8, out: &mut [u8; PIXELS_W]) {
         let wide = self.io.vmode & io::VMODE_256 != 0;
         let blinks = self.io.vmode & io::VMODE_STEADY == 0;
@@ -891,15 +839,10 @@ pub struct Machine {
 }
 
 impl Machine {
-    /// A UNC 16 (`RamSize::K16`) or one with the 64K expansion, without the video board.
+    /// A UNC 16 (`RamSize::K16`) or one with the 64K memory expansion, without the NIECE
+    /// (`set_niece` puts it in: chapter 15).
     pub fn new(ram_size: RamSize) -> Self {
-        Machine::with_board(ram_size, false)
-    }
-
-    /// A machine with the video board in (`board`) or not. Chapter 15.
-    pub fn with_board(ram_size: RamSize, board: bool) -> Self {
-        let mut mem = Memory::new(ram_size);
-        mem.board = board.then(VideoBoard::default);
+        let mem = Memory::new(ram_size);
         let mut m = Machine {
             cpu: Cpu::new(),
             mem,
@@ -924,10 +867,10 @@ impl Machine {
         let deck = std::mem::take(&mut self.mem.deck);
         let obs = std::mem::take(&mut self.mem.obs);
         let reserved = self.mem.reserved;
-        let board = self.mem.board.is_some();
         let sound = self.mem.sound.is_some();
+        let niece = self.mem.niece.is_some();
         self.mem = Memory::new(size);
-        self.mem.board = board.then(VideoBoard::default);
+        self.mem.niece = niece.then(Box::default);
         // the clock starts again at 0 with the processor's
         self.mem.sound = sound.then(Box::default);
         self.mem.rom = rom;
@@ -990,12 +933,7 @@ impl Machine {
     /// Switches on a machine and runs `BOOT_FRAMES` frames, as the hosts do: the ROM has
     /// booted to BASIC and is waiting for a line.
     pub fn boot(ram_size: RamSize) -> Self {
-        Machine::boot_with_board(ram_size, false)
-    }
-
-    /// As `boot`, with the video board in or not.
-    pub fn boot_with_board(ram_size: RamSize, board: bool) -> Self {
-        let mut m = Machine::with_board(ram_size, board);
+        let mut m = Machine::new(ram_size);
         for _ in 0..BOOT_FRAMES {
             m.run_frame();
         }
@@ -1012,14 +950,25 @@ impl Machine {
         }
     }
 
+    /// Puts the NIECE in, or takes it out (chapter 15), whatever the memory: the chip and
+    /// the 64K expansion are separate parts. No machine has it unless a host says so. A chip
+    /// put in is as at switch-on: its memory empty, its queue empty, nothing shown. The
+    /// machine carries on: no reset (the ROM only looks for it when it starts).
+    pub fn set_niece(&mut self, on: bool) {
+        if on != self.mem.niece.is_some() {
+            self.mem.niece = on.then(Box::default);
+        }
+    }
+
+    /// Whether the NIECE is in (chapter 15).
+    /// NIECE (`$C14F`) reads $17 if it is.
+    pub fn has_niece(&self) -> bool {
+        self.mem.niece.is_some()
+    }
+
     /// Whether the sound chip is in. SOUND (`$C0DF`) reads $16 if it is.
     pub fn has_sound(&self) -> bool {
         self.mem.sound.is_some()
-    }
-
-    /// Whether the video board is in (chapter 15). BOARD (`$C0BF`) reads $15 if it is.
-    pub fn has_board(&self) -> bool {
-        self.mem.board.is_some()
     }
 
     /// A key goes down: its code goes into KBD with bit 7 set, and HELD reads it until
@@ -1192,12 +1141,15 @@ impl Machine {
         // the beam finishes every line it passed: before the frame ends, its last lines
         if line != before {
             let end = if wrapped { LINES_PER_FRAME } else { line };
+            // the cycle this frame began at, and the one the lines before a wrap belong to
+            let frame = now - self.mem.frame_cycle as u64;
+            let first = if wrapped { frame.saturating_sub(CYCLES_PER_FRAME as u64) } else { frame };
             for l in before..end {
-                self.beam(l);
+                self.beam(l, first);
             }
             if wrapped {
                 for l in 0..line {
-                    self.beam(l);
+                    self.beam(l, frame);
                 }
             }
             // the beam leaving the picture: FRAME goes up and VBLANK is raised (chapter 9)
@@ -1343,30 +1295,26 @@ impl Machine {
     }
 
     /// Draws the picture from the machine as it stands now, the way the video chip draws each
-    /// line: `PIXELS_W` x `PIXELS_H` bytes, one a pixel. Without the video board, 1 for ink and
-    /// 0 for paper. Glyphs come from the character set at CHARSET * $100. In the default mode,
-    /// codes $80-$FF are glyphs $00-$7F in reverse video, and $A0 (the cursor) shows as paper
-    /// while `blink_on` is false, unless VMODE bit 3 (steady) is set. With VMODE bit 0 set, all
-    /// 256 codes are separate glyphs from a 2K set.
+    /// line: `PIXELS_W` x `PIXELS_H` bytes, one a pixel, 1 for ink and 0 for paper. Glyphs come
+    /// from the character set at CHARSET * $100. In the default mode, codes $80-$FF are glyphs
+    /// $00-$7F in reverse video, and $A0 (the cursor) shows as paper while `blink_on` is false,
+    /// unless VMODE bit 3 (steady) is set. With VMODE bit 0 set, all 256 codes are separate
+    /// glyphs from a 2K set.
     ///
     /// With VMODE bit 1 set, the bitmap at BITMAP * $100 replaces the text: line y, pixel x
     /// is bit 7 - (x AND 7) of the byte at base + y * 40 + x / 8. With bit 2 (mixed) also set,
     /// the last TEXTROWS text rows still show under it: at reset rows 21-24, lines 168-199.
     ///
-    /// With the video board (chapter 15), every pixel is a colour number 0-3 (`colour_of`
-    /// says which colour each is): paper 0, the screen's ink 3, the layer's ink 1, a sprite's
-    /// pixels what its image says, and COLOURMODE bit 0 turns the bitmap into 160 x 200 at
-    /// 2 bits a pixel. The picture moves right by SCROLLX and down by SCROLLY, the layer
-    /// shows where it's 0, with its own scroll, and the sprites draw over it, eight a line.
+    /// With the NIECE in and its page shown (chapter 15), a pixel that would be paper is
+    /// the page's instead: `NIECE_PIXEL` and its colour, 0-15.
     ///
     /// This is every line drawn from the same moment: for tests and tools. What the monitor
     /// shows is `frame`, where each line was drawn as the beam finished it.
     pub fn render(&self, blink_on: bool, out: &mut [u8]) {
         assert!(out.len() >= PIXELS_W * PIXELS_H);
-        let mut sprites = SpriteLine::new(&self.mem);
         for y in 0..PIXELS_H {
             let row: &mut [u8; PIXELS_W] = (&mut out[y * PIXELS_W..][..PIXELS_W]).try_into().unwrap();
-            self.mem.compose_line(y, blink_on, row, &mut sprites);
+            self.mem.compose_line(y, blink_on, row);
         }
     }
 
@@ -1379,7 +1327,7 @@ impl Machine {
     }
 
     /// The colours (0-15) of values 0-3 on line y of `frame`, as they were when the beam drew
-    /// it: BACKGROUND, then without the video board white ink, with it COLOUR1-COLOUR3.
+    /// it: BACKGROUND, then white ink three times over.
     pub fn line_colours(&self, y: usize) -> [u8; 4] {
         self.picture_colours[y]
     }
@@ -1390,33 +1338,29 @@ impl Machine {
     }
 
     /// The colour (0-15, Appendix A) a host shows for a pixel of `render`'s picture: 0 is
-    /// BACKGROUND; without the video board anything else is ink, white (1), and with it, 1-3
-    /// are COLOUR1-COLOUR3. As things stand now; `line_colours` has them as the beam saw them.
+    /// BACKGROUND; anything else is ink, white (1). As things stand now; `line_colours` has
+    /// them as the beam saw them.
     pub fn colour_of(&self, n: u8) -> u8 {
         self.mem.colours_now()[(n & 3) as usize]
     }
 
     /// The beam finishing raster line `line`: if it's one of the picture's lines (51-250),
-    /// that line is drawn into `frame`, as things stand now, and the video board's SPRHIT,
-    /// SPRHITBG and SPRLINE take what its sprites touched.
-    fn beam(&mut self, line: u32) {
+    /// that line is drawn into `frame`, as things stand now.
+    /// `frame` is the cycle the line's frame began at: the NIECE's page is shown as it stood
+    /// on the line's last cycle.
+    fn beam(&mut self, line: u32, frame: u64) {
         let Some(y) = (line as usize).checked_sub(FIRST_PICTURE_LINE) else { return };
         if y >= PIXELS_H {
             return;
         }
-        let mut sprites = SpriteLine::new(&self.mem);
+        let (now, at) = (self.mem.io.cycle, self.mem.frame_cycle);
+        if let Some(n) = &mut self.mem.niece {
+            n.catch_up((frame + ((line + 1) * CYCLES_PER_LINE) as u64).saturating_sub(1), now, at);
+        }
         let mut row = [0u8; PIXELS_W];
-        self.mem.compose_line(y, self.blink_on, &mut row, &mut sprites);
+        self.mem.compose_line(y, self.blink_on, &mut row);
         self.picture[y * PIXELS_W..][..PIXELS_W].copy_from_slice(&row);
         self.picture_colours[y] = self.mem.colours_now();
-        let r = sprites.report;
-        if let Some(b) = &mut self.mem.board {
-            b.hit |= r.hit;
-            b.hit_bg |= r.hit_bg;
-            if r.over {
-                b.line |= board::SPRLINE_OVER;
-            }
-        }
     }
 
     /// Draws every line of `frame` from the machine as it stands: after a save state is

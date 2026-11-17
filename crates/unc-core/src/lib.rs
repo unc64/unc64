@@ -1,12 +1,12 @@
 //! UNC 64 core: the machine itself. No dependencies, no I/O, no clocks: deterministic.
 
-pub mod board;
 pub mod charset;
 pub mod chip;
 pub mod cpu;
 pub mod isa;
 pub mod keys;
 pub mod machine;
+pub mod niece;
 pub mod shifter;
 pub mod sound;
 pub mod state;

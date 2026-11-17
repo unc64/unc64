@@ -56,11 +56,14 @@ struct Run {
     stop: Stop,
 }
 
-/// Whether a listing uses the video board: it's in chapter 15. Those listings run on a
-/// machine with the board in.
-fn uses_board(src: &str) -> bool {
+/// Whether a listing uses the NIECE: it's in chapter 15. Those run with the chip in.
+fn uses_niece(src: &str) -> bool {
+    in_chapter(src, "\n## 15. ")
+}
+
+fn in_chapter(src: &str, heading: &str) -> bool {
     let text = manual();
-    let from = text.find("\n## 15. ").expect("chapter 15");
+    let from = text.find(heading).expect("the chapter");
     let to = from + 1 + text[from + 1..].find("\n## ").unwrap();
     listings_in(&text[from..to]).iter().any(|l| l == src)
 }
@@ -71,7 +74,8 @@ fn uses_board(src: &str) -> bool {
 fn run(src: &str, key: Option<u8>, frames: u32) -> Run {
     let asm = unc_asm::assemble(src).unwrap_or_else(|e| panic!("listing doesn't assemble: {e:?}\n{src}"));
     assert!(asm.start().is_some(), "listing has a start");
-    let mut m = Machine::boot_with_board(RamSize::K16, uses_board(src));
+    let mut m = Machine::boot(RamSize::K16);
+    m.set_niece(uses_niece(src));
     unc_asm::load(&mut m, &asm);
     if let Some(k) = key {
         m.key(k);
@@ -418,18 +422,10 @@ fn every_listing_in_the_manual_assembles_and_runs() {
             assert!(matches!(r.stop, Stop::Halted), "{:?}", r.stop);
             assert_eq!(r.m.peek(0xC0C4) & 1, 0, "and off");
             assert!(r.m.cpu.cycles > 25 * 19_968);
-        } else if has("A first sprite: a ship") {
-            check_ship(src);
-        } else if has("Twelve birds in a row") {
-            check_birds(src);
-        } else if has("Four colours on the bitmap") {
-            check_four_colours(src);
-        } else if has("Bounce a ball between two walls") {
-            check_bounce(src);
-        } else if has("A scrolling message: a pixel a frame") {
-            check_scroller(src);
-        } else if has("Parallax: a message scrolls") {
-            check_parallax(src);
+        } else if has("The NIECE's first picture") {
+            check_niece_first(src);
+        } else if has("A picture on the sheet, drawn at three sizes") {
+            check_niece_faces(src);
         } else {
             panic!("listing has no check in tests/manual.rs; add one:\n{title}");
         }
@@ -437,8 +433,6 @@ fn every_listing_in_the_manual_assembles_and_runs() {
     }
     assert_eq!(checked, all.len());
 }
-
-// ---- Chapter 15: the video board. These listings run with the board in (`uses_board`). ----
 
 const W: usize = 320;
 
@@ -448,206 +442,56 @@ fn picture(m: &Machine) -> Vec<u8> {
     px
 }
 
-/// The picture without the video board's layer: the screen and the sprites.
-fn picture_without_layer(m: &Machine) -> Vec<u8> {
-    let mut c = m.clone();
-    c.poke(0xC0AA, 0);
-    picture(&c)
+// ---- Chapter 15: the NIECE. These listings run with the chip in (`uses_niece`). ----
+
+/// The colour the NIECE's page shows at its pixel (x, y), in the picture as it stands.
+fn page(m: &Machine, x: usize, y: usize) -> u8 {
+    let px = picture(m);
+    let p = px[y * 2 * W + x * 2];
+    assert!(p & unc_core::machine::NIECE_PIXEL != 0, "({x}, {y}) shows the page");
+    assert_eq!(px[(y * 2 + 1) * W + x * 2 + 1], p, "each pixel is 2 x 2");
+    p & 15
 }
 
-/// Table entry n's x, all nine bits (bit 8 is bit 0 of byte 3).
-fn sprite_x(m: &Machine, n: u16) -> u16 {
-    let at = 0x3700 + n * 4;
-    m.peek(at + 1) as u16 | (m.peek(at + 3) as u16 & 1) << 8
-}
-
-/// Row `r` of the 2-bit image at `at`, as 16 pixel values.
-fn image_row(m: &Machine, at: usize, r: usize) -> Vec<u8> {
-    (0..16).map(|c| (m.mem.ram[at + r * 4 + c / 4] >> (6 - 2 * (c % 4))) & 3).collect()
-}
-
-/// `w` pixels from (x, y).
-fn pixels(px: &[u8], x: usize, y: usize, w: usize) -> Vec<u8> {
-    px[y * W + x..][..w].to_vec()
-}
-
-/// Lines `ys` of `after` are lines `ys` of `before` moved `dx` pixels left (columns 8-311).
-fn moved_left(before: &[u8], after: &[u8], ys: std::ops::Range<usize>, dx: usize) -> bool {
-    ys.into_iter().all(|y| (8..312).all(|x| after[y * W + x] == before[y * W + x + dx]))
-}
-
-fn check_ship(src: &str) {
+fn check_niece_first(src: &str) {
     let r = run(src, None, 3);
-    assert!(r.m.has_board());
-    let mut m = r.m;
-    let ship = r.asm.symbol("ship").unwrap() as usize;
-    assert_eq!(&m.mem.ram[0x3800..0x3840], &m.mem.ram[ship..ship + 64], "image 0 at $3800");
-    assert_eq!(&m.mem.ram[0x3700..0x3704], &[92, 152, 0, 0x80], "entry 0: y, x, image, shown");
-    assert!(m.mem.ram[0x3704..0x3780].iter().all(|&b| b == 0), "the rest of the table is empty");
-    let px = picture(&m);
-    for row in 0..16 {
-        assert_eq!(pixels(&px, 152, 92 + row, 16), image_row(&m, 0x3800, row), "row {row} of the ship");
-    }
-    let colours: std::collections::BTreeSet<u8> = px[92 * W..108 * W].iter().copied().collect();
-    assert_eq!(colours.into_iter().collect::<Vec<_>>(), [0, 1, 2, 3], "exhaust, body and window");
-    m.key(29); // right, held
-    for _ in 0..10 {
-        m.run_frame();
-    }
-    assert_eq!(sprite_x(&m, 0), 162, "a pixel a frame");
-    m.key_up(29);
-    m.key(28); // left: to x = 2, then 10 more, to -8
-    for _ in 0..170 {
-        m.run_frame();
-    }
-    assert_eq!((sprite_x(&m, 0), m.peek(0x3703)), (504, 0x89), "-8: x = 504; bit 8, flipped and shown");
-    let px = picture(&m);
-    for row in 0..16 {
-        // flipped: screen column c is image column 15 - c, at x = c - 8
-        let img = image_row(&m, 0x3800, row);
-        let want: Vec<u8> = (8..16).map(|c| img[15 - c]).collect();
-        assert_eq!(pixels(&px, 0, 92 + row, 8), want, "the ship's nose, turned round, at the left edge");
-    }
-    m.key_up(28);
-    m.key(30); // up, off the top
-    for _ in 0..100 {
-        m.run_frame();
-    }
-    assert_eq!(m.peek(0x3700), 248, "y = -8");
-}
-
-fn check_birds(src: &str) {
-    let r = run(src, None, 2);
-    let mut m = r.m;
-    let bird = r.asm.symbol("bird").unwrap() as usize;
-    assert_eq!(&m.mem.ram[0x3800..0x3840], &m.mem.ram[bird..bird + 64]);
-    m.load(0x0400, &[0x20; 1000]); // the start-up message out of the way: only sprites
-    // per bird: frames wholly on the screen, and frames it was drawn in
-    let (mut on, mut seen) = ([0u32; 12], [0u32; 12]);
-    let mut wrapped = false;
-    let eye = image_row(&m, 0x3800, 7);
-    for _ in 0..300 {
-        m.run_frame();
-        assert_eq!(m.peek(0xC0A6), 0x80, "more than eight on a line");
-        unc_core::Bus::read(&mut m.mem, 0xC0A6); // as the processor reads it: cleared
-        let xs: Vec<u16> = (0..12).map(|n| sprite_x(&m, n)).collect();
-        assert!(m.mem.ram[0x3730..0x3780].iter().all(|&b| b == 0), "entries 12-31 stay empty");
-        // which bird is which: they're 26 apart, and bird 0 has nobody 26 to its left
-        let x0 = *xs.iter().find(|&&x| !xs.contains(&((x + 512 - 26) % 512))).unwrap();
-        let px = picture(&m);
-        for x in xs {
-            let i = ((x + 512 - x0) % 512 / 26) as usize;
-            let x = x as usize;
-            if x <= 304 {
-                on[i] += 1;
-                seen[i] += (pixels(&px, x, 107, 16) == eye) as u32;
-            }
-            wrapped |= x >= 496;
-        }
-        let eyes = (0..W).filter(|&x| px[107 * W + x] == 3).count();
-        assert!(eyes <= 8 * 2, "at most eight birds' eyes on line 107: {eyes}");
-    }
-    assert!(wrapped, "round through 511");
-    // the middle four every frame, the other eight every other frame
-    for i in 0..12 {
-        assert!(on[i] > 50, "bird {i}: {on:?}");
-        if (4..8).contains(&i) {
-            assert_eq!(seen[i], on[i], "bird {i} always shows");
-        } else {
-            assert!(seen[i] * 2 >= on[i] - 1 && seen[i] * 2 <= on[i] + 1, "bird {i} every other frame: {seen:?} of {on:?}");
-        }
-    }
-}
-
-fn check_bounce(src: &str) {
-    let r = run(src, None, 2);
-    let mut m = r.m;
-    let (mut lo, mut hi, mut turns, mut dir) = (255u8, 0u8, 0, 0i32);
-    let mut last = m.peek(0x3701);
-    for _ in 0..800 {
-        m.run_frame();
-        let x = m.peek(0x3701);
-        let d = x as i32 - last as i32;
-        assert_eq!(d.abs(), 1, "a pixel a frame");
-        if d != dir {
-            turns += 1;
-            dir = d;
-        }
-        (lo, hi, last) = (lo.min(x), hi.max(x), x);
-    }
-    // the walls are columns 5 and 30, pixels 40-47 and 240-247: the ball touches the right
-    // wall at x = 225 (its right edge on 240) and the left one at 47
-    assert_eq!((lo, hi), (47, 225));
-    assert!(turns >= 5, "{turns}");
-    assert_eq!(m.screen()[12 * 40 + 5], 0x0F);
-}
-
-fn check_four_colours(src: &str) {
-    let r = run(src, None, 20);
     assert_eq!(r.stop, Stop::Halted);
-    let m = r.m;
-    assert_eq!((m.peek(0xC000), m.peek(0xC0B0)), (2, 1), "the bitmap, in four colours");
-    let px = picture(&m);
-    for y in [0, 99, 199] {
-        for (x, v) in [(0, 0), (79, 0), (80, 1), (159, 1), (160, 2), (239, 2), (240, 3), (319, 3)] {
-            assert_eq!(px[y * W + x], v, "({x}, {y})");
-        }
-    }
-    assert_eq!([0, 1, 2, 3].map(|v| m.colour_of(v)), [6, 2, 7, 1], "blue, red, yellow, white");
-    assert_eq!((m.peek(0xC023), m.peek(0x1000 + 7999)), (0x10, 0xFF), "the bitmap at $1000");
-    assert!(m.mem.ram[0x3700..0x3780].iter().all(|&b| b == 0), "and the sprite table untouched");
-}
-
-fn check_scroller(src: &str) {
-    let r = run(src, None, 2);
-    let mut m = r.m;
-    let mut scroll = vec![];
-    for _ in 0..120 {
-        let before = picture(&m);
-        m.run_frame();
-        let after = picture(&m);
-        assert!(moved_left(&before, &after, 96..104, 1), "a pixel a frame, through every coarse step");
-        assert!(after[..96 * W].iter().chain(&after[104 * W..]).all(|&p| p == 0), "only row 12");
-        scroll.push(m.peek(0xC0A8));
-    }
-    assert!(scroll.windows(2).all(|w| w[1] == (w[0] + 7) % 8), "SCROLLX counts 7 down to 0: {scroll:?}");
-    // once the row is full: 40 letters of the message, round and round
-    let msg = "SMOOTH AS SILK, A PIXEL A FRAME ... ".repeat(3);
-    for i in 0..400 {
-        m.run_frame();
-        if i >= 300 {
-            let text = m.screen_text();
-            let row = text.lines().nth(12).unwrap();
-            assert!(row.len() > 30 && msg.contains(row), "{row:?}");
-        }
-    }
-}
-
-fn check_parallax(src: &str) {
+    let m = &r.m;
+    assert_eq!(m.peek(0xC101), 1, "idle, page 1 shown");
+    assert_eq!(page(m, 0, 0), 14);
+    assert_eq!(page(m, 159, 59), 14);
+    assert_eq!(page(m, 80, 99), 5);
+    assert_eq!(page(m, 120, 10), 7);
+    assert_eq!(page(m, 135, 25), 7);
+    assert_eq!(page(m, 136, 25), 14);
+    // the path: both ends, and on its way
+    assert_eq!(page(m, 0, 99), 1);
+    assert_eq!(page(m, 159, 60), 1);
+    assert_eq!((0..100).filter(|&y| page(m, 80, y) == 1).count(), 1);
+    // without the chip it halts with nothing done
     let asm = unc_asm::assemble(src).unwrap();
-    let mut m = Machine::boot_with_board(RamSize::K16, true);
-    m.poke(0x3FE8, 0xAA);
-    unc_asm::load(&mut m, &asm);
-    m.run_frame();
-    m.run_frame();
-    assert_eq!(m.peek(0xC0AA), 1, "the layer on");
-    assert!(m.mem.ram[0x3C00..0x3FE8].iter().all(|&c| c == b'.'), "a dot in every cell");
-    assert_eq!(m.peek(0x3FE8), 0xAA, "and not a byte past the layer");
-    let mut frames = vec![];
-    for _ in 0..64 {
-        frames.push((picture(&m), picture_without_layer(&m)));
-        m.run_frame();
+    let mut plain = unc_asm::boot(RamSize::K16, &asm);
+    assert_eq!(plain.run_frame(), Stop::Halted);
+    assert!(plain.screen_text().contains("READY."), "the screen wasn't cleared");
+}
+
+fn check_niece_faces(src: &str) {
+    let r = run(src, None, 3);
+    assert_eq!(r.stop, Stop::Halted);
+    let m = &r.m;
+    const FACE: [&[u8; 8]; 8] = [b"00777700", b"07777770", b"77977977", b"77777777", b"79777797", b"77999977", b"07777770", b"00777700"];
+    for (x0, y0, size) in [(4usize, 46usize, 8usize), (20, 38, 24), (60, 10, 80)] {
+        for j in 0..size {
+            for i in 0..size {
+                let c = FACE[j * 8 / size][i * 8 / size] - b'0';
+                assert_eq!(page(m, x0 + i, y0 + j), if c == 0 { 6 } else { c }, "size {size}, ({i}, {j})");
+            }
+        }
     }
-    for t in 0..63 {
-        assert!(moved_left(&frames[t].1, &frames[t + 1].1, 96..104, 1), "the message: a pixel a frame");
-    }
-    for t in 0..60 {
-        // row 5 has nothing on the screen: only the dots
-        assert!(moved_left(&frames[t].0, &frames[t + 4].0, 40..48, 1), "the dots: a pixel in four frames");
-        assert!(frames[t].0[40 * W..48 * W].contains(&1), "dots on row 5");
-    }
-    let dots = |px: &[u8]| px[40 * W..48 * W].to_vec();
-    assert!((0..60).any(|t| dots(&frames[t].0) == dots(&frames[t + 1].0)), "not every frame");
+    assert_eq!(page(m, 0, 0), 6);
+    // the picture is on the sheet at (0, 200)
+    let n = m.mem.niece.as_ref().unwrap();
+    assert_eq!((n.pixel(2, 202), n.pixel(0, 200), n.pixel(7, 207)), (9, 0, 0));
 }
 
 /// unc64.com/llms-full.txt is the manual for AI agents, as the PDF prints it (the workshop

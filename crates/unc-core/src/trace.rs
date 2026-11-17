@@ -149,18 +149,12 @@ impl Machine {
 
     /// The byte the picture's pixel (x, y), 0-319 and 0-199, is drawn from, and which of its
     /// bits (7 the leftmost): the screen's character code in text, the bitmap's byte where
-    /// the bitmap shows. With the video board, its fine scroll counts; the layer and the
-    /// sprites aren't asked (it's the main picture's byte under them). None off the picture,
-    /// or in the strip the scroll leaves empty.
+    /// the bitmap shows. The NIECE's page isn't asked (it's the picture's own byte in front
+    /// of it). None off the picture.
     pub fn addr_at(&self, x: usize, y: usize) -> Option<(u16, u8)> {
         if x >= PIXELS_W || y >= PIXELS_H {
             return None;
         }
-        let (sx, sy) = self.mem.board.as_ref().map_or((0, 0), |b| (b.scroll_x as usize, b.scroll_y as usize));
-        if x < sx || y < sy {
-            return None;
-        }
-        let (x, y) = (x - sx, y - sy);
         let vmode = self.mem.io.vmode;
         let split = self.mem.bitmap_lines();
         let bit = 7 - (x & 7) as u8;
@@ -239,33 +233,74 @@ impl Machine {
 /// The last frames, the whole machine at the start of each (`save_state`): the HOLD box's
 /// 10 seconds. `record` before each frame runs. "Back" counts moments: 0 is now (the machine
 /// itself), 1 the moment the frame before the last one ended, and so on to `len()`.
+///
+/// A whole state is kept once every `KEY_EVERY` frames (and whenever its size changes); the
+/// frames between keep only the bytes that changed from the one before (`Moment::runs`), so
+/// 10 seconds of a UNC 64 with the NIECE are about 1.5 MB, not 58. A moment is put back
+/// together from the key before it; the newest is kept whole (`last`).
 pub struct History {
-    states: std::collections::VecDeque<Vec<u8>>,
-    /// For each state, the bytes of RAM different from the state before it: what the frame
+    moments: std::collections::VecDeque<Moment>,
+    /// For each moment, the bytes of RAM different from the moment before it: what the frame
     /// between them changed (0 for the first).
     changed: std::collections::VecDeque<u32>,
+    /// The newest moment, whole: what the next one is compared with.
+    last: Vec<u8>,
+    /// Moments since the newest key.
+    since_key: usize,
     cap: usize,
 }
+
+/// One moment: a whole save state (a key), or what changed since the moment before it.
+struct Moment {
+    key: Option<Vec<u8>>,
+    /// (offset, the bytes there now), in order.
+    runs: Vec<(u32, Vec<u8>)>,
+}
+
+/// A whole state every second.
+const KEY_EVERY: usize = 50;
+/// Two changed bytes closer than this go in one run.
+const RUN_GAP: usize = 8;
 
 impl History {
     /// Keeps the last `cap` frames: 500 is 10 seconds.
     pub fn new(cap: usize) -> Self {
-        History { states: std::collections::VecDeque::with_capacity(cap), changed: std::collections::VecDeque::with_capacity(cap), cap }
+        History {
+            moments: std::collections::VecDeque::with_capacity(cap + 1),
+            changed: std::collections::VecDeque::with_capacity(cap + 1),
+            last: Vec::new(),
+            since_key: 0,
+            cap: cap.max(1),
+        }
     }
 
     /// The machine as the next frame starts: keep it, and forget the oldest past `cap`.
     pub fn record(&mut self, m: &Machine) {
-        let mut buf = if self.states.len() >= self.cap {
-            self.changed.pop_front();
-            self.states.pop_front().unwrap()
+        let state = m.save_state();
+        let fresh = self.moments.is_empty();
+        let n = if fresh { 0 } else { differ(state_ram(&self.last), state_ram(&state)) };
+        let moment = if fresh || state.len() != self.last.len() || self.since_key + 1 >= KEY_EVERY {
+            self.since_key = 0;
+            Moment { key: Some(state.clone()), runs: Vec::new() }
         } else {
-            Vec::new()
+            self.since_key += 1;
+            Moment { key: None, runs: runs(&self.last, &state) }
         };
-        buf.clear();
-        buf.extend_from_slice(&m.save_state());
-        let n = self.states.back().map_or(0, |prev| differ(state_ram(prev), state_ram(&buf)));
-        self.states.push_back(buf);
+        self.moments.push_back(moment);
         self.changed.push_back(n);
+        self.last = state;
+        if self.moments.len() > self.cap {
+            // the oldest goes; the one after it becomes a key, if it isn't one
+            let mut whole = self.moments.pop_front().and_then(|m| m.key).unwrap_or_default();
+            self.changed.pop_front();
+            if let Some(next) = self.moments.front_mut()
+                && next.key.is_none()
+            {
+                apply(&mut whole, &next.runs);
+                next.key = Some(whole);
+                next.runs = Vec::new();
+            }
+        }
     }
 
     /// How much each frame changed, oldest first: for each moment `len()` back to 1, the
@@ -275,33 +310,75 @@ impl History {
     }
 
     /// One byte through the 10 seconds, oldest first: its value at each moment `len()` back
-    /// to 1 (0 where the RAM then didn't reach it).
+    /// to 1 (0 where the RAM then didn't reach it). Read along the changes, not rebuilt.
     pub fn values(&self, addr: usize) -> Vec<u8> {
-        self.states.iter().map(|s| state_ram(s).get(addr).copied().unwrap_or(0)).collect()
+        let mut out = Vec::with_capacity(self.moments.len());
+        let mut at: Option<usize> = None; // the byte's offset in the states since the last key
+        let mut value = 0u8;
+        for m in &self.moments {
+            if let Some(key) = &m.key {
+                let ram = state_ram(key);
+                at = (addr < ram.len()).then(|| key.len() - ram.len() + addr);
+                value = at.map_or(0, |o| key[o]);
+            } else if let Some(o) = at {
+                for (start, bytes) in &m.runs {
+                    let start = *start as usize;
+                    if (start..start + bytes.len()).contains(&o) {
+                        value = bytes[o - start];
+                    }
+                }
+            }
+            out.push(value);
+        }
+        out
     }
 
     /// How far back it goes, in frames.
     pub fn len(&self) -> usize {
-        self.states.len()
+        self.moments.len()
+    }
+
+    /// About how many bytes it keeps: the keys, the changes, and the newest moment whole.
+    pub fn kept_bytes(&self) -> usize {
+        let moments: usize = self.moments.iter().map(|m| m.key.as_ref().map_or(0, Vec::len) + m.runs.iter().map(|r| r.1.len() + 32).sum::<usize>()).sum();
+        moments + self.last.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.states.is_empty()
+        self.moments.is_empty()
     }
 
     pub fn clear(&mut self) {
-        self.states.clear();
+        self.moments.clear();
         self.changed.clear();
+        self.last.clear();
+        self.since_key = 0;
     }
 
     /// The whole machine `back` frames ago (1 to `len()`), as `save_state` gave it.
-    pub fn moment(&self, back: usize) -> Option<&[u8]> {
-        (1..=self.len()).contains(&back).then(|| self.states[self.len() - back].as_slice())
+    pub fn moment(&self, back: usize) -> Option<Vec<u8>> {
+        if !(1..=self.len()).contains(&back) {
+            return None;
+        }
+        if back == 1 {
+            return Some(self.last.clone());
+        }
+        Some(self.whole(self.len() - back))
     }
 
     /// The RAM `back` frames ago, from `$0000` to the end of the RAM fitted then.
-    pub fn ram(&self, back: usize) -> Option<&[u8]> {
-        self.moment(back).map(state_ram)
+    pub fn ram(&self, back: usize) -> Option<Vec<u8>> {
+        self.moment(back).map(|s| state_ram(&s).to_vec())
+    }
+
+    /// Moment `i` (0 the oldest), put back together from the key at or before it.
+    fn whole(&self, i: usize) -> Vec<u8> {
+        let k = (0..=i).rev().find(|&j| self.moments[j].key.is_some()).unwrap_or(0);
+        let mut s = self.moments[k].key.clone().unwrap_or_default();
+        for j in k + 1..=i {
+            apply(&mut s, &self.moments[j].runs);
+        }
+        s
     }
 
     /// The frame that ended `back` frames ago, run again on `viewer` from the state it started
@@ -310,7 +387,7 @@ impl History {
     /// without it. False if it's further back than the history goes.
     pub fn replay(&self, back: usize, viewer: &mut Machine) -> bool {
         let Some(state) = self.moment(back + 1) else { return false };
-        if viewer.load_state(state).is_err() {
+        if viewer.load_state(&state).is_err() {
             return false;
         }
         if let Some(t) = viewer.mem.trace.as_deref_mut() {
@@ -324,12 +401,18 @@ impl History {
     /// forgotten. False (and nothing changed) if it's further back than the history goes.
     pub fn rewind(&mut self, back: usize, m: &mut Machine) -> bool {
         let Some(state) = self.moment(back) else { return false };
-        if m.load_state(state).is_err() {
+        if m.load_state(&state).is_err() {
             return false;
         }
         let keep = self.len() - back;
-        self.states.truncate(keep);
+        self.moments.truncate(keep);
         self.changed.truncate(keep);
+        if keep == 0 {
+            self.clear();
+        } else {
+            self.last = self.whole(keep - 1);
+            self.since_key = self.moments.iter().rev().take_while(|m| m.key.is_none()).count();
+        }
         if let Some(t) = m.mem.trace.as_deref_mut() {
             t.written.fill(0);
             t.ran.fill(0);
@@ -338,13 +421,100 @@ impl History {
     }
 }
 
+/// What changed from `a` to `b` (the same length): runs of bytes, close changes together.
+fn runs(a: &[u8], b: &[u8]) -> Vec<(u32, Vec<u8>)> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let n = a.len().min(b.len());
+    while i < n {
+        if i + 64 <= n && a[i..i + 64] == b[i..i + 64] {
+            i += 64; // most of a state doesn't change: skip it a block at a time
+            continue;
+        }
+        if a[i] == b[i] {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut end = i + 1; // past the last changed byte
+        let mut j = i + 1;
+        while j < n && j < end + RUN_GAP {
+            if a[j] != b[j] {
+                end = j + 1;
+            }
+            j += 1;
+        }
+        out.push((start as u32, b[start..end].to_vec()));
+        i = end;
+    }
+    out
+}
+
+/// The runs written over `s`.
+fn apply(s: &mut [u8], runs: &[(u32, Vec<u8>)]) {
+    for (start, bytes) in runs {
+        let start = *start as usize;
+        s[start..start + bytes.len()].copy_from_slice(bytes);
+    }
+}
+
 /// The bytes that differ between two equal-length runs of RAM (the shorter's length counts).
 pub fn differ(a: &[u8], b: &[u8]) -> u32 {
-    a.iter().zip(b).filter(|(x, y)| x != y).count() as u32
+    let count = |x: &[u8], y: &[u8]| x.iter().zip(y).filter(|(p, q)| p != q).count() as u32;
+    a.chunks(64).zip(b.chunks(64)).filter(|(x, y)| x != y).map(|(x, y)| count(x, y)).sum()
 }
 
 /// A save state's RAM: its tail, from `$0000` to the end of the RAM it was taken with.
 pub fn state_ram(state: &[u8]) -> &[u8] {
     let end = if state.get(5) == Some(&64) { 0xC000 } else { 0x4000 };
     &state[state.len().saturating_sub(end)..]
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use crate::RamSize;
+
+    /// Every moment comes back exactly as it was: across keys, as the oldest go, after a
+    /// rewind, and through a change of size (the 64K going in). And it's small.
+    #[test]
+    fn every_moment_comes_back_whole() {
+        let mut m = Machine::new(RamSize::K16);
+        let mut h = History::new(120);
+        let mut states: Vec<Vec<u8>> = Vec::new();
+        let mut seed = 12345u32;
+        for f in 0..400 {
+            if f == 200 {
+                m = Machine::new(RamSize::K64); // a different size: a key of its own
+                m.set_niece(true);
+            }
+            for _ in 0..(f % 7) * 9 {
+                seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                let top = if f >= 200 { 0xC000 } else { 0x4000 };
+                m.poke(((seed >> 8) % top) as u16, (seed >> 24) as u8);
+            }
+            h.record(&m);
+            states.push(m.save_state());
+            m.run_frame();
+            if f == 300 {
+                let then = states[states.len() - 30].clone();
+                assert!(h.rewind(30, &mut m));
+                states.truncate(states.len() - 30); // that moment is now, and after it is forgotten
+                assert_eq!(state_ram(&m.save_state()), state_ram(&then), "rewound to the moment");
+            }
+        }
+        assert_eq!(h.len(), 120);
+        for back in 1..=h.len() {
+            assert_eq!(h.moment(back).unwrap(), states[states.len() - back], "{back} frames back");
+        }
+        let addr = 0x1234;
+        let vals = h.values(addr);
+        for (i, v) in vals.iter().enumerate() {
+            let s = &states[states.len() - h.len() + i];
+            assert_eq!(*v, state_ram(s)[addr], "the byte at moment {i}");
+        }
+        let kept = h.kept_bytes();
+        let whole: usize = states[states.len() - h.len()..].iter().map(|s| s.len()).sum();
+        assert!(kept * 10 < whole, "kept {kept} bytes for {whole} of states");
+    }
 }

@@ -1,4 +1,4 @@
-# The Machine Room as one file: published to GitHub Pages on every push to main
+# The Machine Room as one file, with the Portal's shelf in it: published to GitHub Pages on every push to main
 # (unc64.github.io/unc64), and attached to each release as machine-room.html.
 # Repo settings: Pages, Source: GitHub Actions.
 name: machine-room
@@ -20,10 +20,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The Portal's shelf (unc64/cassettes), built into the page with --shelf, so the Machine
+      # Room has the whole library offline too. Those cassettes are their authors': they go
+      # into the built page, never into this repository.
+      - uses: actions/checkout@v4
+        with:
+          repository: unc64/cassettes
+          path: shelf
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/build-machine-room.mjs build/machine-room
+      - run: node scripts/build-machine-room.mjs build/machine-room --shelf shelf
       - run: cp build/machine-room/index.html machine-room.html
       - uses: actions/upload-pages-artifact@v3
         with:
