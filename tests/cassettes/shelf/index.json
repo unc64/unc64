@@ -1,0 +1,48 @@
+{
+ "format": "unc64-portal",
+ "version": 1,
+ "updated": "2026-11-17T00:00:00Z",
+ "cassettes": [
+  {
+   "id": "shelf-test",
+   "file": "cassettes/shelf-test.unc.png",
+   "title": "SHELF TEST",
+   "author": "A. Reader",
+   "about": "A line printed, from a shelf of one: the test of --shelf.",
+   "category": "other",
+   "tags": [],
+   "machine": {
+    "ram": 16,
+    "niece": false
+   },
+   "programs": [
+    {
+     "name": "HELLO",
+     "type": 1,
+     "length": 0
+    }
+   ],
+   "source": true,
+   "lang": "asm",
+   "added": "2026-11-17",
+   "featured": false
+  },
+  {
+   "id": "hello",
+   "file": "cassettes/hello.unc.png",
+   "title": "HELLO",
+   "author": "",
+   "about": "The machine's own, on the shelf too: left out, since it's bundled from its source.",
+   "category": "other",
+   "tags": [],
+   "machine": {
+    "ram": 16,
+    "niece": false
+   },
+   "source": true,
+   "lang": "asm",
+   "added": "2026-11-17",
+   "featured": false
+  }
+ ]
+}

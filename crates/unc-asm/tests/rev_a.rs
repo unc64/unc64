@@ -3,7 +3,7 @@
 //! These are the tables that promise will rest on: the
 //! instruction set and its cycles (the documented ones and the eight the book leaves out),
 //! the timing of a frame, the ROM's jump table, UNC BASIC's tokens, the tape format and the
-//! AUNT's tables. Each
+//! AUNT's tables, and the NIECE's id, pages, queue and costs. Each
 //! is compared with `rev_a.txt`, so none of them changes by accident. If this test fails
 //! during the alpha: put the change back, or, if it's meant, write the file again
 //! (`UNC_FREEZE_REV_A=1`) with the manual and REVISIONS.md in the same commit. After the
@@ -63,6 +63,24 @@ fn rev_a() -> String {
         out.push_str(&format!("{}\n", row(&line.iter().map(|&c| c as u32).collect::<Vec<_>>())));
     }
     out.push_str(&format!("{}\n", row(&chip::RESONANCE_TABLE)));
+    // the NIECE, the UNC 64's graphics chip: its id, where it is, its pages and its sheet,
+    // its queue and what a command costs
+    use unc_core::niece;
+    out.push_str("# The NIECE: id, registers, pages, sheet, queue, cost\n");
+    out.push_str(&format!(
+        "${:02X} at ${:04X}, registers ${:04X}-${:04X}, pages {} x {}, sheet {} x {}, a queue of {}, {} cycles and one for every {} pixels\n",
+        niece::ID,
+        niece::BASE + niece::reg::NIECE,
+        niece::BASE,
+        niece::BASE + niece::SPAN - 1,
+        niece::PAGE_W,
+        niece::PAGE_H,
+        niece::SHEET_W,
+        niece::SHEET_H,
+        niece::QUEUE,
+        niece::SETUP_CYCLES,
+        niece::PIXELS_PER_CYCLE
+    ));
     out
 }
 

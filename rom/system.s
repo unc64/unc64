@@ -104,13 +104,8 @@ RECPLAY = $09           ; TAPE bits 0 and 3: RECORD and PLAY down
 ROOM    = $10           ; TAPE bit 4: recording, and TDATA is empty
 IRQEN   = $C004
 CHARSET = $C022
-SPRTAB  = $C0A0         ; the video board's sprite table's page: 0 for no sprites
-SCROLLX = $C0A8
-SCROLLY = $C0A9
-LAYER   = $C0AA
-COLMODE = $C0B0
-COLOUR3 = $C0B3         ; the colour of text
-VBOARD  = $C0BF         ; the video board's id: $15 with the board in, $FF without
+NCTRL   = $C100         ; the NIECE: bit 0 shows its page behind the picture
+NIECE   = $C14F         ; the NIECE's id: $17 on a UNC 64, $FF without it
 
 ; Tokens: $80 + position in KWTAB. Statements first, in STTAB order.
 T_PRINT = $80
@@ -175,13 +170,7 @@ R16K:   JSR NEW0
 R64K:   LDX #<MSG64
         LDY #>MSG64
 RMSG:   JSR PRSTR
-        LDA VBOARD      ; the video board answers $15
-        CMP #$15
-        BNE RBAS
-        LDX #<MSGVB
-        LDY #>MSGVB
-        JSR PRSTR
-RBAS:   LDX #<MSGBAS
+        LDX #<MSGBAS
         LDY #>MSGBAS
         JSR PRSTR
         JSR FREE
@@ -402,9 +391,8 @@ VECS:   LDA #<DEFIRQ
 ; The RESTORE key pulls the processor's NMI line. Alone it does nothing. With STOP held
 ; (bit 7 of the matrix's row 8) it's the way out of anything: the machine's registers go
 ; back to the way they are at switch-on (text, the ROM's characters, no interrupts, no
-; sound, the tape's motor off, the video board's sprites, layer, scroll and colour mode
-; off and its text white), the screen is cleared, and BASIC says READY. with the program
-; and its variables as they were.
+; sound, the tape's motor off, the NIECE's page out of the picture), the screen is
+; cleared, and BASIC says READY. with the program and its variables as they were.
 NMI:    JMP (NMIVEC)
 DEFNMI: BIT KEYS8
         BMI RESTORE
@@ -414,18 +402,12 @@ RESTORE: JSR VECS
         STA IRQEN
         STA SPEAKER
         STA TAPE
-        STA SPRTAB
-        STA LAYER
-        STA COLMODE
-        STA SCROLLX
-        STA SCROLLY
+        STA NCTRL
         STA CASE
         LDA #$FF
         STA IRQST
         LDA #$D0
         STA CHARSET
-        LDA #1
-        STA COLOUR3
         BIT KBDSTRB     ; (STOP itself isn't a key press BASIC should see)
         JSR CLS
         JMP WARM
@@ -3677,8 +3659,6 @@ BANNER: .text "    UNC 64 SYSTEM ROM  REV A"
 MSG16:  .text " 16K RAM SYSTEM"
         .byte 13, 0
 MSG64:  .text " 64K RAM SYSTEM"
-        .byte 13, 0
-MSGVB:  .text " VIDEO BOARD REV A"
         .byte 13, 0
 MSGBAS: .asciiz " UNC BASIC REV A  "
 MSGFREE: .text " BYTES FREE"

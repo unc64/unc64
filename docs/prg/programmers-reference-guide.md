@@ -29,7 +29,7 @@ This book is the specification of the machine: System Rev A. The emulator in `cr
 - [12. Sound](#12-sound)
 - [13. The system ROM](#13-the-system-rom)
 - [14. Tape](#14-tape)
-- [15. The video board](#15-the-video-board)
+- [15. The NIECE](#15-the-niece)
 - [16. The monitor](#16-the-monitor)
 - [Appendix A. Screen codes and colours](#appendix-a-screen-codes-and-colours)
 - [Appendix B. Memory map and I/O registers](#appendix-b-memory-map-and-io-registers)
@@ -154,17 +154,30 @@ Everything the UNC 64 can do, it does through places like that one. Chapter 2, n
 
 ### The UNC 16 and the UNC 64
 
-The UNC 16 and the UNC 64 are the same computer. The UNC 16 has 16K of memory (16,384 bytes), the text screen, the bitmap, the beeper, the AUNT with its three voices, and the tape deck: everything in chapters 1 to 14. The UNC 64 is the UNC 16 fully expanded: the 64K memory expansion, with 48K of memory below the I/O and ROM areas; the video board, with sprites, smooth scrolling, a background layer and four colours (chapter 15); and a speech synthesizer. They arrive one at a time. The start-up message tells you which you have: the ROM checks for the expansion and the video board every time you switch on.
+The UNC 16 and the UNC 64 are the same computer. The UNC 16 has 16K of memory (16,384 bytes), the text screen, the bitmap, the beeper, the AUNT with its three voices, and the tape deck: everything in chapters 1 to 14. The UNC 64 is the UNC 16 fully expanded, with two more parts in it: the 64K memory expansion, with 48K of memory below the I/O and ROM areas; and the NIECE, a graphics chip with sixteen colours and memory of its own (chapter 15). They are separate parts, and a machine can have either without the other. The start-up message tells you how much memory yours has (the ROM counts it every time you switch on); `PRINT PEEK(49487)` says 23 if the NIECE is in (chapter 15).
 
 | | UNC 16 | UNC 64 |
 |---|---|---|
 | Memory | 16K, `$0000-$3FFF` | 48K, `$0000-$BFFF` |
 | Free for your programs | `$0800-$3FFF`, 14K | `$0800-$BFFF`, 46K |
+| Graphics | text and the bitmap, in one colour | the same, and the NIECE behind them: 160 × 100 in sixteen colours |
 | Everything else | identical | identical |
 
-### The monitor
+### The monitor and the video signal
 
-The UNC 16 ships with a green monochrome monitor. Plug in a colour monitor and the border and background colours (chapter 8) show in colour. A program can't tell which monitor is connected, and doesn't need to. On the green screen, each colour appears as a brighter or darker shade of green.
+The UNC monitor is a colour monitor. Inside its tube are three electron guns, red, green and blue, and the machine drives each of them down a wire of its own. What it sends down them is set by **SW1**, a block of four DIP switches on the main board, by the NIECE's socket. To reach it, switch the machine off and take out the four screws: the keyboard lifts up on its hinge. A switch is ON when it's pushed away from you, toward the back of the machine.
+
+Switch 3 is COLOUR: each gun gets its own share of every colour, and the sixteen colours (Appendix A) show as they are. With switch 3 OFF, the machine sends only how bright each point of the picture is, its luminance, and switches 1 and 2 say which guns it goes to. Switch 4 isn't connected.
+
+| 1 | 2 | 3 | The guns | The picture |
+|---|---|---|---|---|
+| OFF | OFF | OFF | green alone | green, every colour a shade of it: as the machine leaves the factory |
+| ON | OFF | OFF | red and green | amber |
+| OFF | ON | OFF | all three | paper white |
+| ON | ON | OFF | all three, over a blue ground | white on blue |
+| any | any | ON | each its own share | colour |
+
+Why would anyone switch colour off? Three guns never land on quite the same spot, and forty columns of text are sharpest drawn by one: that's why the machine leaves the factory set to green, and why plenty of owners keep it there for typing, NIECE or not. The border and background colours (chapter 8) and the NIECE's sixteen (chapter 15) show as themselves only in colour; with switch 3 OFF, each is a lighter or darker shade. A program can't read SW1, and doesn't need to: the picture it makes is the same, and only the signal that carries it changes.
 
 ### Typing
 
@@ -1484,7 +1497,7 @@ The bitmap's bottom 32 lines are still in memory; they're just covered up. In mi
 
 **Tearing.** The beam draws the picture from line 51 down, every frame, a line at a time, from what memory holds as it gets there (chapter 9). A program that changes the picture while the beam is drawing it races the beam: if the beam reaches a shape before the program has finished moving it, the top of the picture shows the new frame and the bottom the old, or the shape shows half rubbed out, for that one frame. The cure is to change the picture where the beam isn't. FRAME goes up as the beam leaves the picture, at line 251, and from there the beam doesn't draw again until line 51 of the next frame: 112 lines, 7,168 cycles. A game that waits for FRAME and does its drawing first has all of that. Work that takes longer can keep going below the beam (draw only what the beam has already passed) or wait for it: in mixed mode, from line 219, where the bitmap ends, the bitmap is out of the beam's way for 144 lines.
 
-One bitmap, one bit per pixel, in the screen's ink and paper. The video board (chapter 15) adds sprites, fine scrolling, a layer, four colours on the screen and a 4-colour bitmap, 160 × 200.
+One bitmap, one bit per pixel, in the screen's ink and paper. The NIECE (chapter 15), if the machine has one, draws in sixteen colours behind it.
 
 ### The shifter
 
@@ -1697,7 +1710,7 @@ Two facts make cycle-exact programs possible on the UNC 64. Every instruction al
 
 ### The picture, line by line
 
-The beam draws each line of the picture as it finishes the line, from whatever the machine holds at that moment: screen memory and the character set, the bitmap, VMODE, CHARSET, BITMAP, BACKGROUND, and with the video board its registers, its sprite table, the images and the layer. So everything is a raster split, not only the border: change BACKGROUND, VMODE or the character set at line 150 and the lines from 150 down show the change, in the same frame. A line takes what the machine held when the last instruction to finish on it finished, as the border does. Each line is drawn whole: there are no changes part way along a line.
+The beam draws each line of the picture as it finishes the line, from whatever the machine holds at that moment: screen memory and the character set, the bitmap, VMODE, CHARSET, BITMAP, BACKGROUND, and with the NIECE its page as it stands on the line's last cycle. So everything is a raster split, not only the border: change BACKGROUND, VMODE or the character set at line 150 and the lines from 150 down show the change, in the same frame. A line takes what the machine held when the last instruction to finish on it finished, as the border does. Each line is drawn whole: there are no changes part way along a line.
 
 ```asm
 ; A raster split: the background turns red halfway down the text rows, every frame.
@@ -1838,7 +1851,7 @@ Woken from a `HLT`, the processor pushes the address of the `HLT` itself, so `RT
 2. Sets the border and background to black, VMODE to 0 (the text screen, 128 glyphs, the blinking cursor) and CHARSET to `$D0`, the ROM's characters.
 3. Turns every interrupt source off (IRQ_ENABLE 0) and acknowledges what's waiting, and puts the keyboard back to capitals (CASE 0).
 4. Stops the speaker (SPEAKER 0) and the tape's motor.
-5. On the video board: SPRTAB 0, which is no sprites (chapter 15); the layer, the scroll and the 4-colour bitmap off; COLOUR3, the colour of text, white.
+5. With the NIECE: NCTRL 0, which takes its page out of the picture (chapter 15).
 6. Clears the screen, empties the stack, clears I, and goes to BASIC's `READY.`.
 
 Memory isn't touched. The BASIC program and its variables are as they were, and so is your machine language, wherever it is: `SYS` will call it again. So STOP and RESTORE is the way out of a program that STOP alone can't reach, one that never looks at the keyboard or has halted, and you lose nothing but the picture.
@@ -2336,7 +2349,7 @@ The reset vector points at `$FFE0`, the top of the ROM. It sets the stack pointe
 3. Sets the border and background to black.
 4. Checks for the 64K expansion by writing `$55` to `$4000` and reading it back. Sets RAMTOP at `$0203` to `$40` (16K) or `$C0` (64K).
 5. Empties BASIC's program and variables, seeds RND, and sets WARMMK to `$55 $AA`: from now on a reset is warm.
-6. Clears the screen and prints the start-up message, with the bytes free for BASIC. If BOARD at `$C0BF` reads `$15`, a line under the memory says `VIDEO BOARD REV A` (chapter 15).
+6. Clears the screen and prints the start-up message, with the memory and the bytes free for BASIC. (It doesn't look for the NIECE: a program that needs it does, chapter 15.)
 7. Clears I, and prints `READY.`.
 8. Beeps: 880 Hz for 300 ms on the speaker's timer (divisor 1,136; chapter 12), counted out in 15 frames on FRAME. Then the timer's gate and the speaker's data go back to 0.
 9. Hands over to UNC BASIC, which waits for a line (chapter 2). Keys pressed during the beep wait in KBD.
@@ -2768,584 +2781,450 @@ The tape carries bytes, not sound: the deck is a byte device, and a program sees
 
 ---
 
-## 15. The video board
+## 15. The NIECE
 
-The video board is an upgrade card, one of the expansions that make a UNC 16 a UNC 64. It goes in with the machine switched off, and it adds four things to the picture: 32 hardware **sprites**, **smooth scrolling**, a **background layer**, and **four colours**. Everything in chapter 8 works as before, with the board or without it. The board has its own registers, `$C0A0-$C0BF`, and reads everything else from the same memory as the processor: the sprites, their pictures and the layer are ordinary bytes you can change at any time.
+The NIECE is a graphics chip, one of the two parts that make a UNC 16 a UNC 64 (the other is the 64K memory expansion: they're separate, and each works without the other). Its name is the **Northern Image Engine, Colour Extension**; the chip itself is marked NV-1, for Northern Video.
+
+The video chip shows what's in the computer's memory. The NIECE works the other way round. It has 64K of memory of its own, which the processor can't see, and it does its own drawing: you tell it *what* to draw, in a few registers, and it draws. It fills boxes, draws lines, and copies a picture from one place to another at any size, bigger or smaller, in sixteen colours. The processor never touches a pixel, so a 1 MHz processor is enough to decide what a whole screen of them should be.
+
+It also has an **arithmetic unit**, which multiplies and divides in no time at all. The two belong together: the sums that say where things go are the other half of drawing them.
 
 ### Is it there?
 
-BOARD reads `$15` with the board in. Without it, BOARD reads `$FF`, like every unused address.
-
 | Address | Register | Read |
 |---|---|---|
-| `$C0BF` | BOARD | `$15`: the video board, Rev A. Writing does nothing. |
+| `$C14F` | NIECE | `$17`: the NIECE. Writing does nothing. |
 
-The ROM looks every time you switch on, and the start-up message says so:
+NIECE reads `$17` with the chip in. Without it, NIECE reads `$FF`, like every unused address: every address from `$C100` to `$C14F` does, and ignores what you write.
 
-```text
-    UNC 64 SYSTEM ROM  REV A
+The start-up message doesn't mention it: it counts the memory, and that's all. From BASIC, `PRINT PEEK(49487)` says 23 with the NIECE in and 255 without.
 
- 16K RAM SYSTEM
- VIDEO BOARD REV A
- UNC BASIC REV A  14335 BYTES FREE
- TYPE HELP FOR HELP
-
-READY.
-_
-```
-
-A program looks for itself:
+BASIC has no words for the NIECE, though `PEEK` and `POKE` reach its registers like any others. STOP and RESTORE take its page out of the picture (chapter 10), so the way back to `READY.` works from a program that was showing one. A program that needs the NIECE looks for itself, and says so if it isn't there:
 
 ```text
-        LDA $C0BF
-        CMP #$15
-        BNE noboard     ; no video board: do without
+        LDA $C14F
+        CMP #$17
+        BNE noniece
 ```
 
-Without the board, every address from `$C080` to `$C0BF` reads `$FF` and ignores what you write. A program that forgets to look doesn't crash; its sprites just never appear, and the picture stays in its one colour.
+### The sheet and the two pages
 
-### Sprites
-
-A **sprite** is a small picture, 16 × 16 pixels, that the board draws over the screen wherever you tell it to. Moving one is changing two bytes. The processor never draws it, never rubs it out, and never touches the screen underneath, so whatever was there is still there when the sprite has gone.
-
-The board keeps its sprites in a **sprite table** in memory: 32 entries of 4 bytes, 128 bytes in all, entry *n* at SPRTAB × 256 + *n* × 4. At reset SPRTAB is `$37`, so the table is `$3700-$377F`.
-
-| Byte | Holds |
-|---|---|
-| 0 | Y: the sprite's top line. 0-199 are on the picture; 200-255 count as -56 to -1, above it. |
-| 1 | X, bits 0-7. |
-| 2 | The image number, 0-255. |
-| 3 | Attributes. Bit 0: bit 8 of X. Bit 1: wide. Bit 2: behind. Bit 3: flipped left to right. Bit 4: upside down. Bit 7: 1 shows the sprite. Bits 5 and 6 are spare: the board ignores them. |
-
-An entry with bit 7 of its byte 3 clear isn't drawn, whatever the rest says, so a table of zeros shows nothing. A program switches a sprite off with one store.
-
-A sprite's **image** is 64 bytes: 16 rows from the top, four bytes a row, the left byte first. Each pixel is two bits, four pixels to a byte, bits 7-6 the leftmost:
+The NIECE's memory is one big picture, the **sheet**: 256 pixels wide and 512 lines high. Every pixel is four bits, a colour from 0 to 15, the same sixteen as BORDER's (Appendix A). Two pixels share a byte, the left one in the high four bits, so a line of the sheet is 128 bytes and the whole sheet is 65,536.
 
 ```text
-%aabbccdd       aa: the leftmost pixel, then bb, cc, and dd on the right
+byte = y * 128 + x / 2
+left pixel (x even): bits 4-7      right pixel (x odd): bits 0-3
 ```
 
-A pixel of 0 is see-through: whatever is under the sprite shows there. 1, 2 and 3 are colour numbers (see "Four colours"). At reset they're dark grey, light grey and white. The images sit side by side in a **bank**, and image *p* starts at:
+The top left of the sheet is two **pages**, each 160 × 100 pixels:
 
-```text
-image p = SPRBANK * 256 + p * 64
-```
+| | Sheet's lines | Sheet's columns |
+|---|---|---|
+| Page 0 | 0-99 | 0-159 |
+| Page 1 | 100-199 | 0-159 |
+| Yours | 0-199 | 160-255 |
+| Yours | 200-511 | 0-255 |
 
-At reset SPRBANK is `$38`, so image 0 is at `$3800`, image 1 at `$3840`, and images 0-15 fill `$3800-$3BFF`. Images 16 and up share memory with the layer (`$3C00`, see "The layer"). The table and the bank are both inside a UNC 16's 16K, and both inside the bitmap's default place (`$2000-$3F3F`) too. If you use the bitmap there, move them: one store to SPRTAB, one to SPRBANK.
+One page is **shown** and the other is **drawn on**. When a picture is finished, the two change places (FLIP, below), so nobody ever sees a picture half drawn. Page 0 is shown at switch-on, when the whole sheet is colour 0.
+
+The rest of the sheet is yours: 99,072 pixels to keep pictures in, for the NIECE to copy onto the page.
+
+**In the picture**, the page shown is behind the computer's own. Each of its pixels is two of the screen's wide and two high, so 160 × 100 fills the screen's 320 × 200. Wherever the computer's own picture is paper, you see the page; text and the bitmap's ink are in front, in white. So the text screen is still there for a score, and a space is a window. BACKGROUND doesn't show while the page does.
 
 | Address | Register | Read and write |
 |---|---|---|
-| `$C0A0` | SPRTAB | High byte of the sprite table's address. `$37` at reset. 0 is no table: the sprites are off. |
-| `$C0A1` | SPRBANK | High byte of the images' bank. `$38` at reset. |
-| `$C0A4` | SPRHIT | Read only. Sprites that have touched another sprite (see "Collisions"). |
-| `$C0A5` | SPRHITBG | Read only. Sprites that have touched the picture. |
-| `$C0A6` | SPRLINE | Read only. Bit 7: some line had more than eight sprites (see "Thirty-two, eight a line"). |
+| `$C100` | NCTRL | Bit 0: 1 shows the page. 0 at reset, and after STOP and RESTORE. |
 
-**All of them off.** SPRTAB 0 means there is no table: the board shows no sprites and reports no collisions, whatever the fast page holds, and the entries in memory keep their bit 7s for when the table is back. It's what STOP and RESTORE do (chapter 10), so that `READY.` isn't under a fleet of ships. A program that shows sprites should say where its table is when it starts, `LDA #$37`, `STA SPRTAB` (in BASIC, `POKE 49312,55`), even when that's where the board puts it at reset: then it works the second time too.
+### Commands and the queue
 
-The position is the sprite's top-left corner, in pixels of the 320 × 200 picture: the bitmap's own coordinates. The board doesn't care whether the screen shows text or the bitmap.
+To draw, set the registers that say what and where, then write a command's number to NGO.
 
-**Off the edges.** X is nine bits, 0 to 511: byte 1 and bit 0 of byte 3. 0 to 319 are on the picture. 320 to 511 count as X - 512, from -192 to -1: off the left edge, so a sprite at 504 shows its right half at the left of the screen. Count X up past 319, on to 511 and round to 0, and the sprite flies off the right and comes back in from the left. Y is eight bits: 0 to 199 are on the picture, and 200 to 255 count as Y - 256, from -56 to -1, above the top. Whatever is off the picture is cut off; nothing wraps round, and nothing shows in the border.
+| Address | Register | |
+|---|---|---|
+| `$C103` | NGO | Write only. 1 FILL, 2 BLIT, 3 LINE, 4 FLIP. Any other number does nothing. |
+| `$C101` | NSTATUS | Read only. Bit 7: busy, the queue isn't empty. Bit 6: the queue is full. Bit 5: a command was lost; it stays set until anything is written to NSTATUS. Bit 0: the page shown, 0 or 1. |
+| `$C102` | NQUEUE | Read only. How many commands are in the queue, 0-64. |
 
-```asm
-; A first sprite: a ship you steer with the cursor keys.
-HELD    = $C012
-FRAME   = $C006
-TABLE   = $3700         ; the sprite table after reset: entry n at $3700 + n * 4
-BANK    = $3800         ; the images after reset: image n at $3800 + n * 64
-XPOS    = $10           ; the ship's x, 16 bits; the board takes 9 of them
-YPOS    = $12
-FACE    = $13           ; 0 facing right, %00001000 (flipped) facing left
+The command doesn't happen at once. It joins a **queue** of up to 64 commands, and it takes the registers with it *as they stand when NGO is written*: change them straight afterwards for the next command, and the one in the queue keeps what it had. The NIECE works through the queue in order while your program carries on.
 
-        .org $0800
-start:  LDX #63
-copy:   LDA ship,X          ; the image: 64 bytes into image 0
-        STA BANK,X
-        DEX
-        BPL copy
-        LDA #0
-        STA TABLE+2         ; entry 0 shows image 0
-        STA XPOS+1
-        STA FACE
-        LDA #152            ; the middle of the screen
-        STA XPOS
-        LDA #92
-        STA YPOS
-frame:  LDA FRAME
-wait:   CMP FRAME
-        BEQ wait
-        LDA HELD            ; the key down now
-        CMP #29             ; right
-        BNE notr
-        LDA #0
-        STA FACE
-        INC XPOS
-        BNE show
-        INC XPOS+1
-        JMP show
-notr:   CMP #28             ; left
-        BNE notl
-        LDA #%00001000
-        STA FACE
-        LDA XPOS
-        BNE same
-        DEC XPOS+1
-same:   DEC XPOS
-        JMP show
-notl:   CMP #30             ; up
-        BNE notu
-        DEC YPOS
-notu:   CMP #31             ; down
-        BNE show
-        INC YPOS
-show:   LDA YPOS
-        STA TABLE           ; byte 0: y
-        LDA XPOS
-        STA TABLE+1         ; byte 1: x, bits 0-7
-        LDA XPOS+1
-        AND #1              ; bit 0: x bit 8
-        ORA FACE            ; bit 3: facing left
-        ORA #%10000000      ; bit 7: shown
-        STA TABLE+3
-        JMP frame
+A command written when the queue already holds 64 is **lost**: it never runs, and bit 5 of NSTATUS says so, for as long as it takes you to look: reading NSTATUS doesn't clear it, writing it does. A program that might fill the queue looks at bit 6 first:
 
-ship:   .byte %00000000, %00000000, %00000000, %00000000
-        .byte %00000000, %00000000, %00000000, %00000000
-        .byte %00000010, %10000000, %00000000, %00000000
-        .byte %00000010, %10100000, %00000000, %00000000
-        .byte %00000010, %10101000, %00000000, %00000000
-        .byte %00010110, %10101010, %10101010, %00000000
-        .byte %01010110, %10101010, %10111111, %10000000
-        .byte %01010110, %10101010, %10101111, %11100000
-        .byte %01010110, %10101010, %10101010, %10100000
-        .byte %00010110, %10101010, %10101010, %00000000
-        .byte %00000010, %10101000, %00000000, %00000000
-        .byte %00000010, %10100000, %00000000, %00000000
-        .byte %00000010, %10000000, %00000000, %00000000
-        .fill 12
+```text
+@full:  BIT NSTATUS         ; bit 6 goes to V
+        BVS @full           ; full: wait
+        STA NGO
 ```
 
-The ship is colour 2, its window colour 3 and its exhaust colour 1: light grey, white and dark grey, until you change them. Hold a cursor key and it glides a pixel a frame. Steer left and bit 3 turns it round: one image, both ways. Hold left until it reaches the edge and it slides off: XPOS counts down from 0 to `$FFFF`, and its bottom nine bits, 511, are -1. The program draws nothing and rubs nothing out. A frame of it costs about 70 cycles.
+And to wait until everything asked for has been drawn:
 
-### Thirty-two, eight a line
+```text
+@busy:  BIT NSTATUS         ; bit 7 goes to N
+        BMI @busy
+```
 
-There are 32 entries, and any number of them can show the same image. But the board can only draw **eight sprites on one line** of the picture. On every line it takes the shown entries in table order, 0 first, and draws the first eight whose rows cover that line; the rest aren't drawn on that line. A sprite counts on a line even where it's off the left or right edge, so park unused sprites with bit 7 clear, not off to the side.
+### What a command costs
 
-Where sprites overlap, the lower entry is drawn on top: entry 0 over entry 1, and so on.
+The NIECE draws **four pixels a cycle**, and takes 4 cycles to start each command:
 
-| Address | Register | Read |
+```text
+cycles = 4 + pixels / 4, rounded up
+```
+
+A command starts when it's written, or when the one before it finishes if that's later. All of its pixels appear together, on the cycle it finishes: until then the sheet is as it was. Nothing about this is left to chance. The cost never depends on what the pixels are.
+
+For FILL and BLIT, the pixels counted are the ones of the destination that are on the page. What hangs over the edge is cut off and costs nothing, and a command wholly off the page costs its 4 cycles. See-through pixels and columns the depth line turns away (below) still count: the chip has to look at them.
+
+| | Pixels | Cycles |
 |---|---|---|
-| `$C0A6` | SPRLINE | Bit 7 is 1 if some line has had more than eight sprites since the last read. Reading clears it. |
+| Fill the whole page | 16,000 | 4,004: a fifth of a frame |
+| A 16 × 16 picture | 256 | 68 |
+| The same, drawn 64 × 64 | 4,096 | 1,028 |
+| A column 2 wide and 100 high | 200 | 54 |
+| A frame at 50 a second has | 79,872 | 19,968 |
 
-Thirty-two sprites spread down the screen, four to a band, never meet the limit. Twelve in a row do: four of them go missing. The cure of the era is **flicker**: change the order every frame, so that each frame a different eight are first. Every sprite then shows at least every other frame, 25 times a second, and the eye fills in the rest. This row of twelve birds swaps its order, first to last, every frame:
+So the page can be drawn five times over in a frame, and storing the dozen registers of a command takes the processor about as long as the NIECE takes to draw a small picture. The queue is rarely more than a few commands long unless you ask for something big.
+
+### Where: the destination
+
+| Address | Register | Read and write |
+|---|---|---|
+| `$C108-$C109` | NDX | The left edge, low byte first: -32,768 to 32,767. |
+| `$C10A-$C10B` | NDY | The top edge, the same way. |
+| `$C10C-$C10D` | NDW | The width, 0 to 65,535. |
+| `$C10E-$C10F` | NDH | The height, 0 to 65,535. |
+| `$C115` | NCOLOUR | Bits 0-3: the colour FILL and LINE draw in, 0-15. Bits 4-7: FILL's second colour, for a pattern. |
+| `$C11D` | NPATTERN | FILL's pattern. 0 at reset: all one colour. |
+| `$C116` | NFLAGS | See below. |
+
+The destination is a rectangle on the page that's being drawn on: (0, 0) is the page's top left pixel and (159, 99) its bottom right, whichever page it is. The rectangle can start off the page (NDX and NDY can be negative) and be far bigger than it; only the part on the page is drawn. All registers are 0 at reset, and they keep their values from one command to the next, so a program only stores the ones that change.
+
+**FILL** (1) draws the rectangle in NCOLOUR. A width or height of 0 draws nothing.
+
+With NPATTERN not 0, FILL mixes two colours. The pattern is four pixels wide and two lines high: bits 7 to 4 are the four pixels of the even lines, left to right, and bits 3 to 0 those of the odd lines. A 1 is drawn in the second colour, NCOLOUR's high four bits, and a 0 in the first. It repeats across and down from the top left corner of the page (or of the sheet, with SHEET), wherever the rectangle is, so two fills side by side join up without a seam. `%01011010` is a chequerboard, which from a chair's distance is a seventeenth colour; `%10000000` is one pixel in eight. A patterned FILL costs what a plain one does.
+
+```text
+        LDA #14 << 4 | 6    ; light blue on blue
+        STA NCOLOUR
+        LDA #%01011010      ; every other pixel, the lines staggered
+        STA NPATTERN
+        LDA #FILL
+        STA NGO
+```
+
+**The short way in.** Most things on a 160 × 100 page are within a byte of its corner, and storing two bytes for each of four numbers is half of what a small picture costs to ask for. Four more registers set both bytes with one store:
+
+| Address | Register | Write |
+|---|---|---|
+| `$C119` | NDXS | NDX, from a signed byte: -128 to 127. The high byte becomes 0 or `$FF` to match. |
+| `$C11A` | NDYS | NDY, the same way. |
+| `$C11B` | NDWS | NDW, 0 to 255: the high byte becomes 0. |
+| `$C11C` | NDHS | NDH, the same way. |
+
+They're the same four numbers, not new ones: NDX reads what NDXS set, and each short register reads its number's low byte. So a picture half off the left edge is `LDA #-6`, `STA NDXS`, and nothing is left in a high byte for the next command to trip over.
+
+**LINE** (3) draws a line in NCOLOUR from (NDX, NDY) to (NDX + NDW, NDY + NDH), both ends included. Here NDW and NDH are signed, so a line can go up and to the left: -30 is `$E2`, `$FF`. The line has one pixel for each step along its longer side, each at the nearest place on the other (a half rounds to the right, or down). Its cost is its whole length, longer side plus one, in pixels, on the page or not.
+
+**FLIP** (4) makes the two pages change places: the one drawn on is shown, and the next commands draw on the other. It **waits for the beam to leave the picture** (the start of line 251, where FRAME goes up: chapter 9), and the queue waits behind it. So a FLIP never tears the picture, and a program that draws, FLIPs and waits for the queue to empty is in step with the screen without counting a line. It draws nothing and costs nothing but the wait.
 
 ```asm
-; Twelve birds in a row: four too many for one line, so they take turns.
-FRAME   = $C006
-TABLE   = $3700
-BANK    = $3800
-N       = 12
-XL      = $10           ; the birds' x, bits 0-7: $10-$1B
-XH      = $1C           ; and bit 8: $1C-$27
-ODD     = $28           ; 1 on odd frames
+; The NIECE's first picture: a sky, a field, a sun and a path.
+NCTRL   = $C100
+NSTATUS = $C101
+NGO     = $C103
+NDX     = $C108
+NDY     = $C10A
+NDW     = $C10C
+NDH     = $C10E
+NCOLOUR = $C115
+NIECE   = $C14F
+CLS     = $FF00
+FILL    = 1
+LINE    = 3
+FLIP    = 4
 
         .org $0800
-start:  LDX #63
-copy:   LDA bird,X
-        STA BANK,X          ; image 0
-        DEX
-        BPL copy
-        LDX #N-1
-setup:  LDA xlo,X           ; spaced out across the screen
-        STA XL,X
-        LDA xhi,X
-        STA XH,X
-        DEX
-        BPL setup
-frame:  LDA FRAME
-wait:   CMP FRAME
-        BEQ wait
-        AND #1
-        STA ODD
-        LDX #N-1
-move:   INC XL,X            ; a pixel right: nine bits, round from 511 to 0
-        BNE same
-        LDA XH,X
-        EOR #1
-        STA XH,X
-same:   TXA                 ; bird n goes in entry n, or 11 - n on odd frames
-        LDY ODD
-        BEQ even
-        EOR #$FF
+start:  LDA NIECE
+        CMP #$17
+        BNE none            ; no NIECE: nothing to do
+        JSR CLS             ; spaces: the whole page shows through
+        LDX #0
+@box:   LDA boxes,X         ; five bytes a box: x, y, width, height, colour
+        STA NDX             ; (the high bytes are 0 since reset)
+        LDA boxes+1,X
+        STA NDY
+        LDA boxes+2,X
+        STA NDW
+        LDA boxes+3,X
+        STA NDH
+        LDA boxes+4,X
+        STA NCOLOUR
+        LDA #FILL
+        STA NGO             ; into the queue, with the registers as they are
+        TXA
         CLC
-        ADC #N
-even:   ASL A
-        ASL A               ; * 4: the entry's offset in the table
-        TAY
-        LDA #100
-        STA TABLE,Y         ; y: every bird on line 100
-        LDA XL,X
-        STA TABLE+1,Y
-        LDA #0
-        STA TABLE+2,Y       ; image 0
-        LDA XH,X
-        ORA #%10000000      ; x bit 8, and shown
-        STA TABLE+3,Y
-        DEX
-        BPL move
-        JMP frame
+        ADC #5
+        TAX
+        CPX #15
+        BNE @box
+        LDA #0              ; the path: from (0, 99) to (159, 60), in white
+        STA NDX
+        LDA #99
+        STA NDY
+        LDA #159
+        STA NDW
+        LDA #<[-39]
+        STA NDH
+        LDA #>[-39]
+        STA NDH+1
+        LDA #1
+        STA NCOLOUR
+        LDA #LINE
+        STA NGO
+        LDA #FLIP           ; when the beam has left the picture
+        STA NGO
+@busy:  BIT NSTATUS
+        BMI @busy
+        LDA #1
+        STA NCTRL           ; show the page
+none:   HLT
 
-xlo:    .rept N, n
-        .byte <[n*26]
-        .endr
-xhi:    .rept N, n
-        .byte >[n*26]
-        .endr
-bird:   .byte %00000000, %00000000, %00000000, %00000000
-        .byte %00000000, %00000000, %00000000, %00000000
-        .byte %00100000, %00000000, %00000000, %00001000
-        .byte %00101000, %00000000, %00000000, %00101000
-        .byte %00001010, %00000000, %00000000, %10100000
-        .byte %00000010, %10000000, %00000010, %10000000
-        .byte %00000000, %10101000, %00101010, %00000000
-        .byte %00000000, %00001011, %11100000, %00000000
-        .byte %00000000, %00000010, %10000000, %00000000
-        .fill 28
+boxes:  .byte 0, 0, 160, 60, 14         ; the sky, light blue
+        .byte 0, 60, 160, 40, 5         ; the field, green
+        .byte 120, 10, 16, 16, 7        ; the sun, yellow
 ```
 
-On even frames birds 0-7 are entries 0-7 and show; on odd frames the order is turned round, and birds 11-4 are first. Birds 4-7 show every frame and the other eight every other frame: they shimmer, as they did on every console of the era. Each bird costs about 70 cycles a frame, and the twelve under 900, out of 19,968. Drawing them with the shifter (chapter 8) would cost about 600 cycles each, and as much again to rub them out.
+The three boxes are 16,000 and 256 pixels: 4,076 cycles of drawing, which the NIECE does while the program is still storing the line's registers and then waiting.
 
-**A program can't see which sprites went missing**, only that some did: SPRLINE. Check it once a frame. If it's set, start flickering; if it stays clear, don't.
+### From where: the source
 
-### Wide, behind and flipped
+**BLIT** (2) copies a rectangle of the sheet, the **source**, onto the destination rectangle, and makes it fit.
 
-The other bits of byte 3:
-
-| Bit | Name | When it's 1 |
+| Address | Register | Read and write |
 |---|---|---|
-| 1 | Wide | The sprite is 32 × 32: each pixel of its image drawn 2 × 2. |
-| 2 | Behind | The sprite goes behind the picture: it shows only where the picture is colour 0, the background. |
-| 3 | Flip | The image is drawn mirrored, left to right. |
-| 4 | Upside down | The image is drawn upside down. |
+| `$C110` | NSX | The source's left edge on the sheet, 0-255. |
+| `$C111-$C112` | NSY | Its top edge, 0-511 (nine bits). |
+| `$C113` | NSW | Its width, 1-255. |
+| `$C114` | NSH | Its height, 1-255. |
+| `$C107` | NKEY | The see-through colour, 0-15. 0 at reset. |
 
-A wide sprite uses the same 64-byte image, drawn twice as big. Its x and y are still its top-left corner, so it grows to the right and down. Wide sprites are for the things that ought to be big: a mothership, a cloud, a title letter. A wide sprite still counts as one on each of its 32 lines.
+If the destination is the same size as the source, it's a plain copy. If it's wider, narrower, taller or shorter, the picture is stretched or squeezed to fit, each way on its own. Pixel (*i*, *j*) of the destination, counting from its top left corner, takes the source's pixel
 
-A sprite behind the picture slips behind the letters, the bitmap's ink and the layer, and shows only in the spaces between: a bird behind a line of text, or a ship that flies behind the hills. Behind decides only against the picture. Between sprites, the lower entry is still on top.
+```text
+( NSX + i * NSW / NDW ,  NSY + j * NSH / NDH )      divisions rounded down
+```
 
-The flips work on the image as it's drawn, so one image does for both ways: a ship that turns round, a player who walks left and right. Both bits together turn it half a turn.
+so every pixel of a picture drawn at twice its size becomes 2 × 2, and one drawn at half its size keeps every other pixel. This holds for the pixels that are on the page even when most of the destination isn't: a 64 × 64 picture drawn 600 high shows the right slice of its middle. A source that runs off the sheet's edge carries on from the opposite edge. A width or height of 0, source or destination, draws nothing.
 
-### Collisions
+The source can be anywhere on the sheet, the pages included. The destination doesn't carry on round an edge the way a source does: what's off the page, or with SHEET off the sheet, is cut off.
 
-The board notices when sprites touch. As it draws each frame, it checks every pixel of the picture:
+NFLAGS says how:
 
-| Address | Register | Read |
+| Bit | Name | |
 |---|---|---|
-| `$C0A4` | SPRHIT | Bit *n* is 1 if table entry *n* (0-7) has had a pixel on the same pixel as another sprite's. Reading clears it. |
-| `$C0A5` | SPRHITBG | Bit *n* is 1 if table entry *n* (0-7) has had a pixel on the picture's ink: any pixel of the screen, the bitmap or the layer that isn't colour 0. Reading clears it. |
+| 0 | KEY | Source pixels of the colour in NKEY aren't drawn: what was there shows through. BLIT only. |
+| 1 | FLIPX | The source is mirrored left to right. BLIT only. |
+| 2 | FLIPY | The source is upside down. BLIT only. |
+| 3 | ZTEST | The depth line decides which columns are drawn. |
+| 4 | ZWRITE | The columns drawn are written into the depth line. |
+| 5 | SHEET | Draw on the sheet itself instead of the page: the destination's (0, 0) is the sheet's, and all 256 × 512 of it can be drawn on. |
+| 6-7 | | Which **ink table** the colours go through, 0-3. BLIT only. |
 
-Only entries 0 to 7 have bits. Put the sprites that matter there (the player, the player's shot, the things that can hurt) and the decoration below them. An entry 0-7 that touches entry 20 still sets its own bit.
+### Loading the sheet
 
-Only the sprites' visible pixels count, not their see-through 0s: two sprites whose squares overlap haven't touched until their pixels do, so a ball and a ring touch only where the ball meets the ring. A sprite behind the picture still touches it, though you can't see where. Only the picture counts, too: off the edge, nothing touches. The bits add up from frame to frame until your program reads the register, so read it once a frame, keep the value, and you won't miss a hit that happened while you were busy.
+The processor reaches the sheet's bytes through a window, one at a time:
 
-Writing them does nothing. Reading them is the only way to clear them.
+| Address | Register | Read and write |
+|---|---|---|
+| `$C104-$C105` | NVADDR | A byte of the sheet, 0-65,535: line × 128 + column / 2. |
+| `$C106` | NVDATA | The byte at NVADDR. Reading it or writing it moves NVADDR on by one (after `$FFFF` comes 0). |
+
+NVDATA doesn't go through the queue: a byte written is in the sheet at once. So it can get there before a command that was asked for first: FILL a place and then write bytes into it, and the FILL lands on top of them when its turn comes. Wait for the queue to empty before writing where a command is going to draw.
 
 ```asm
-; Bounce a ball between two walls: SPRHITBG says when it touches one.
-SPRHITBG = $C0A5
-FRAME    = $C006
-CLS      = $FF00
-SCREEN   = $0400
-TABLE    = $3700
-BANK     = $3800
-DX       = $10          ; the ball's step: 1 right, $FF (-1) left
+; A picture on the sheet, drawn at three sizes.
+NCTRL   = $C100
+NSTATUS = $C101
+NGO     = $C103
+NVADDR  = $C104
+NVDATA  = $C106
+NDX     = $C108
+NDY     = $C10A
+NDW     = $C10C
+NDH     = $C10E
+NSX     = $C110
+NSY     = $C111
+NSW     = $C113
+NSH     = $C114
+NCOLOUR = $C115
+NFLAGS  = $C116
+CLS     = $FF00
+FILL    = 1
+BLIT    = 2
+FLIP    = 4
+KEY     = 1
+ADDR    = $10               ; where the next line of the picture goes
+FACEY   = 200               ; the picture's place on the sheet: (0, 200)
 
         .org $0800
 start:  JSR CLS
-        LDA #$0F            ; two walls of solid blocks, rows 11-13
-        STA SCREEN+11*40+5
-        STA SCREEN+12*40+5
-        STA SCREEN+13*40+5
-        STA SCREEN+11*40+30
-        STA SCREEN+12*40+30
-        STA SCREEN+13*40+30
-        LDX #63
-copy:   LDA ball,X
-        STA BANK,X
-        DEX
-        BPL copy
-        LDA #92             ; entry 0: the ball, between the walls
-        STA TABLE
-        LDA #160
-        STA TABLE+1
-        LDA #0
-        STA TABLE+2
-        LDA #%10000000
-        STA TABLE+3
-        LDA #1
-        STA DX
-frame:  LDA FRAME
-wait:   CMP FRAME
-        BEQ wait
-        LDA SPRHITBG        ; did it touch the screen last frame?
-        BEQ move
-        LDA #0              ; then turn round: DX = 0 - DX
-        SEC
-        SBC DX
-        STA DX
-move:   LDA TABLE+1
-        CLC
-        ADC DX
-        STA TABLE+1
-        JMP frame
-
-ball:   .byte %00000000, %00101010, %10101000, %00000000
-        .byte %00000010, %10101010, %10101010, %10000000
-        .byte %00001010, %10101010, %10101010, %10100000
-        .byte %00101010, %11111010, %10101010, %10101000
-        .byte %00101011, %11111110, %10101010, %10101000
-        .byte %10101011, %11111110, %10101010, %10101010
-        .byte %10101010, %11111010, %10101010, %10101010
-        .byte %10101010, %10101010, %10101010, %10101010
-        .byte %10101010, %10101010, %10101010, %10101010
-        .byte %10101010, %10101010, %10101010, %10101010
-        .byte %10101010, %10101010, %10101010, %10101010
-        .byte %00101010, %10101010, %10101010, %10101000
-        .byte %00101010, %10101010, %10101010, %10101000
-        .byte %00001010, %10101010, %10101010, %10100000
-        .byte %00000010, %10101010, %10101010, %10000000
-        .byte %00000000, %00101010, %10101000, %00000000
-```
-
-The board checks as it draws, line by line. So the ball moves onto the wall's first pixel in one frame, the board notices as the beam draws it, and the program reads it when FRAME next goes up and turns round. The ball never sinks more than a pixel into the wall.
-
-### Four colours
-
-With the board in, the picture has four colours. Every pixel is a **colour number**, 0 to 3, and four registers say which of the sixteen colours (Appendix A) each number shows:
-
-| Address | Register | Read and write |
-|---|---|---|
-| `$C021` | BACKGROUND | The colour of colour number 0 (chapter 8). |
-| `$C0B1` | COLOUR1 | The colour of colour number 1, 0-15. 11 (dark grey) at reset. |
-| `$C0B2` | COLOUR2 | The colour of colour number 2, 0-15. 15 (light grey) at reset. |
-| `$C0B3` | COLOUR3 | The colour of colour number 3, 0-15. 1 (white) at reset. |
-
-The text screen and the bitmap draw their paper in colour 0 and their ink in colour 3, so at reset the picture looks exactly as it does without the board. The layer draws its ink in colour 1. A sprite's pixels are whatever numbers its image holds. Change COLOUR3 and every letter on the screen changes colour at once; change COLOUR2 and every sprite pixel drawn in 2 does. That's a **palette**: a game flashes a warning, fades to night, or makes the hero glow by changing one register, not a thousand pixels.
-
-**On the green monitor.** The board doesn't know which monitor you have, and doesn't need to. On the green screen each colour shows as a shade of green, as bright as the colour is light: white is the full glow, light grey dimmer, dark grey dimmer still, black is the glass. So the four colours are four greens, and a picture that keeps its colours apart in lightness reads well on both. The defaults do: dark grey, light grey and white on black.
-
-**The 4-colour bitmap.**
-
-| Address | Register | Bit 0 |
-|---|---|---|
-| `$C0B0` | COLOURMODE | 1: the bitmap has four colours, 160 × 200. 0 at reset. |
-
-With COLOURMODE bit 0 set, the bitmap (VMODE bit 1, chapter 8) is the same 8,000 bytes at BITMAP × 256, read two bits a pixel: 160 pixels across, each two picture pixels wide, 200 lines down. Each byte holds four pixels, bits 7-6 the leftmost:
-
-```text
-byte  = BITMAP * 256 + y * 40 + x / 4         x from 0 to 159
-shift = 6 - 2 * (x AND 3)                     the pixel is (byte >> shift) AND 3
-```
-
-The pixels are fat, as they were on every colour home computer of the era: colour costs resolution. Mixed mode (VMODE bit 2) works as before, with TEXTROWS rows of text below the bitmap: at reset rows 21-24, below its top 168 lines. Without VMODE bit 1, COLOURMODE changes nothing.
-
-```asm
-; Four colours on the bitmap: four bands, colour 0 to colour 3.
-VMODE      = $C000
-BACKGROUND = $C021
-COLOURMODE = $C0B0
-COLOUR1    = $C0B1
-COLOUR2    = $C0B2
-COLOUR3    = $C0B3
-BITMAPREG  = $C023
-BITMAP     = $1000      ; $1000-$2F3F: clear of the sprite table and images
-PTR        = $10
-
-        .org $0800
-start:  LDA #<BITMAP
-        STA PTR
-        LDA #>BITMAP
-        STA PTR+1
-        LDX #200            ; 200 lines
-line:   LDY #39             ; of 40 bytes
-byte:   LDA bands,Y
-        STA (PTR),Y
+        LDA #<[FACEY * 128]
+        STA ADDR
+        LDA #>[FACEY * 128]
+        STA ADDR+1
+        LDX #0
+@row:   LDA ADDR            ; eight lines of four bytes
+        STA NVADDR
+        LDA ADDR+1
+        STA NVADDR+1
+        LDY #4
+@byte:  LDA face,X
+        STA NVDATA          ; and NVADDR moves on
+        INX
         DEY
-        BPL byte
-        CLC                 ; the next line: 40 bytes on
-        LDA PTR
-        ADC #40
-        STA PTR
-        BCC next
-        INC PTR+1
-next:   DEX
-        BNE line
+        BNE @byte
+        CLC
+        LDA ADDR
+        ADC #128            ; the sheet's next line
+        STA ADDR
+        BCC @same
+        INC ADDR+1
+@same:  CPX #32
+        BNE @row
+
+        LDA #160            ; the page blue all over
+        STA NDW
+        LDA #100
+        STA NDH
         LDA #6
-        STA BACKGROUND      ; colour 0: blue
-        LDA #2
-        STA COLOUR1         ; red
-        LDA #7
-        STA COLOUR2         ; yellow
+        STA NCOLOUR
+        LDA #FILL
+        STA NGO
+
+        LDA #FACEY          ; the source: 8 x 8 at (0, 200)
+        STA NSY
+        LDA #8
+        STA NSW
+        STA NSH
+        LDA #KEY            ; colour 0 is see-through
+        STA NFLAGS
+        LDX #0
+@face:  LDA where,X         ; three bytes a face: x, y, size
+        STA NDX
+        LDA where+1,X
+        STA NDY
+        LDA where+2,X
+        STA NDW
+        STA NDH
+        LDA #BLIT
+        STA NGO
+        INX
+        INX
+        INX
+        CPX #9
+        BNE @face
+        LDA #FLIP
+        STA NGO
+@busy:  BIT NSTATUS
+        BMI @busy
         LDA #1
-        STA COLOUR3         ; white
-        LDA #>BITMAP
-        STA BITMAPREG       ; the video chip reads the bitmap from $1000
-        LDA #%00000001
-        STA COLOURMODE      ; four colours, 160 x 200
-        LDA #%00000010
-        STA VMODE           ; the bitmap on
+        STA NCTRL
         HLT
 
-bands:  .fill 10, %00000000     ; four pixels of colour 0 in each byte
-        .fill 10, %01010101     ; colour 1
-        .fill 10, %10101010     ; colour 2
-        .fill 10, %11111111     ; colour 3
+where:  .byte 4, 46, 8          ; as it is
+        .byte 20, 38, 24        ; three times the size
+        .byte 60, 10, 80        ; ten times
+
+face:   .byte $00, $77, $77, $00
+        .byte $07, $77, $77, $70
+        .byte $77, $97, $79, $77
+        .byte $77, $77, $77, $77
+        .byte $79, $77, $77, $97
+        .byte $77, $99, $99, $77
+        .byte $07, $77, $77, $70
+        .byte $00, $77, $77, $00
 ```
 
-Blue, red, yellow and white on the colour monitor; on the green one, four steps from dark to bright. The bitmap is at `$1000`, not `$2000`: at `$2000` it would run through the sprite table at `$3700`, and its yellow and white bytes, with bit 7 set, would switch on sprites made of stripes. Change the four colour registers and run the last part again: the same bytes, a different picture.
+A digit of each byte is a pixel, so the picture can be read in the listing: 7 is yellow, 9 brown, and 0 is the see-through colour, where the blue stays.
 
-### Smooth scrolling
+**Moving things.** Nothing drawn on a page has to be rubbed out. Each frame, draw the background again (one FILL, or one BLIT of a picture kept on the sheet), draw everything where it is now, and FLIP. A thing moves because it was drawn somewhere else this time.
 
-Moving the screen's codes one cell to the left makes the picture jump eight pixels. Done eight times a second, it shakes; done fifty times, it races. The board can move the whole picture a pixel at a time instead:
+**Scrolling** is a BLIT whose source moves: keep a picture wider than the page on the sheet, and copy the 160 columns that start at NSX.
+
+### Ink tables
+
+The NIECE has four **ink tables** of sixteen colours each. BLIT looks every source pixel up in one of them, chosen by bits 6 and 7 of NFLAGS, and draws the colour it finds there. At reset every table holds 0, 1, 2 ... 15, so every colour comes out as itself.
 
 | Address | Register | Read and write |
 |---|---|---|
-| `$C0A8` | SCROLLX | Bits 0-2: the picture moves right by 0-7 pixels. 0 at reset. |
-| `$C0A9` | SCROLLY | Bits 0-2: the picture moves down by 0-7 pixels. 0 at reset. |
+| `$C118` | NTABLE | Which table shows at NINK, 0-3. |
+| `$C120-$C12F` | NINK | The table: what each source colour, 0-15, is drawn as. |
 
-The whole picture moves: text, the bitmap in either mode, and both halves of mixed mode. The strip it uncovers at the left or the top is colour 0, and what moves past the right or the bottom edge is cut off. Sprites don't move with it; their positions are their own.
+Fill table 1 with darker colours and the same picture can be drawn in daylight or in shadow. Fill one with white and a thing can flash when it's hit. Give two tables different colours for 2 and 10 and one picture of a ship is two fleets.
 
-Seven pixels is as far as the board goes. Further is your program's job, and the trick is to take turns: the **fine scroll** moves the picture a pixel at a time, and every eighth pixel the program moves the codes a whole cell, the **coarse scroll**, and puts the fine scroll back where it started. To scroll left, count SCROLLX down from 7 to 0. When it would go below 0, move every code one cell left and set SCROLLX to 7 again, in the same frame. Moved a cell left and seven pixels right, the picture has moved one pixel left, no more.
+KEY looks at the source's colour, before the table: the see-through colour stays see-through whatever the table says, and a table can still draw that colour from another one, so a picture keyed on 0 can have black in it. And a command takes a copy of its table with it into the queue, like the registers: change the table straight after NGO and the next command can have different colours again, so four tables are as many palettes as you care to store.
 
-```asm
-; A scrolling message: a pixel a frame, the codes a cell every eight frames.
-SCROLLX = $C0A8
-FRAME   = $C006
-CLS     = $FF00
-ROW     = $0400+12*40   ; the message runs along row 12
-FINE    = $10           ; the fine scroll, 7 down to 0
-NEXT    = $11           ; the next letter of the message
+### The depth line
 
-        .org $0800
-start:  JSR CLS
-        LDA #0
-        STA NEXT
-        LDA #7
-        STA FINE
-frame:  LDA FRAME
-wait:   CMP FRAME
-        BEQ wait
-        DEC FINE            ; a pixel left
-        BPL fine
-        LDA #7              ; past 0: back to 7, and every code a cell left
-        STA FINE
-        LDX #0
-coarse: LDA ROW+1,X
-        STA ROW,X
-        INX
-        CPX #39
-        BNE coarse
-        LDX NEXT            ; and the next letter in at the right
-        LDA msg,X
-        BNE put
-        LDX #0              ; the end of the message: round again
-        LDA msg
-put:    STA ROW+39
-        INX
-        STX NEXT
-fine:   LDA FINE
-        STA SCROLLX
-        JMP frame
-
-msg:    .text "SMOOTH AS SILK, A PIXEL A FRAME ... "
-        .byte 0
-```
-
-The coarse step moves 39 codes, about 660 cycles, once every eight frames. Scrolling the whole screen this way means moving 1,000 codes, about 17,000 cycles: most of a frame. Games that scroll the whole screen move it a part at a time over the eight frames, or keep a second screen ready and copy only what changed.
-
-### The layer
-
-The board has a second text screen of its own: the **layer**. It's drawn behind the screen. Where the screen's picture is colour 0, you see the layer; everywhere else, the screen.
+The NIECE keeps one more thing: a number from 0 to 255 for each column of the page, the **depth line**. It says how far away the thing drawn in that column is. Small is near.
 
 | Address | Register | Read and write |
 |---|---|---|
-| `$C0AA` | LAYER | Bit 0: 1 shows the layer. 0 at reset. |
-| `$C0AB` | LAYERPAGE | High byte of the layer's address. `$3C` at reset: the layer is `$3C00-$3FE7`. |
-| `$C0AC` | LAYERSX | Bits 0-2: the layer moves right by 0-7 pixels. 0 at reset. |
-| `$C0AD` | LAYERSY | Bits 0-2: the layer moves down by 0-7 pixels. 0 at reset. |
+| `$C117` | NDEPTH | This command's depth, 0-255. |
 
-The layer is 1,000 screen codes, 40 × 25, row by row, like screen memory (chapter 8), and it's drawn by the same rules: glyphs from the character set at CHARSET, 256 of them if VMODE bit 0 is set, reverse video for `$80-$FF` if not. Its ink is colour 1 and its paper colour 0, so at reset it's dark grey on black, behind white text: further away, and it looks it. Its scroll is its own: SCROLLX and SCROLLY move the screen in front of it, and LAYERSX and LAYERSY move the layer. It shows behind the bitmap too, through the bitmap's colour 0.
+With **ZWRITE** set, every column a command draws in takes NDEPTH as its depth. With **ZTEST** set, a command draws only in the columns where NDEPTH is *less* than the column's depth: where it's nearer than what's there. With both, it draws where it's nearer and those columns take its depth. Both work on whole columns, and on FILL, BLIT and LINE alike.
 
-So every space on the screen is a window onto the layer. Draw the scenery once, in the layer, and the game's text and graphics move about in front of it without ever having to put it back.
+At reset every column is 255, and a FILL of the whole page with ZWRITE and NDEPTH 255 makes it so again.
 
-**A pattern that never needs moving.** A layer with the same glyph in every cell looks the same moved eight pixels as not moved at all. So its fine scroll can count round, 7, 6, ... 0, 7 again, for ever, and the program never moves a single code. Move the near things fast and the far things slowly, and the picture gets depth: **parallax**. Here the dots behind a scrolling message drift at a quarter of its speed:
+This is what a picture of a room wants. Draw each wall as columns with ZWRITE, each with its distance. Then draw a thing in the room as *one* BLIT with ZTEST and its own distance, and the NIECE leaves out the columns where a wall is nearer. A barrel half behind a corner is half drawn, and the program never works out which half.
 
-```asm
-; Parallax: a message scrolls over a field of dots that drifts at a quarter
-; of its speed.
-SCROLLX = $C0A8
-LAYER   = $C0AA
-LAYERSX = $C0AC
-FRAME   = $C006
-CLS     = $FF00
-LAYERP  = $3C00         ; the layer, where LAYERPAGE points after reset
-ROW     = $0400+12*40
-FINE    = $10           ; the message's fine scroll, 7 down to 0
-NEXT    = $11           ; the next letter of the message
-SLOW    = $12           ; the dots' scroll, in quarter pixels
+### The arithmetic unit
 
-        .org $0800
-start:  JSR CLS
-        LDA #'.'            ; a dot in every cell of the layer
-        LDX #0
-fill:   STA LAYERP,X
-        STA LAYERP+$100,X
-        STA LAYERP+$200,X
-        STA LAYERP+$2E8,X   ; the last 256 cells end at $3FE7
-        INX
-        BNE fill
-        STX NEXT            ; X is 0
-        STX SLOW
-        LDA #7
-        STA FINE
-        LDA #1
-        STA LAYER           ; the layer on
-frame:  LDA FRAME
-wait:   CMP FRAME
-        BEQ wait
-        DEC SLOW            ; the dots: a pixel every fourth frame
-        LDA SLOW
-        LSR A
-        LSR A               ; LAYERSX keeps bits 0-2 of SLOW / 4
-        STA LAYERSX
-        DEC FINE            ; the message: a pixel every frame
-        BPL fine
-        LDA #7
-        STA FINE
-        LDX #0
-coarse: LDA ROW+1,X
-        STA ROW,X
-        INX
-        CPX #39
-        BNE coarse
-        LDX NEXT
-        LDA msg,X
-        BNE put
-        LDX #0
-        LDA msg
-put:    STA ROW+39
-        INX
-        STX NEXT
-fine:   LDA FINE
-        STA SCROLLX
-        JMP frame
+| Address | Register | |
+|---|---|---|
+| `$C130-$C131` | NMULA | A number, -32,768 to 32,767, low byte first. Reads as written. |
+| `$C132-$C133` | NMULB | Another. |
+| `$C134-$C137` | NPROD | Read only: NMULA × NMULB, four bytes, low byte first, signed. |
+| `$C138-$C13B` | NDIVN | A number, 0 to 4,294,967,295: four bytes, low byte first. Reads as written. |
+| `$C13C-$C13D` | NDIVD | What to divide it by, 0 to 65,535. |
+| `$C140-$C143` | NQUOT | Read only: NDIVN / NDIVD, rounded down, four bytes. |
+| `$C144-$C145` | NREM | Read only: the remainder. |
 
-msg:    .text "THE DOTS ARE FAR AWAY ... THE WORDS ARE NEAR ... "
-        .byte 0
+There's nothing to wait for and no command to give: NPROD, NQUOT and NREM are always the answer for what the other registers hold now. Dividing by 0 gives every bit set: NQUOT `$FFFFFFFF` and NREM `$FFFF`.
+
+The multiplier is signed and the divider isn't. Chapter 7's multiply works a bit at a time, round a loop; this takes the stores and the loads:
+
+```text
+        LDA speed           ; 16 bits each
+        STA NMULA
+        LDA speed+1
+        STA NMULA+1
+        LDA cosine
+        STA NMULB
+        LDA cosine+1
+        STA NMULB+1
+        LDA NPROD+1         ; the product's middle bytes: speed * cosine / 256
+        STA dx
+        LDA NPROD+2
+        STA dx+1
 ```
 
-The dots cost 16 cycles a frame, and they're dim because they're colour 1: dark grey. Swap the dot for a glyph of your own (chapter 8), a star or a cloud or a brick, and the same few lines move a sky or a wall behind your game.
+Numbers with a fraction work as they are. If 256 stands for 1.0 in both, the product's bytes 1 and 2 are the answer on the same scale.
 
-The video board, as Rev A has it: (1) Like the rest of the picture (chapter 9), the board draws each line as the beam finishes it, from its registers, its table and memory as they stand then: a sprite moved down the screen after the beam has drawn it is drawn again lower down in the same frame, and a raster split can scroll or recolour half the screen. The eight-a-line limit is counted on each line, from the table as it stands. Collisions and SPRLINE are checked as each line is drawn, with the blinking cursor counted as ink. (2) The board never steals a cycle from the processor. (3) The colours are shared: four for the whole picture, with text and the 1-bit bitmap in colour 3 and the layer in colour 1. (4) Only entries 0-7 have collision bits, and SPRLINE doesn't say which line or which sprites. (5) The table, the images and the layer are in the processor's memory, all three inside the default bitmap on a UNC 16; UNC BASIC's `GR` puts its bitmap there, so drawing in it can show sprites.
+### Three cassettes, and what 1 MHz makes of them
+
+Three programs for the NIECE are in the Machine Room with their source. All three want the 64K expansion as well, for their pictures and tables.
+
+**CLOUDBERRY** is a platformer that scrolls: two levels, each nearly thirteen screens long, a pixel at a time. The stretch of level you can see is kept on the sheet as a ring 256 pixels wide, and the page's background is one BLIT a frame whose source starts wherever the camera is: a source that runs off the sheet's edge carries on from the other, so the ring is never copied. When the camera crosses into a new column of tiles, twelve small BLITs draw that column into the ring. Three more layers move behind it at an eighth, a quarter and a half of the speed, the sky is patterned FILLs, and everything that moves is a BLIT. A three-voice tune plays on the AUNT all the while. The processor's worst frame is about 8,100 cycles of 19,968 and the NIECE's about 12,500 of drawing: 50 frames a second, with most of both to spare.
+
+**FELLRIDER** is a moped over the fells, and its sums are real ones: a body with a place, a speed, a tilt and a spin, two wheels each on its own spring and damper, tyres that grip as hard as they're pressed down, and an engine whose push on the back wheel pushes back on the body, so opening the throttle lifts the front. That's 46 multiplications a frame, all of them the arithmetic unit's. The NIECE can't turn a picture, so the program doesn't ask it to: the wheels are round, the fork and the swingarm are LINEs from the hubs, and only the body and its rider are kept at 32 tilts, made on the sheet when it starts, with FLIPX and FLIPY together for the other half of the circle. The ground is a ring on the sheet, like CLOUDBERRY's. The processor's worst frame is about 13,000 cycles of 19,968: 50 frames a second.
+
+**FROSTHALL** is a walk round a hall in three dimensions. The NIECE knows nothing of that: the program sends a ray out through the columns of the picture, the arithmetic unit does the six or seven divisions and multiplications a ray needs, and each column of wall is one BLIT, a pixel's width of a picture drawn as tall as the wall is near. The things in the hall are one BLIT each, and the depth line hides what's behind a wall. A ray costs the processor 800 or 900 cycles, so 80 of them a picture is 12 to 18 pictures a second; with a ray for every other column, and the columns between filled in where both neighbours met the same flat wall, it's 16 to 26, and that's how it starts. The NIECE itself is idle most of the time: the processor is what there isn't enough of.
+
+They read better than these paragraphs: `games/niece/cloudberry.s`, `games/niece/fellrider.s` and `games/niece/frosthall.s`.
+
+### What it doesn't do
+
+It doesn't know what a wall is, or a ship, or a floor. It has no sprites that stay where they're put, no collisions and no interrupts of its own (and BLIT has no pattern: a picture is its own): FRAME and the VBLANK interrupt (chapters 9 and 10) are the computer's, as before. It copies rectangles and it does sums. What they add up to is the program's business.
 
 ---
 
@@ -3528,7 +3407,7 @@ The glyphs themselves are in `rom/unscii.txt`, drawn as rows of `#` and `.`.
 
 On the monochrome monitor each colour shows as green, as bright as the colour is light.
 
-With the video board (chapter 15), the picture itself has four colours. Each pixel is a colour number, 0-3: number 0 shows BACKGROUND's colour, and 1-3 the colours in COLOUR1-COLOUR3 (`$C0B1-$C0B3`), any of these sixteen. Text and the 1-bit bitmap are drawn in colour number 3, white at reset, so without a program changing anything the picture looks the same with the board as without it. On the monochrome monitor the four are four shades of green, by the same rule.
+Text and the bitmap are drawn in white on BACKGROUND. The NIECE (chapter 15) draws in all sixteen at once: each pixel of its page is one of these numbers.
 
 ---
 
@@ -3543,7 +3422,7 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$0200-$03FF` | 512 | **System variables** and BASIC's workspace (Appendix D). `$0314-$0315` is the IRQ vector and `$0316-$0317` the NMI's. The rest is reserved for future ROMs. |
 | `$0400-$07E7` | 1,000 | **Screen memory.** 40 × 25 screen codes, row by row. |
 | `$07E8-$07FF` | 24 | Free. |
-| `$0800-$3FFF` | 14K | **Your programs.** BASIC programs start at `$0800`; machine-language programs load there too unless they say otherwise. While the bitmap is on, it takes 8,000 bytes from BITMAP × 256: at reset, `$2000-$3F3F`. The video board (chapter 15) reads its sprite table from SPRTAB × 256 (at reset, `$3700-$377F`), its sprite images from SPRBANK × 256 (`$3800`) and its layer from LAYERPAGE × 256 (`$3C00-$3FE7`). |
+| `$0800-$3FFF` | 14K | **Your programs.** BASIC programs start at `$0800`; machine-language programs load there too unless they say otherwise. While the bitmap is on, it takes 8,000 bytes from BITMAP × 256: at reset, `$2000-$3F3F`. |
 | `$4000-$BFFF` | 32K | **Expansion memory**, with the 64K expansion only. Without it, reads give `$FF` and writes vanish. |
 | `$C000-$CFFF` | 4K | **Input/output.** |
 | `$D000-$D7FF` | 2K | **UNSCII character ROM**, 256 glyphs: the first half of the 4K ROM. Read-only. |
@@ -3582,22 +3461,6 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$C052` | SHIFT_OUT | The window shifted right by SHIFT_AMOUNT, low byte | | 8 |
 | `$C053` | SHIFT_FLIP | | Pushes a byte with its bits reversed | 8 |
 | `$C060-$C068` | KEYS | Keyboard matrix, rows 0-8: 1 while a key is down | | 11 |
-| `$C0A0` | SPRTAB | The sprite table's page: 32 entries of Y, X, image, attributes. `$37` at reset; 0 for no sprites. Video board, | As read | 15 |
-| `$C0A1` | SPRBANK | The sprite images' page: image *p* at SPRBANK × 256 + *p* × 64. `$38` at reset | As read | 15 |
-| `$C0A4` | SPRHIT | Bit *n*: table entry *n* (0-7) touched another sprite since the last read; reading clears it | | 15 |
-| `$C0A5` | SPRHITBG | Bit *n*: table entry *n* (0-7) touched the picture (not colour 0) since the last read; reading clears it | | 15 |
-| `$C0A6` | SPRLINE | Bit 7: a line had more than eight sprites since the last read; reading clears it | | 15 |
-| `$C0A8` | SCROLLX | Fine scroll right, 0-7 | Bits 0-2 | 15 |
-| `$C0A9` | SCROLLY | Fine scroll down, 0-7 | Bits 0-2 | 15 |
-| `$C0AA` | LAYER | Bit 0: the layer shown | Bit 0 | 15 |
-| `$C0AB` | LAYERPAGE | The layer's page. `$3C` at reset | As read | 15 |
-| `$C0AC` | LAYERSX | The layer's fine scroll right, 0-7 | Bits 0-2 | 15 |
-| `$C0AD` | LAYERSY | The layer's fine scroll down, 0-7 | Bits 0-2 | 15 |
-| `$C0B0` | COLOURMODE | Bit 0: the 4-colour bitmap, 160 × 200 | Bit 0 | 15 |
-| `$C0B1` | COLOUR1 | The colour of colour number 1. 11 at reset | Colour, 0-15 | 15 |
-| `$C0B2` | COLOUR2 | The colour of colour number 2. 15 at reset | Colour, 0-15 | 15 |
-| `$C0B3` | COLOUR3 | The colour of colour number 3: text and 1-bit ink. 1 at reset | Colour, 0-15 | 15 |
-| `$C0BF` | BOARD | `$15`: the video board is in | | 15 |
 | `$C0C0-$C0C7` | | Voice 1 of the AUNT: FREQ_LO, FREQ_HI, WIDTH, WAVE, CONTROL, ATTACK_DECAY, SUSTAIN_RELEASE, TRIM. As written | As read | 12 |
 | `$C0C8-$C0CF` | | Voice 2, the same | | 12 |
 | `$C0D0-$C0D7` | | Voice 3, the same | | 12 |
@@ -3608,9 +3471,42 @@ With the video board (chapter 15), the picture itself has four colours. Each pix
 | `$C0DD` | ENV3 | Voice 3's envelope now | | 12 |
 | `$C0DF` | SOUND | `$16`: the AUNT | | 12 |
 | `$C0E0-$C0FF` | WAVETABLE | As written | The wave table: 32 steps | 12 |
+| `$C100` | NCTRL | Bit 0: the NIECE's page shown. The NIECE, | Bit 0 | 15 |
+| `$C101` | NSTATUS | Bit 7 busy, bit 6 queue full, bit 5 a command lost, bit 0 the page shown | Any value: clears bit 5 | 15 |
+| `$C102` | NQUEUE | Commands in the queue, 0-64 | | 15 |
+| `$C103` | NGO | | A command into the queue: 1 FILL, 2 BLIT, 3 LINE, 4 FLIP | 15 |
+| `$C104-$C105` | NVADDR | As written | A byte of the sheet | 15 |
+| `$C106` | NVDATA | The sheet's byte at NVADDR; NVADDR moves on | The same | 15 |
+| `$C107` | NKEY | As written | The see-through colour, 0-15 | 15 |
+| `$C108-$C109` | NDX | As written | The destination's left edge, signed | 15 |
+| `$C10A-$C10B` | NDY | As written | The destination's top edge, signed | 15 |
+| `$C10C-$C10D` | NDW | As written | The destination's width (LINE: how far across, signed) | 15 |
+| `$C10E-$C10F` | NDH | As written | The destination's height (LINE: how far down, signed) | 15 |
+| `$C110` | NSX | As written | The source's left edge, 0-255 | 15 |
+| `$C111-$C112` | NSY | As written | The source's top edge, 0-511 | 15 |
+| `$C113` | NSW | As written | The source's width | 15 |
+| `$C114` | NSH | As written | The source's height | 15 |
+| `$C115` | NCOLOUR | As written | Bits 0-3: FILL's and LINE's colour. Bits 4-7: FILL's second colour | 15 |
+| `$C116` | NFLAGS | As written | Bit 0 KEY, 1 FLIPX, 2 FLIPY, 3 ZTEST, 4 ZWRITE, 5 SHEET, 6-7 the ink table | 15 |
+| `$C117` | NDEPTH | As written | The command's depth, 0-255 | 15 |
+| `$C118` | NTABLE | As written | The ink table at NINK, 0-3 | 15 |
+| `$C119` | NDXS | NDX's low byte | NDX from a signed byte | 15 |
+| `$C11A` | NDYS | NDY's low byte | NDY from a signed byte | 15 |
+| `$C11B` | NDWS | NDW's low byte | NDW, 0-255 | 15 |
+| `$C11C` | NDHS | NDH's low byte | NDH, 0-255 | 15 |
+| `$C11D` | NPATTERN | As written | FILL's pattern: 4 pixels by 2 lines, a 1 the second colour | 15 |
+| `$C120-$C12F` | NINK | As written | The ink table: sixteen colours | 15 |
+| `$C130-$C131` | NMULA | As written | A signed 16-bit number | 15 |
+| `$C132-$C133` | NMULB | As written | Another | 15 |
+| `$C134-$C137` | NPROD | NMULA × NMULB, 32 bits | | 15 |
+| `$C138-$C13B` | NDIVN | As written | A 32-bit number | 15 |
+| `$C13C-$C13D` | NDIVD | As written | A 16-bit number | 15 |
+| `$C140-$C143` | NQUOT | NDIVN / NDIVD | | 15 |
+| `$C144-$C145` | NREM | The remainder | | 15 |
+| `$C14F` | NIECE | `$17`: the NIECE is in | | 15 |
 | `$C3F0-$C3FF` | | Reserved | Reserved | |
 
-Without the video board, every address in `$C080-$C0BF` reads `$FF` and ignores writes, BOARD included. With it, the ones not listed here do the same. Every other address in `$C000-$CFFF` reads `$FF` and ignores writes. Blank cells: reads give `$FF`, writes are ignored.
+Without the NIECE (chapter 15), every address in `$C100-$C14F` reads `$FF` and ignores writes, NIECE included. With it, the ones not listed here do the same. Every other address in `$C000-$CFFF` reads `$FF` and ignores writes. Blank cells: reads give `$FF`, writes are ignored.
 
 ### Timing
 

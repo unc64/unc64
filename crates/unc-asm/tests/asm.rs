@@ -343,3 +343,16 @@ fn load_sets_the_documented_start_state() {
     assert_eq!((m.cpu.pc, m.peek(0x3000)), (0x3000, op(Op::Nop, Mode::Imp)));
     assert_eq!(m.peek(0x0203), 0xC0, "the ROM has booted");
 }
+
+/// A line pass 2 can't encode (a branch too far) still takes its room, so a later `.assert`
+/// that measures with `*` isn't short by it: the branch is the only error reported.
+#[test]
+fn a_line_that_fails_in_pass_2_doesnt_move_the_lines_after_it() {
+    let src = "        .org $0800\nstart:  BNE far\n        .res 200\nfar:    HLT\ntab:    .byte 1, 2, 3, 4\n        .assert * - tab == 4, \"four bytes\"\n";
+    let errs = unc_asm::assemble(src).unwrap_err();
+    let messages: Vec<&str> = errs.iter().map(|e| e.message.as_str()).collect();
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].contains("branch out of range"), "{messages:?}");
+    // and with the branch in reach, the assert holds
+    assert!(unc_asm::assemble(&src.replace(".res 200", ".res 20")).is_ok());
+}
